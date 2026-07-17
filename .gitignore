@@ -1,0 +1,40 @@
+# Local source material and archives
+*.pdf
+*.zip
+
+# Local brainstorming and preview state
+.superpowers/
+.visual-server-*.log
+
+# OS metadata
+.DS_Store
+__MACOSX/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+*.pem
+*.key
+*.p12
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Runtime output
+artifacts/
+runs/
+logs/
+
+# IDEs
+.idea/
+.vscode/
