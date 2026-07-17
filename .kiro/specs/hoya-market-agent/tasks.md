@@ -11,6 +11,8 @@
 - Do not use Kiro `Run All Tasks`. Start with the fixture vertical slice, then dispatch by owner.
 - Commit after every numbered task. Do not combine unrelated owners' work in one commit.
 - P1 owns shared contracts and integration decisions. Contract changes require all affected owners to acknowledge before merge.
+- Follow `docs/superpowers/specs/2026-07-17-four-person-team-workflow-design.md` for file ownership, task branches and handoffs.
+- P1 and P4 co-own Docker/ECR/EC2 deployment; P4 never carries deployment or shared-contract risk alone.
 - Day 2 afternoon is feature freeze. After freeze, only fixes, deployment, rehearsal, documentation and submission checks are allowed.
 - Optional tasks stay unchecked unless every required acceptance gate through Task 10 passes.
 
@@ -23,7 +25,7 @@
 | 2 | Day 1 remainder | 3, 4, 6, 7 | P1/P2/P3/P4 | Each owner passes unit and contract tests |
 | 3 | Day 1 late afternoon | 5, then 8 | P2; then all | First complete H2-Lite run passes locally |
 | 4 | Day 2 morning | 9 | All | Five-coin and resilience acceptance gates pass |
-| 5 | Day 2 afternoon | 10 | P4 leads, all rehearse | EC2 demo, recorded fallback and submission checks pass |
+| 5 | Day 2 afternoon | 10 | P1 + P4 lead, all rehearse | EC2 demo, recorded fallback and submission checks pass |
 | Optional | Only after Wave 5 | 11, 12 | Explicitly reassigned | Never blocks MVP |
 
 ## Required Tasks
@@ -266,7 +268,7 @@
   - **Commit:** `test: verify five coin acceptance matrix`
 
 - [ ] **10. Freeze, deploy and prepare verifiable submission evidence**
-  - **Owner:** P4 leads; all participate
+  - **Owner:** P1 and P4 co-lead; all participate
   - **Wave / dependency:** Wave 5 / Task 9
   - **Spec:** 17 Day 2 afternoon, 18.5-18.6
   - **Files:**

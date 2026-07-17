@@ -7,6 +7,7 @@ inclusion: always
 ## Source of Truth
 
 - Treat `docs/superpowers/specs/2026-07-17-hoya-bit-hackathon-agent-design.md` as the approved product boundary.
+- Follow `docs/superpowers/specs/2026-07-17-four-person-team-workflow-design.md` for role ownership, task branches, pairing, handoffs, and feature freeze.
 - Treat `.kiro/specs/hoya-market-agent/requirements.md`, `design.md`, and `tasks.md` as the executable implementation contract.
 - Do not expand the MVP to H3 debate, S3, CloudWatch, extra adapters, or additional agent loops.
 

@@ -12,7 +12,7 @@
 
 ## Worktree And Ownership
 
-在專用 worktree 執行。P1：contracts/integration；P2：data/evidence；P3：reasoning/report；P4：UI/AWS/demo。完整細節以 `.kiro/specs/hoya-market-agent/tasks.md` 為準。
+在專用 worktree 執行。P1：contracts/integration/release；P2：data/evidence；P3：reasoning/report；P4：UI/demo support。Docker/ECR/EC2 由 P1 與 P4 共同負責。完整細節以 `.kiro/specs/hoya-market-agent/tasks.md` 與 `docs/superpowers/specs/2026-07-17-four-person-team-workflow-design.md` 為準。
 
 ```text
 src/hoya_agent/
@@ -92,7 +92,7 @@ Start only after Task 2 passes.
 - [ ] Implement Bedrock wrapper, Planner, Research Agent and Arbiter; rerun expecting PASS.
 - [ ] Commit `feat: add bounded bedrock reasoning` with only P3 paths.
 
-### P4 UI And Container
+### P4 UI And Container, Reviewed By P1
 
 **Files:** `src/hoya_agent/ui/{__init__,presenter}.py`, `streamlit_app.py`, `Dockerfile`, `.dockerignore`, `compose.yaml`, UI tests.
 
