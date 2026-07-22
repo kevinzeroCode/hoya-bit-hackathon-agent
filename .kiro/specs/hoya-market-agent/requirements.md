@@ -10,6 +10,21 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 
 ## 2. Requirements
 
+### Staged Acceptance — Approved D1–D8
+
+This section defines layer-level gates. Requirements 1–15 define the detailed behavioral acceptance criteria; overlapping wording is a traceability mapping, and the more specific Requirement controls without weakening the applicable stage gate.
+
+1. `WHEN` Bronze acceptance is evaluated, `THE SYSTEM SHALL` complete an entirely offline single-asset run from deterministic request, Evidence, and `AnalysisResult` fixtures through Streamlit and the deterministic Renderer, produce the four fixed artifacts, require no live HTTP, Bedrock, AWS credentials, or network access, and label the run honestly as `rehearsal` or `demo` rather than `official`.
+2. `WHEN` Silver acceptance is evaluated, `THE SYSTEM SHALL` complete one single-asset end-to-end run using the Organizer CSV, one designated baseline live market source, one designated baseline research source, normalized and validated Evidence, at least one successful schema-valid Bedrock result, the deterministic Renderer, and all four fixed artifacts.
+3. `THE SYSTEM SHALL` successfully complete a separate deterministic fallback test for Silver; a `fallback-only` execution does not satisfy the Silver success gate, and any Bedrock or external-source failure must produce honestly labelled partial or degraded output when useful Evidence remains.
+4. `THE SYSTEM SHALL` treat additional Silver sources as optional and non-blocking, without an exactly-one maximum; failure of an optional source shall not fail Silver.
+5. `WHEN` Gold acceptance is evaluated, `THE SYSTEM SHALL` validate two different assets as separate single-asset runs, exercise required source and Bedrock degradation paths, meet Docker build/runtime and ECR/EC2 deployment acceptance, and complete one timed rehearsal of the full judged flow. Dual-asset comparison and additional asset runs are optional and non-blocking.
+
+`Gold local Exit` means the pre-deployment local gate at which Silver has passed and the two required single-asset Gold runs, required degradation checks, and deterministic artifact checks have passed locally. Docker/ECR/EC2 deployment and the complete timed judged-flow rehearsal remain Gold delivery requirements that may be completed after Feature Freeze under item 7.
+
+6. `THE SYSTEM SHALL` treat Platinum as post-hackathon Future Work only and outside the formal two-day MVP Acceptance; Platinum work shall not be implemented during the formal two-day delivery period or block Gold, Demo, deployment, rehearsal, or submission.
+7. `WHEN` Gold local Exit occurs or Day 2 midday arrives, whichever occurs first, `THE SYSTEM SHALL` begin Feature Freeze. After Feature Freeze, only bug fixes, reliability fixes, deployment, rehearsal, documentation, rollback preparation, and submission verification are allowed; new features, providers, artifact formats, PDF/HTML, extra visualization, the complete five-coin matrix, and Platinum capabilities are prohibited.
+
 ### Requirement 1: 建立分析請求
 
 **User Story:** 身為競賽評審，我希望輸入臨時公布的問題與指定幣種，以便系統能針對現場題目建立一次可追蹤的分析執行。
@@ -33,6 +48,8 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 4. `WHILE` `run_mode=demo`，`THE SYSTEM SHALL` 允許展示已保存的完整 run，但 UI 與報告必須明確標示 recorded fallback 及原始取得時間。
 5. `WHEN` 任何 run 被顯示或匯出，`THE SYSTEM SHALL` 在 UI 與 artifacts 中明確記錄其 `run_mode`。
 6. `WHEN` 使用 Daily OHLCV，`THE SYSTEM SHALL` 只將 `analysis_as_of` 以前完成的 UTC 日 K 視為完整 K 線；當日未完成資料必須標示為 intraday snapshot，且不得與完整日 K 混用。
+7. `THE SYSTEM SHALL` 將 `official` 限於使用正式核准來源與執行條件的 live run，將 `rehearsal` 用於完整演練並明確標示，並將 `demo` 用於 fixture、recorded 或受控 fallback 展示且明確標示其資料模式。
+8. `THE SYSTEM SHALL NOT` 將 fixture run 標示為 live official run、將 fallback-only run 標示為 Silver success，或隱藏 stale、missing、mock 或 degraded Evidence。
 
 ### Requirement 3: 取得並計算可重現的市場資料
 
@@ -42,11 +59,14 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 
 1. `WHEN` Market Worker 計算 OHLCV 指標，`THE SYSTEM SHALL` 使用 deterministic 程式碼，並把資料區間與計算參數記錄於 artifacts。
 2. `THE SYSTEM SHALL` 將主辦方 Daily OHLCV CSV 視為共同歷史基準，且不得推定其上游為任何特定交易所。
-3. `WHEN` 需要 2026-05-31 之後的 live 資料或現場 snapshot，`THE SYSTEM SHALL` 以 Binance public REST API 為 canonical live source，並以 CoinGecko 作為 live fallback。
+3. `WHEN` 需要 2026-05-31 之後的 live 資料或現場 snapshot，`THE SYSTEM SHALL` 以 Binance public REST API 作為 Silver 與 Gold 的 designated baseline live market source。
 4. `WHEN` 同一分析跨越 CSV 與 live API，`THE SYSTEM SHALL` 將 2026-06-01 標示為來源切換點，並在 Evidence 與報告揭露來源差異。
-5. `WHEN` 首次執行 live-source rehearsal，`THE SYSTEM SHALL` 對 BTC、ETH、SOL、BNB、XRP 的 2026-05-01 至 2026-05-31 close 執行 CSV／Binance 重疊區間差異檢查，並將結果保留於 run config 或 steering；差異顯著時必須在報告揭露。
-6. `WHEN` 存取 live API，`THE SYSTEM SHALL` 保存 endpoint、交易對、查詢參數、UTC 範圍與 fetched time。
+5. `WHEN` baseline live market source 失敗，`THE SYSTEM SHALL` 產生 honest partial completion 或 deterministic degradation，不得宣稱已切換至第二個 live market provider。
+6. `WHEN` the system accesses a live API, `THE SYSTEM SHALL` retain the endpoint, trading pair, query parameters, UTC range, and `fetched_at`.
 7. `WHEN` 使用 Alternative.me Fear & Greed Index，`THE SYSTEM SHALL` 將其標示為全市場而非單一幣種指標，且不得單獨支撐單幣結論。
+8. `THE SYSTEM SHALL` 透過 typed `SourceAdapter` compatibility seam 存取 market 與 research sources；MVP implementation 必須保持 local 或 in-memory，且不要求動態 provider discovery 或獨立服務。
+
+CoinGecko live adapter、完整 five-asset validation matrix，以及 BTC、ETH、SOL、BNB、XRP 的完整 calibration 明確延後為 post-hackathon Future Work。Requirement 1 的 five-asset allowlist 僅表示輸入相容性，不表示五個資產均已完成 Gold 驗證。
 
 ### Requirement 4: 完成多源取證並誠實揭露缺口
 
@@ -55,10 +75,14 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 #### Acceptance Criteria
 
 1. `WHEN` 正常 live run 的來源可用，`THE SYSTEM SHALL` 以每個 run 至少三種 `source_type`、三個不同 `independence_group`，且至少一個第一手或官方來源為取證目標。
-2. `THE SYSTEM SHALL` 將主辦方 CSV、Binance／CoinGecko 市場資料、CryptoPanic／新聞 RSS、官方公告及 Alternative.me context source 依其實際取得狀態記錄，不得把未取得來源算入來源數量。
+2. `THE SYSTEM SHALL` 將主辦方 CSV、designated baseline market data、designated baseline research data、官方公告及 Alternative.me context source 依其實際取得狀態記錄，不得把未取得或僅列為 Future Work 的來源算入來源數量。
 3. `WHEN` 官方 Blog 或公告頻道無法取得，`THE SYSTEM SHALL` 以 best-effort 結束該查詢並在報告揭露缺口，而非阻塞整個 run。
 4. `IF` 正常 run 未達三種 source types、三個獨立上游或第一手來源目標，`THE SYSTEM SHALL` 仍完成報告，並降低適當 confidence 或明確揭露資料不足。
 5. `THE SYSTEM SHALL` 分開計算來源類型多樣性與上游來源獨立性；不同 `source_type` 不得自動視為不同 `independence_group`。
+6. `WHEN` Silver acceptance is evaluated, `THE SYSTEM SHALL` 使用一個 designated baseline research source；額外 research sources 為 optional、non-blocking，且其失敗不得使 Silver 失敗。三種 source types、三個 independence groups 與第一手來源仍是可揭露的取證目標，不是 Silver Exit Gate。
+7. `THE SYSTEM SHALL` 僅從 static tool allowlist 選擇工具，且 research domain、URL host 與 URL 必須符合核准 allowlist；LLM 與 optional provider 均不得自行選擇任意 provider、operation 或擴張 allowlist。
+8. `THE SYSTEM SHALL` 將 retrieved external content 視為 `untrusted data`；網頁或研究內容中的指令不得改寫 system policy，亦不得選擇未核准 tool、domain、host 或 URL。
+9. `WHEN` 外部內容被取回，`THE SYSTEM SHALL` 先完成 normalization 與 schema validation，並在形成 Evidence 後才能透過 Claim-Evidence Link 支撐或反對 Claim；MVP 不要求額外 sandbox service 或 production security infrastructure。
 
 ### Requirement 5: 建立可回溯 Evidence Ledger
 
@@ -66,13 +90,15 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 
 #### Acceptance Criteria
 
-1. `WHEN` Evidence Processor 接收一筆來源內容，`THE SYSTEM SHALL` 產生符合核准 `EvidenceItem` schema 的項目，包含 evidence ID、asset、source type/name/URL、published/fetched time、query or parameters、content reference、normalized fact、reliability、independence group、content hash 與 cache/stale 欄位。
+1. `WHEN` Evidence Processor 接收一筆來源內容，`THE SYSTEM SHALL` 產生符合核准 `EvidenceItem` schema 的項目，包含 Evidence ID、asset、source/provider、source type/name、source URL 或 stable source reference、`fetched_at`、published/source time when available、query or parameters、content reference、normalized fact、reliability、independence group、content hash，以及 applicable cache/stale metadata。
 2. `THE SYSTEM SHALL` 讓 EvidenceItem 保持無立場；支持、反對或中性立場只能記錄於 Claim-Evidence Link。
 3. `WHEN` 正規化後的原始內容具有相同 SHA-256 `content_hash`，`THE SYSTEM SHALL` 將其視為精確重複內容，不實作近似相似度模型。
 4. `WHEN` 可辨識原始發布者，`THE SYSTEM SHALL` 以原始發布者作為 `independence_group`；否則以來源 URL 的註冊網域歸群。
 5. `THE SYSTEM SHALL` 依 always-included steering 的靜態 source-type／第一手來源規則指定 `high|medium|low` reliability，不使用 LLM 或動態模型評分可信度。
 6. `THE SYSTEM SHALL` 禁止無法回溯的內容支撐關鍵結論，且禁止 LLM 自行產生市場數值。
-7. `WHEN` Evidence List 匯出，`THE SYSTEM SHALL` 至少提供 source、fetched time、content reference 與 related claim 四個競賽欄位。
+7. `WHEN` the Evidence List is exported, `THE SYSTEM SHALL` provide at least source, `fetched_at`, content reference, and related claim.
+8. `THE SYSTEM SHALL` record an Evidence item's relationship to a Claim only through the Claim-Evidence Link `supports|opposes|neutral` stance, retain linked claim IDs, and preserve the immutable run-level `analysis_as_of`.
+9. `WHEN` published/source time 缺少、freshness 不明或過舊、或 Evidence 標記 stale，`THE SYSTEM SHALL` 在 limitations 或 degradation notes 中明確揭露，且不得虛構任何時間資訊。
 
 ### Requirement 6: 建立分層 Claim、衝突與信心判定
 
@@ -98,11 +124,15 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 
 1. `WHEN` run 開始，`THE SYSTEM SHALL` 依序執行 Planner、並行的 Market Worker 與 Research Agent、Evidence Processor、Arbiter、Renderer。
 2. `THE SYSTEM SHALL` 使 Market Worker 僅執行 deterministic Python 工具，不呼叫 LLM。
-3. `THE SYSTEM SHALL` 使 Research Agent 為 bounded LLM agent，且所有元件僅交換固定 JSON schema，不允許元件間自由聊天或無限循環。
+3. `THE SYSTEM SHALL` 使 Research Agent 為 bounded LLM agent，且所有元件僅交換固定 JSON schema，不允許元件間自由聊天或無限循環；same-process orchestration 必須使用 bounded `asyncio`。
 4. `WHEN` Market Worker 與 Research Agent 執行，`THE SYSTEM SHALL` 讓兩個分支並行，且任一分支 timeout 不得丟棄另一分支已完成的結果。
 5. `WHEN` Evidence Processor 完成排序，`THE SYSTEM SHALL` 只將前 20 至 30 筆 Evidence 傳入 Arbiter。
-6. `THE SYSTEM SHALL` 讓 Arbiter 以單次受限 LLM 呼叫產出符合 `AnalysisResult` schema 的結果，並用 `max_tokens` 限制輸出。
+6. `THE SYSTEM SHALL` 讓 Arbiter 以單次受限 LLM 呼叫產出 typed、schema-validated `AnalysisResult`，且每個 LLM operation 都使用 operation-specific `max_tokens`。
 7. `THE SYSTEM SHALL` 讓 Renderer 以 deterministic 模板將 `AnalysisResult` 與 Evidence Ledger 轉為報告，不得呼叫 LLM 直接撰寫全文。
+8. `THE SYSTEM SHALL` 以 static-allowlisted `ToolRegistry` compatibility seam 提供每個 stage 的 finite、allowlisted tool plan；stage deadline 是硬性執行控制，MVP 不建立獨立 token accounting、quota database、tool-budget service 或 usage dashboard。
+9. `WHEN` Bedrock structured output 未通過 schema validation，`THE SYSTEM SHALL` 禁止 raw unvalidated LLM output 進入 Renderer 或 artifacts，最多執行 Requirement 8 核准的一次 repair attempt；repair 後仍失敗時必須進入 deterministic fallback。
+10. `WHEN` Silver success is evaluated, `THE SYSTEM SHALL` 至少保留一次使用 baseline live market 與 research paths 的 schema-valid Bedrock result，並分別保留成功的 deterministic fallback 測試結果；fallback-only execution 不符合 Silver success gate，且 fallback 不得偽裝成成功的 live AI run。
+11. `THE SYSTEM SHALL` 分離 Amazon Bedrock reasoning 與 deterministic rendering，且不得因本 Requirement 推定 Bedrock access、model、IAM 或 region 已驗證通過。
 
 ### Requirement 8: 遵守 15 分鐘 Deadline
 
@@ -116,6 +146,9 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 4. `WHEN` 剩餘時間不足，`THE SYSTEM SHALL` 依 H3、optional context adapter、反方訊號二次搜尋的順序跳過非核心工作。
 5. `THE SYSTEM SHALL` 將單一 adapter call timeout 限制在 45 秒內，最多 retry 一次；retry 必須共用 stage deadline，不得增加總時限。
 6. `WHEN` LLM 結構化輸出不符合 schema，`THE SYSTEM SHALL` 最多執行一次修復重試，且修復必須共用原 stage deadline。
+7. `THE SYSTEM SHALL` 為每個 run 保存明確 internal run state 與每個 stage 的 pending、running、completed、degraded 或 failed status；每個外部或 reasoning stage 必須具有 deadline 或 timeout，且到期後不得無限等待。
+8. `WHEN` run 結束，`THE SYSTEM SHALL` 以 `completed|degraded|failed|cancelled` 表示 terminal state；`cancelled` 僅保留 cancellation-compatible seam，不要求 cancellation UI、remote Job API 或 durable workflow。
+9. `IF` stage timeout 或 deadline 使部分工作無法完成，`THE SYSTEM SHALL` 保留已完成結果、記錄降級原因並允許 partial completion。
 
 ### Requirement 9: 在失敗時產生誠實的降級結果
 
@@ -136,14 +169,16 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 
 #### Acceptance Criteria
 
-1. `WHEN` run 開始，`THE SYSTEM SHALL` 立即寫入 `run_config.json`，內容包含 run config、模型、prompt/schema 版本與來源狀態。
+1. `WHEN` run 開始，`THE SYSTEM SHALL` 立即寫入 `run_config.json`，內容包含 `run_id`、run mode、assets、immutable `analysis_as_of`、模型、prompt/schema 版本與 allowlisted provider/config summary。
 2. `WHILE` run 執行，`THE SYSTEM SHALL` 以串流方式增量寫入 `execution_log.jsonl`。
-3. `WHEN` 每個 tool 或 agent call 執行，`THE SYSTEM SHALL` 記錄開始、結束、狀態與摘要，並另記 stage 事件；prompt 只記版本引用，不記全文。
+3. `WHEN` 每個 tool 或 agent call 執行，`THE SYSTEM SHALL` 在 Execution Log 記錄 stage、tool、開始、結束、timing、status、degradation、failure information 與摘要，並另記 progress event；prompt 只記版本引用，不記全文。
 4. `WHEN` Evidence Ledger 完成，`THE SYSTEM SHALL` 立即寫入 `evidence.json`。
 5. `WHEN` Renderer 完成，`THE SYSTEM SHALL` 寫入 `final_report.md`。
 6. `THE SYSTEM SHALL` 固定使用 `final_report.md`、`evidence.json`、`execution_log.jsonl`、`run_config.json` 四個檔名，並保持 UI 與四項 artifacts 的 `run_id` 一致。
 7. `THE SYSTEM SHALL` 將來源、參數、prompt/schema 版本與 deterministic 指標參數記錄到足以重建該次結果的程度。
 8. `THE SYSTEM SHALL` 禁止 API keys、`.env` 內容、私有 credentials 或 prompt 全文進入 UI、logs、artifacts 與 repository。
+9. `IF` a run is partial or degraded and the local artifact directory remains writable, `THE SYSTEM SHALL` produce all four fixed artifacts and clearly record limitations, missing capabilities, and terminal state. `IF` an artifact cannot be written, `THE SYSTEM SHALL` identify the exact missing filename and write failure in stdout and every remaining writable log or configuration artifact. PDF and HTML SHALL NOT be required MVP artifacts.
+10. `THE SYSTEM SHALL` 以 typed Artifact Store protocol 寫入 deterministic local artifact directory，並只保留 future persistence port 供未來 run summaries 與 artifact references 使用；MVP 不要求 persistent implementation。
 
 ### Requirement 11: 產出可解釋且不構成投資建議的報告
 
@@ -168,6 +203,7 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 3. `WHEN` artifacts 可用，`THE SYSTEM SHALL` 在 UI 顯示 Final Report、Evidence 與 Execution Log，並提供四項 artifacts 的檢視或下載能力。
 4. `THE SYSTEM SHALL` 在 UI 清楚顯示 `official|rehearsal|demo`，且 recorded fallback 不得被誤認為 live run。
 5. `THE SYSTEM SHALL` 不提供交易或下單操作。
+6. `THE SYSTEM SHALL` 透過 typed progress sink 或 progress contract 接收 same-process `ApplicationService` 的 in-process progress events；MVP 使用同一 Python process 與 in-memory state，不要求 remote progress transport。
 
 ### Requirement 13: 安全處理跨幣比較
 
@@ -188,10 +224,10 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 
 1. `THE SYSTEM SHALL` 將 `enable_conditional_debate` 預設為 `false`，且 MVP Conflict Detector stub 永遠回傳 no material conflict。
 2. `WHEN` H3 flag 關閉或 stub 執行，`THE SYSTEM SHALL` 保持 H2-Lite core 行為與 artifacts 不受影響。
-3. `IF` 未來實作 H3，`THE SYSTEM SHALL` 只使用 Requirement 6 的 material conflict rule 觸發，不使用 LLM classifier。
-4. `IF` 未來實作 H3，`THE SYSTEM SHALL` 最多執行一輪 Bull/Bear 分析、只引用既有 Evidence IDs，並受 feature flag、剩餘 deadline 與 token budget 約束。
-5. `IF` H3 失敗或剩餘時間不足，`THE SYSTEM SHALL` 直接回到 Arbiter 並繼續 H2-Lite 流程。
-6. `WHILE` H3 尚未通過 rehearsal 並留存紀錄，`THE SYSTEM SHALL` 在 UI、簡報與文件中將其標示為未實作的 extension architecture，不得宣稱 live run 已啟用。
+3. `THE SYSTEM SHALL` keep H3 Conditional Debate implementation outside Bronze, Silver, Gold, every Feature Freeze exception, and the formal two-day delivery period.
+4. `WHILE` only the disabled H3 extension interface exists, `THE SYSTEM SHALL` label H3 as unimplemented in the UI, presentation, and documentation and shall not claim that a live run used Bull, Bear, or Judge.
+
+**Post-hackathon Future Work note — non-normative for MVP Acceptance:** A separately approved H3 implementation is intended to use Requirement 6's deterministic material-conflict rule, at most one Bull/Bear round, existing Evidence IDs, the feature flag, and bounded deadline/token controls. On failure or insufficient time, the intended route returns to Arbiter.
 
 ### Requirement 15: 部署與競賽驗收
 
@@ -201,13 +237,16 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 
 1. `THE SYSTEM SHALL` 能以單一 Docker image 部署至 ECR 與單一 EC2，並以 docker compose 啟動；S3、CloudWatch 與 ECS 不列入 MVP 驗收。
 2. `THE SYSTEM SHALL` 將 artifacts 儲存在本機檔案，並將 structured JSONL 同步輸出至 stdout。
-3. `WHEN` 執行固定 fixture 測試矩陣，`THE SYSTEM SHALL` 覆蓋 BTC、ETH、SOL、BNB、XRP 各一題；保留雙幣契約時再覆蓋一題跨幣比較。
+3. `WHEN` 執行 Gold 資產驗收，`THE SYSTEM SHALL` 以 two different assets 各自完成一個 independent single-asset run；額外資產為 optional、non-blocking，且 dual-asset comparison 不屬於 Gold 必要條件。
 4. `WHEN` 執行 resilience 驗收，`THE SYSTEM SHALL` 覆蓋取證分支 timeout、外部來源全失效、schema error、Arbiter failure fallback 與 H3 flag 關閉情境。
-5. `BEFORE` 競賽提交，`THE SYSTEM SHALL` 完成全部 fixture 測試與至少三次 live-source rehearsal，且每次 rehearsal 都在第 13 分鐘前產出四項 artifacts。
+5. `BEFORE` 競賽提交，`THE SYSTEM SHALL` 完成 Bronze fixture gate 與一次完整、計時、模擬評審流程的 Gold rehearsal，並在第 13 分鐘前產出四項 artifacts；額外 rehearsals 為 optional，且不得延遲 deployment、submission 或 Feature Freeze。
 6. `BEFORE` repository 提交，`THE SYSTEM SHALL` 完成 secret scan，且 repository 應包含 source、config example、執行說明與 Kiro spec/steering/task history。
+7. `WHEN` Gold local Exit 發生或 Day 2 midday 到達，取較早者，`THE SYSTEM SHALL` 觸發 Feature Freeze，並依 Staged Acceptance 第 7 項限制後續工作。
 
 ## 3. Scope Guard
 
-- MVP：Requirements 1 至 13、Requirement 14 的預設關閉 stub 行為，以及 Requirement 15 的 core 部署與驗收。
-- 非 MVP：H3 實際 Bull/Bear/Judge 流程、鏈上／宏觀／社群 adapters、S3、CloudWatch、ECS。
-- H3 的條件式條款只約束未來擴充方式，不表示本次兩天開發承諾實作。
+- MVP：Bronze、Silver 與 Gold 的 Staged Acceptance、Requirements 1 至 13、Requirement 14 的預設關閉 stub 行為，以及 Requirement 15 的 core 部署與驗收。
+- Compatibility seams：typed `SourceAdapter`、static-allowlisted `ToolRegistry`、Artifact Store protocol、progress sink/contract、future persistence port，以及 same-process async `ApplicationService` boundary。MVP implementations 使用 local filesystem、in-memory state、同一 Python process 與 bounded `asyncio`；這些是 typed boundaries，不是完整 infrastructure requirements。
+- Post-hackathon Future Work：Platinum、CoinGecko live adapter、完整 five-asset validation matrix 與 calibration、額外 provider integration、PDF/HTML、額外 visualization、dual-asset comparison，以及 H3 實際 Bull/Bear/Judge 流程。
+- 非 MVP Production Infrastructure：Database、Queue、broker、Job API、independent service/worker fleet、polling、SSE、WebSocket、DLQ、scheduler、authentication service、horizontal scaling、S3、CloudWatch 與 ECS。任何 Bronze、Silver 或 Gold Acceptance Criteria 均不得要求這些項目。
+- H3 與其他 Future Work 條款只約束未來擴充方式，不表示本次兩天開發承諾實作，也不表示任何功能或驗證已完成。
