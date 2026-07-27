@@ -91,6 +91,14 @@ core modules → ports → adapters 實作
 - 鏈上/社群若要納入,只用「單一多鏈/多幣聚合來源」,**不為五條鏈各寫 adapter**。
 - 驗證兩個不同幣各跑一次單幣即可,不做五幣完整矩陣。
 
+## Creativity Layer（Requirement 16 — 創意加值,deterministic）
+
+詳見 `requirements.md` R16 / `design.md §19` / `evidence-contracts.md §16`。三個元件,**全部 deterministic、coin-agnostic、可誠實降級、不阻塞核心**:
+- **Trust Scorecard**(`evidence/trust.py`):由 ledger + links 算每個 conclusion 的 5 面向(獨立性/多樣性/可信度組成/一致性/時效),用 `strong|moderate|weak|unavailable` + 原始計數呈現。**不得**用假精確百分比,且要與 confidence 一致。
+- **Market Regime**(`data/regime.py`,Market Worker 產出):純 OHLCV 判 `trending_up|trending_down|range_bound|high_volatility|mixed`,以各幣自身 rolling 歷史為基準;是 high-reliability EvidenceItem,LLM 不得改。
+- **量化 invalidation**:門檻值只能引用 deterministic tool 產生的 Evidence(`metric/operator/threshold/basis_evidence_id`),LLM 不得自造數字;無法量化才退回定性。
+- 全層**不得**產生投資建議;缺資料標 `unavailable`,不編造。
+
 ## MVP 明確排除（未經 H2-Lite 全綠不得動）
 
 H3 Bull/Bear/Judge 實作、鏈上/宏觀/額外社群 adapter、S3/CloudWatch/ECS、近似去重、動態 reliability、自由 agent loop、自建 token 計數器、PDF/HTML、五幣完整驗證矩陣、雙幣比較。不得引入 LangGraph / Strands / FastAPI / Celery / Redis / 向量 DB / message broker。

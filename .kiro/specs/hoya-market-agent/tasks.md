@@ -318,6 +318,31 @@
   - **Acceptance:** Feature Freeze used the earlier approved trigger; Docker local runtime, ECR and EC2 delivery checks are complete; exactly one complete timed judged-flow rehearsal is required; demo fallback remains honest; rollback and submission evidence are documented; H3 is labelled unimplemented with no optional in-hackathon gate.
   - **Commit:** `docs: finalize deploy and demo runbook`
 
+- [ ] **11. Add the deterministic creativity layer (trust distillation + market insight)** `[CC]`
+  - **Owner:** CC (Claude Code); reviewed by P1
+  - **Wave / dependency:** Wave 4, after Task 8 H2-Lite integration / non-blocking for Bronze and Silver core
+  - **Spec:** Requirement 16; design.md §19; evidence-contracts.md §16
+  - **Files:**
+    - Create: `src/hoya_agent/evidence/trust.py`
+    - Create: `src/hoya_agent/data/regime.py`
+    - Modify: `src/hoya_agent/data/market_worker.py`
+    - Modify: `src/hoya_agent/models.py`
+    - Modify: `src/hoya_agent/reporting/renderer.py`
+    - Modify: `src/hoya_agent/reasoning/arbiter.py`, `prompts/arbiter-v1.md`
+    - Create: `tests/unit/evidence/test_trust.py`
+    - Create: `tests/unit/data/test_regime.py`
+    - Create: `tests/unit/reporting/test_creativity_render.py`
+  - [ ] First write failing tests for the `TrustScorecard` deterministic mapping (independence/diversity/reliability-mix/consistency/freshness), including the caps that keep it consistent with the confidence rubric (`< 2` groups ≠ `strong`; material conflict → consistency `weak`).
+  - [ ] Implement `evidence/trust.py` as a pure function over ledger + links + conclusion claims; no network, no LLM, no filesystem.
+  - [ ] Write golden tests for `data/regime.py` label assignment using hand-computable OHLCV fixtures; verify coin-agnostic thresholds use each asset's own rolling history and that missing bars yield `label="unavailable"`.
+  - [ ] Emit the Market Regime and recent-high/low/volume-mean threshold values from Market Worker as deterministic `high`-reliability `EvidenceItem`s.
+  - [ ] Extend the Arbiter contract/prompt so `invalidation_conditions` reference Evidence-backed thresholds (`metric/operator/threshold/basis_evidence_id`) and never mint numbers; keep a qualitative fallback.
+  - [ ] Render the regime headline, per-conclusion Trust Scorecard (ordinal pips + counts + one-line rationale), and quantified invalidation section deterministically; the prohibited-advice lint still runs last.
+  - [ ] Verify graceful degradation: any unavailable dimension/label/threshold is disclosed, never fabricated, and does not block the four artifacts, Bronze, or Silver.
+  - [ ] Run `python -m pytest tests/unit/evidence/test_trust.py tests/unit/data/test_regime.py tests/unit/reporting/test_creativity_render.py -q` and `ruff check .`.
+  - **Acceptance:** Scorecard, regime, and quantified invalidation are deterministic, coin-agnostic, consistent with confidence, contain no LLM-minted numbers, carry no investment advice, use no uncalibrated precise probability, and degrade to explicit `unavailable` without blocking core artifacts or gates.
+  - **Commit:** `feat: add deterministic trust distillation and market insight`
+
 ## Post-Hackathon Future Work — Not Executable During Two-Day Delivery
 
 The following entries preserve architecture intent only. They are not checkable implementation tasks, have no two-day entry gate, are prohibited after Feature Freeze and cannot block Bronze, Silver, Gold, deployment, rehearsal or submission.

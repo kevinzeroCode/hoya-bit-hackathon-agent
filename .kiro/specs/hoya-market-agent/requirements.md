@@ -243,9 +243,26 @@ CoinGecko live adapter、完整 five-asset validation matrix，以及 BTC、ETH�
 6. `BEFORE` repository 提交，`THE SYSTEM SHALL` 完成 secret scan，且 repository 應包含 source、config example、執行說明與 Kiro spec/steering/task history。
 7. `WHEN` Gold local Exit 發生或 Day 2 midday 到達，取較早者，`THE SYSTEM SHALL` 觸發 Feature Freeze，並依 Staged Acceptance 第 7 項限制後續工作。
 
+### Requirement 16: 可解釋的信任提煉與市場洞察（Creativity Layer）
+
+**User Story:** 身為競賽評審，我希望除了嚴謹的證據，還能一眼看懂「這個判斷有多可信、市場現在處於什麼狀態、什麼情況會推翻它」，以便快速評估分析的洞察力與可信度，而不必自己讀完整份 Evidence Ledger。
+
+本 Requirement 是建立在既有 deterministic 資料上的加值層，對應命題副標「多源資訊的信任提煉」與創意度評分。它必須 coin-agnostic、可誠實降級，且不得阻塞四項 artifacts 或 Bronze／Silver 核心。
+
+#### Acceptance Criteria
+
+1. `THE SYSTEM SHALL` 以 deterministic 程式（不呼叫 LLM）由 Evidence Ledger 與 Claim-Evidence Links 為每個主要 conclusion 產生 **Trust Scorecard**，涵蓋 source independence、source-type diversity、reliability mix、consistency（有無 material conflict／反方數）與 freshness 五個面向。
+2. `THE SYSTEM SHALL` 以固定 ordinal 等級 `strong|moderate|weak|unavailable` 呈現各面向，並附上支撐該等級的原始計數（如 distinct independence groups 數）；`THE SYSTEM SHALL NOT` 輸出未經校準的精確機率或用單一合成分數冒充精確度。
+3. `THE SYSTEM SHALL` 使 Trust Scorecard 與該 conclusion 的 `high|medium|low` confidence 一致；例如少於兩個不同 `independence_group` 不得標示為 `strong` independence，存在 material conflict 時 consistency 不得高於 `weak`。
+4. `THE SYSTEM SHALL` 以 deterministic OHLCV 指標（各資產以自身 rolling 歷史為基準，coin-agnostic）產生 **Market Regime** 標籤，取自固定列舉 `trending_up|trending_down|range_bound|high_volatility|mixed`，並保留觸發該標籤的指標值與門檻參數。
+5. `THE SYSTEM SHALL` 將 Market Regime 視為由 Market Worker 產生的 deterministic market `EvidenceItem`（reliability `high`）；`THE SYSTEM SHALL NOT` 由 LLM 指派或改寫該標籤。
+6. `WHEN` 產生 invalidation conditions，`THE SYSTEM SHALL` 盡量提供**可驗證的量化門檻**，其數值只能引用 deterministic tool 產生並已登錄為 Evidence 的值（例如近 N 日最高／最低收盤、量能均值），且必須附上對應 Evidence ID；`IF` 無法量化，才退回定性描述。
+7. `THE SYSTEM SHALL NOT` 讓本層任何產出構成買賣、加減倉、資產配置或個人化投資建議；Renderer 的禁語 lint 仍為最後防線。
+8. `IF` 資料不足以計算某面向、標籤或量化門檻，`THE SYSTEM SHALL` 明確標示該項為 `unavailable` 並揭露原因，`SHALL NOT` 編造數值，且不得因此阻塞四項 artifacts、Bronze 或 Silver 核心。
+
 ## 3. Scope Guard
 
-- MVP：Bronze、Silver 與 Gold 的 Staged Acceptance、Requirements 1 至 13、Requirement 14 的預設關閉 stub 行為，以及 Requirement 15 的 core 部署與驗收。
+- MVP：Bronze、Silver 與 Gold 的 Staged Acceptance、Requirements 1 至 13、Requirement 14 的預設關閉 stub 行為、Requirement 15 的 core 部署與驗收，以及 Requirement 16 的 deterministic creativity layer（非阻塞、可誠實降級，建立在既有資料之上）。
 - Compatibility seams：typed `SourceAdapter`、static-allowlisted `ToolRegistry`、Artifact Store protocol、progress sink/contract、future persistence port，以及 same-process async `ApplicationService` boundary。MVP implementations 使用 local filesystem、in-memory state、同一 Python process 與 bounded `asyncio`；這些是 typed boundaries，不是完整 infrastructure requirements。
 - Post-hackathon Future Work：Platinum、CoinGecko live adapter、完整 five-asset validation matrix 與 calibration、額外 provider integration、PDF/HTML、額外 visualization、dual-asset comparison，以及 H3 實際 Bull/Bear/Judge 流程。
 - 非 MVP Production Infrastructure：Database、Queue、broker、Job API、independent service/worker fleet、polling、SSE、WebSocket、DLQ、scheduler、authentication service、horizontal scaling、S3、CloudWatch 與 ECS。任何 Bronze、Silver 或 Gold Acceptance Criteria 均不得要求這些項目。
