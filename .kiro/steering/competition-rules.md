@@ -66,6 +66,19 @@ inclusion: always
 
 主辦方若給出不同正式解釋，更新 steering 與 requirements 後再修改行為，不得只改 prompt。
 
+## Coin-Agnostic Source Policy（幣種無關通用作法）
+
+幣種於現場才抽選，任一支援資產都可能被指定。為避免為特定幣過度設計、或現場抽到未涵蓋的幣而開天窗，一律採以下通用作法：
+
+- **Pipeline 以 `{asset}` 為參數，五幣共用同一條路徑。** 禁止 per-coin 分支邏輯（`if asset == "BTC"`）、per-coin 特調參數或 per-coin 硬編路徑。
+- **來源必須「用幣種符號即可統一查詢五幣」才進 MVP。** 例如：主辦 CSV（`{ASSET}_daily_ohlcv.csv`）、Binance klines（`{ASSET}USDT`）、CryptoPanic（依 currency 過濾）、Alternative.me（全市場 context）。
+- **「每個幣需各自實作一套」的來源一律 best-effort 或延後，不得成為 MVP blocking dependency。** 典型為各鏈鏈上瀏覽器（Etherscan=ETH、Solscan=SOL、XRPL⋯各不同）與各專案官方 Blog；缺漏時誠實揭露，不阻塞 run。
+- **若要納入鏈上／社群訊號，只採「單一多鏈／多幣聚合來源、以幣種符號查詢」者；禁止為五條鏈各寫一套 adapter。** 找不到幣種無關的聚合來源時，該訊號列為缺口揭露，不硬做。
+- **驗證只需兩個不同幣各跑一次單幣即可證明流程幣種無關**（對齊 Gold）；不要求五幣完整矩陣或 per-coin calibration。
+- **報告與 Evidence 一律標明實際 `asset` 與 `time_range`**，不得把某一幣的取證條件假設套用到其他幣。
+
+一句話原則：**「用符號就能查五幣」的來源才進 MVP；「每個幣要各寫一套」的一律 best-effort 或跳過。**
+
 ## Evidence Integrity Rules
 
 - 市場數值只能來自 deterministic tool output；LLM 不得補值、猜值或改寫為新數值。

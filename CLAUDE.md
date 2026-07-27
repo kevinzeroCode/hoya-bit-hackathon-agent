@@ -82,6 +82,15 @@ core modules → ports → adapters 實作
 10. **Secrets**：`.env`、API key、AWS 憑證、CryptoPanic token、prompt 全文，**不得**進 UI/log/artifact/repo/截圖。commit 前跑 secret scan。
 11. **schema**：所有跨模組 payload 用 Pydantic v2 + `extra="forbid"`；欄位名在 Python/JSON/prompt/fixture/test 之間完全一致。LLM 輸出須先驗證通過才進 core。
 
+## 幣種無關（coin-agnostic）通用作法
+
+幣種現場才抽,五幣任一都可能中。詳見 `competition-rules.md` §Coin-Agnostic Source Policy。核心:
+- Pipeline 以 `{asset}` 為參數,五幣共用同一路徑;**禁止 per-coin 分支/特調**。
+- 來源「用幣種符號就能查五幣」才進 MVP(CSV、Binance `{ASSET}USDT`、CryptoPanic currency、Fear&Greed)。
+- 「每個幣要各寫一套」的來源(各鏈鏈上瀏覽器、各專案官方 Blog)一律 best-effort 或跳過,缺漏誠實揭露。
+- 鏈上/社群若要納入,只用「單一多鏈/多幣聚合來源」,**不為五條鏈各寫 adapter**。
+- 驗證兩個不同幣各跑一次單幣即可,不做五幣完整矩陣。
+
 ## MVP 明確排除（未經 H2-Lite 全綠不得動）
 
 H3 Bull/Bear/Judge 實作、鏈上/宏觀/額外社群 adapter、S3/CloudWatch/ECS、近似去重、動態 reliability、自由 agent loop、自建 token 計數器、PDF/HTML、五幣完整驗證矩陣、雙幣比較。不得引入 LangGraph / Strands / FastAPI / Celery / Redis / 向量 DB / message broker。
