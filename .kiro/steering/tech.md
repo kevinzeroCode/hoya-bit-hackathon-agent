@@ -81,7 +81,7 @@ See `evidence-contracts.md` for the canonical evidence, claim, result, and artif
 - The organizer CSV is a common benchmark source named `public_market_data`; never claim it came from Binance or another specific exchange.
 - CSV dates and Binance daily klines use UTC boundaries.
 - Record the explicit cutover when extending CSV history with Binance live data. Do not silently overwrite overlapping observations.
-- Binance is the primary live market source; CoinGecko is a fallback snapshot source, not OHLC-equivalent.
+- Binance is the primary live market source. CoinGecko is post-hackathon Future Work, not an MVP fallback; a baseline market-source failure yields honest partial/degraded output and never claims a second live provider was used.
 - Base-asset `volume` from organizer CSV is not comparable across BTC, ETH, SOL, BNB, and XRP.
 - For cross-asset liquidity comparison, use quote/USD volume from the same provider and comparable period, or declare the comparison unavailable.
 - Indicator calculations are deterministic, parameterized, and covered by golden fixtures.

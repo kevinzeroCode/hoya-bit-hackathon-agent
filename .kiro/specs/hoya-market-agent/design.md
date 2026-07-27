@@ -6,7 +6,7 @@
 >
 > Historical product-design context: `docs/superpowers/specs/2026-07-17-hoya-bit-hackathon-agent-design.md`
 >
-> Traceability and delivery sequencing: `docs/ai/SPEC_DIFF_PLAN.md` and `docs/ai/STAGED_DELIVERY_PROPOSAL.md`
+> Traceability and delivery sequencing: `.kiro/specs/hoya-market-agent/tasks.md`
 >
 > If this design conflicts with the approved Requirements, the Requirements control.
 >
