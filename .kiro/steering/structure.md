@@ -56,7 +56,7 @@ all project modules -> models
 - Time injection: `clock.py`; shared interfaces: `ports.py`.
 - Stage order: `orchestration/pipeline.py`; deadline math: `orchestration/deadline.py`; progress/state: `orchestration/run_state.py`.
 - Formulas: `data/indicators.py`; source cutover: `data/market_series.py`; deterministic branch assembly: `data/market_worker.py`.
-- One provider per flat adapter file: `organizer_csv.py`, `binance.py`, `coingecko.py`, `cryptopanic.py`, `rss.py`, `official.py`, `alternative_me.py`, `bedrock.py`.
+- One provider per flat adapter file: `organizer_csv.py`, `binance.py`, `cryptopanic.py`, `rss.py`, `official.py`, `alternative_me.py`, `bedrock.py`. (`coingecko.py` is post-hackathon Future Work and is not created during the two-day MVP.)
 - Evidence reliability, independence, dedup, confidence caps: `evidence/policies.py`; processing: `processor.py`; ledger operations: `ledger.py`.
 - Planner, bounded extraction, Arbiter, and disabled H3 interface stay in their named `reasoning/` files.
 - Versioned prompt bodies stay in root `prompts/*-v1.md`; Python files load them and record version/checksum.

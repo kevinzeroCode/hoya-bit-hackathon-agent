@@ -84,7 +84,7 @@ Reliability is deterministic and static by source class:
 | Reliability | Eligible sources |
 |---|---|
 | `high` | Organizer OHLCV benchmark, originating exchange API market data, verified official project announcement/feed, deterministic calculation whose inputs are high-reliability evidence |
-| `medium` | Identifiable original news page with URL and timestamp, CoinGecko market snapshot |
+| `medium` | Identifiable original news page with URL and timestamp |
 | `low` | Aggregator or repost records whose original page was not fetched, Alternative.me Fear & Greed, social/community claims, missing-author/missing-time summaries, unverifiable secondary commentary |
 
 - An LLM never assigns or upgrades reliability.
@@ -105,7 +105,6 @@ Fixed examples:
 
 - Organizer CSV: `organizer-public-market-data`.
 - Binance: `binance.com`.
-- CoinGecko: `coingecko.com`.
 - Alternative.me: `alternative.me`.
 - CryptoPanic item: original publisher domain when present; otherwise `cryptopanic.com`.
 - A repost and its original publisher share the original publisher's group when provenance is known.

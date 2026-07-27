@@ -50,7 +50,7 @@ inclusion: always
 ## Approved Data Policy
 
 - 主辦方 Daily OHLCV CSV 是共同歷史基準；metadata 僅標示 `public_market_data`，不得推定其上游交易所。
-- Binance public REST API 是 canonical live source；CoinGecko 是 live fallback。
+- Binance public REST API 是 canonical live source。CoinGecko 雖為主辦方核准的公開來源，但列為 post-hackathon Future Work，MVP 不實作；baseline market source 失敗時只做誠實降級，不宣稱切換至第二個 live provider。
 - CSV 與 live API 是不同來源。跨越兩者時標記 2026-06-01 來源切換點並揭露差異。
 - 第一次 live-source rehearsal 應保存 BTC、ETH、SOL、BNB、XRP 在 2026-05-01 至 2026-05-31 的 CSV／Binance close 差異檢查結果。
 - CryptoPanic 與新聞 RSS 用於新聞取證；幣種官方 Blog／公告頻道採 best-effort。
