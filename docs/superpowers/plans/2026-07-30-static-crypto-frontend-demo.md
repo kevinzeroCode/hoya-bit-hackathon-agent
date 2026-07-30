@@ -270,7 +270,7 @@ Create `frontend-demo/index.html` with:
 Run:
 
 ```powershell
-python -m unittest frontend-demo.tests.test_frontend_demo.FrontendDemoTests.test_semantic_dashboard_regions_exist frontend-demo.tests.test_frontend_demo.FrontendDemoTests.test_demo_and_safety_labels_are_visible frontend-demo.tests.test_frontend_demo.FrontendDemoTests.test_page_has_no_external_resources frontend-demo.tests.test_frontend_demo.FrontendDemoTests.test_static_chart_has_accessible_description -v
+python frontend-demo/tests/test_frontend_demo.py FrontendDemoTests.test_semantic_dashboard_regions_exist FrontendDemoTests.test_demo_and_safety_labels_are_visible FrontendDemoTests.test_page_has_no_external_resources FrontendDemoTests.test_static_chart_has_accessible_description -v
 ```
 
 Expected: four tests pass.
@@ -292,7 +292,7 @@ git commit -m "feat: add static crypto dashboard structure"
 Run:
 
 ```powershell
-python -m unittest frontend-demo.tests.test_frontend_demo.FrontendDemoTests.test_stylesheet_contract -v
+python frontend-demo/tests/test_frontend_demo.py FrontendDemoTests.test_stylesheet_contract -v
 ```
 
 Expected: `ERROR` because `frontend-demo/styles.css` does not exist.
