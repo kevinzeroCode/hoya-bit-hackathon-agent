@@ -1,0 +1,10 @@
+[project]
+name = "hoya-etl-mvp"
+version = "0.1.0"
+description = "P2 data/evidence ETL prototype for the HOYA market-analysis AI agent"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
