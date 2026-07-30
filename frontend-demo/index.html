@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="HOYA BIT 加密貨幣 AI 市場研究儀表板離線展示">
+  <title>HOYA BIT — AI Crypto Market Intelligence</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="ambient-grid" aria-hidden="true"></div>
+  <header class="site-header">
+    <a class="brand" href="#dashboard" aria-label="HOYA BIT 首頁">
+      <span class="brand-mark" aria-hidden="true">H</span>
+      <span>
+        <strong>HOYA BIT</strong>
+        <small>AI Crypto Market Intelligence</small>
+      </span>
+    </a>
+    <div class="header-meta">
+      <span class="status-dot"><i aria-hidden="true"></i>系統展示正常</span>
+      <span class="demo-badge">OFFLINE DEMO</span>
+    </div>
+  </header>
+
+  <main id="dashboard" class="dashboard">
+    <section class="hero" aria-labelledby="market-heading">
+      <div>
+        <p class="eyebrow">MARKET OVERVIEW · 示範資料</p>
+        <h1 id="market-heading">Bitcoin <span>BTC / USD</span></h1>
+        <div class="price-line">
+          <strong>$67,842.16</strong>
+          <span class="positive" aria-label="上漲 2.84%">↗ +2.84%</span>
+        </div>
+        <p class="timestamp">資料截至 2026-05-31 00:00 UTC · 非即時行情</p>
+      </div>
+      <dl class="metrics" aria-label="Bitcoin 市場摘要">
+        <div><dt>24H HIGH</dt><dd>$69,124.80</dd></div>
+        <div><dt>24H LOW</dt><dd>$65,907.34</dd></div>
+        <div><dt>24H VOLUME</dt><dd>$38.6B</dd></div>
+      </dl>
+    </section>
+
+    <section id="market-chart" class="panel chart-panel" aria-labelledby="chart-heading">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">PRICE ACTION</p>
+          <h2 id="chart-heading">BTC 30 日市場趨勢</h2>
+        </div>
+        <span class="legend"><i aria-hidden="true"></i>收盤價</span>
+      </div>
+      <div class="chart-wrap">
+        <svg viewBox="0 0 760 300" role="img" aria-labelledby="chart-title chart-desc">
+          <title id="chart-title">BTC 三十日收盤價走勢</title>
+          <desc id="chart-desc">示範走勢由約六萬三千美元震盪上升至六萬七千八百美元，期間曾短暫回落。</desc>
+          <defs>
+            <linearGradient id="area-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#42d9d0" stop-opacity=".28"></stop>
+              <stop offset="100%" stop-color="#42d9d0" stop-opacity="0"></stop>
+            </linearGradient>
+          </defs>
+          <g class="chart-grid" aria-hidden="true">
+            <path d="M60 35H730 M60 95H730 M60 155H730 M60 215H730 M60 275H730"></path>
+            <path d="M60 35V275 M228 35V275 M395 35V275 M563 35V275 M730 35V275"></path>
+          </g>
+          <path class="area" d="M60 235 C100 220 110 185 150 198 S220 170 260 182 S320 118 365 135 S420 155 460 112 S525 90 565 104 S630 55 675 76 S710 58 730 62 L730 275 L60 275 Z"></path>
+          <path class="line" d="M60 235 C100 220 110 185 150 198 S220 170 260 182 S320 118 365 135 S420 155 460 112 S525 90 565 104 S630 55 675 76 S710 58 730 62"></path>
+          <circle class="latest-point" cx="730" cy="62" r="5"></circle>
+          <g class="chart-labels">
+            <text x="8" y="40">$70K</text>
+            <text x="8" y="100">$68K</text>
+            <text x="8" y="160">$66K</text>
+            <text x="8" y="220">$64K</text>
+            <text x="8" y="280">$62K</text>
+            <text x="60" y="298">05/01</text>
+            <text x="374" y="298">05/15</text>
+            <text x="686" y="298">05/31</text>
+          </g>
+        </svg>
+      </div>
+      <p class="chart-note">圖表為課堂展示用靜態模擬資料，不代表即時或歷史報價。</p>
+    </section>
+
+    <aside id="ai-summary" class="panel insight-panel" aria-labelledby="ai-heading">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">AI RESEARCH BRIEF</p>
+          <h2 id="ai-heading">市場研究摘要</h2>
+        </div>
+        <span class="confidence">信心程度 · 中</span>
+      </div>
+      <p class="lead">BTC 維持震盪偏多結構，但短期價格已接近近期壓力區，追價風險上升。</p>
+      <ul class="insight-list">
+        <li>
+          <span>01</span>
+          <p><strong>動能延續</strong>價格維持於短期均線上方，買方仍具主導權。</p>
+        </li>
+        <li>
+          <span>02</span>
+          <p><strong>波動放大</strong>近期日內振幅提高，風險管理的重要性同步增加。</p>
+        </li>
+        <li>
+          <span>03</span>
+          <p><strong>證據有限</strong>此頁使用離線示範資料，無法反映即時事件與鏈上資訊。</p>
+        </li>
+      </ul>
+      <div class="research-note">AI 摘要為介面示範，不是即時模型輸出。</div>
+    </aside>
+
+    <section id="risk-panel" class="panel risk-panel" aria-labelledby="risk-heading">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow amber">RISK WATCH</p>
+          <h2 id="risk-heading">需要留意的風險</h2>
+        </div>
+        <span class="risk-count">3 項</span>
+      </div>
+      <div class="risk-grid">
+        <article>
+          <i aria-hidden="true">01</i>
+          <div><h3>波動率風險</h3><p>價格快速變動可能放大預期之外的損失。</p></div>
+        </article>
+        <article>
+          <i aria-hidden="true">02</i>
+          <div><h3>動能反轉</h3><p>若跌破近期支撐，短期偏多結構可能失效。</p></div>
+        </article>
+        <article>
+          <i aria-hidden="true">03</i>
+          <div><h3>資料時效</h3><p>離線示範未納入最新新聞、資金流與鏈上事件。</p></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="evidence-sources" class="panel evidence-panel" aria-labelledby="evidence-heading">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">EVIDENCE LEDGER</p>
+          <h2 id="evidence-heading">分析證據來源</h2>
+        </div>
+        <span class="source-count">3 sources · 示範資料</span>
+      </div>
+      <div class="evidence-table" role="table" aria-label="示範證據來源">
+        <div class="evidence-row evidence-head" role="row">
+          <span role="columnheader">來源</span>
+          <span role="columnheader">摘要</span>
+          <span role="columnheader">可靠度</span>
+          <span role="columnheader">時間</span>
+        </div>
+        <div class="evidence-row" role="row">
+          <span role="cell"><b>MARKET</b>HOYA OHLCV Dataset</span>
+          <span role="cell">BTC 日線價格與成交量</span>
+          <span role="cell"><em class="high">高</em></span>
+          <span role="cell">2026-05-31</span>
+        </div>
+        <div class="evidence-row" role="row">
+          <span role="cell"><b>TECHNICAL</b>Deterministic Metrics</span>
+          <span role="cell">報酬率、均線與波動率</span>
+          <span role="cell"><em>中</em></span>
+          <span role="cell">2026-05-31</span>
+        </div>
+        <div class="evidence-row" role="row">
+          <span role="cell"><b>RESEARCH</b>Demo Research Note</span>
+          <span role="cell">風險與限制條件說明</span>
+          <span role="cell"><em>中</em></span>
+          <span role="cell">離線示範</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>僅供研究與課堂展示，不構成投資建議</p>
+    <span>HOYA BIT · STATIC DEMO v1.0</span>
+  </footer>
+</body>
+</html>
