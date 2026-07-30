@@ -4,6 +4,7 @@
 
 # Local brainstorming and preview state
 .superpowers/
+.worktrees/
 .visual-server-*.log
 
 # OS metadata
