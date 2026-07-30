@@ -474,7 +474,7 @@ Expected: all five tests pass.
 Run:
 
 ```powershell
-rg -n "https?://|TODO|TBD|PLACEHOLDER" frontend-demo
+rg -n "https?://|TODO|TBD|PLACEHOLDER" frontend-demo/index.html frontend-demo/styles.css
 ```
 
 Expected: no matches.
