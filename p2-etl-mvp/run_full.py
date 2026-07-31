@@ -8,6 +8,7 @@ then one ledger. Real data, no network, no keys, no LLM. This is the market side
 
 from __future__ import annotations
 
+import sys
 from datetime import date
 
 from adapters.organizer_csv import default_data_dir, load_organizer_csv
@@ -22,6 +23,10 @@ _LABEL = {"trending_up": "趨勢向上", "trending_down": "趨勢向下",
 
 
 def main() -> None:
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     data_dir = default_data_dir()
     if not (data_dir / "BTC_daily_ohlcv.csv").exists():
         print(f"[!] 找不到官方資料集：{data_dir}")

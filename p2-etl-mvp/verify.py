@@ -8,9 +8,15 @@ offline, no LLM. This is for eyeballing real numbers; correctness is enforced by
 
 from __future__ import annotations
 
+import sys
 from datetime import date, datetime, timedelta, timezone
 
 import httpx
+
+try:  # UTF-8 stdout so CJK/emoji never crash a legacy Windows console (cp950)
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 from adapters.alternative_me import fetch_fear_greed
 from adapters.binance import fetch_binance_daily

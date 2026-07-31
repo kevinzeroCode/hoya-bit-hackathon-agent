@@ -95,6 +95,12 @@ def _rss_records(asset: str, client: httpx.Client, lookback_days: int = 30) -> l
 
 
 def main() -> None:
+    # Force UTF-8 stdout so live source text (emoji, zero-width spaces, CJK) never
+    # crashes on a legacy Windows console (cp950/Big5).
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     asset = (sys.argv[1] if len(sys.argv) > 1 else "BTC").upper()
     now = datetime.now(UTC)
     client = httpx.Client(
