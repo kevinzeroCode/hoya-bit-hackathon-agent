@@ -2,6 +2,8 @@
 
 This directory records genuine Kiro-assisted development activity for the hackathon submission. Do not backfill or fabricate evidence.
 
+Task owners send their task number, branch, exact verification command/result, commit SHA, operator, and Kiro session summary to P1. P1 appends the ledger row after the implementation commit exists; this central ownership prevents four parallel branches from editing this file at once.
+
 ## Required Records
 
 For every Kiro-executed task, append a row after the commit exists:

@@ -8,6 +8,7 @@ inclusion: always
 
 - Treat `docs/superpowers/specs/2026-07-17-hoya-bit-hackathon-agent-design.md` as the approved product boundary.
 - Follow `docs/superpowers/specs/2026-07-17-four-person-team-workflow-design.md` for role ownership, task branches, pairing, handoffs, and feature freeze.
+- Follow `docs/kiro-team-playbook.md` for each person's exact branch, Kiro prompt, start gate, task closeout, and evidence handoff.
 - Treat `.kiro/specs/hoya-market-agent/requirements.md`, `design.md`, and `tasks.md` as the executable implementation contract.
 - Do not expand the MVP to H3 debate, S3, CloudWatch, extra adapters, or additional agent loops.
 
@@ -32,3 +33,5 @@ inclusion: always
 ## Commit Evidence
 
 Use conventional commit subjects such as `feat:`, `fix:`, `test:`, `docs:`, and `chore:`. Preserve task-level commits instead of squashing the entire Kiro implementation into one commit. Record Kiro task-to-commit mapping in `docs/evidence/kiro/README.md` as work is completed.
+
+Task owners send their task number, branch, verification command/result, commit SHA, and Kiro session summary to P1. P1 updates the shared evidence ledger after merge or at a checkpoint so parallel branches do not conflict on the same file.

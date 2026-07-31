@@ -1,6 +1,8 @@
 # HOYA Market Agent Four-Person Team Workflow
 
 > Status: approved on 2026-07-17
+>
+> Operator guide: [Kiro Team Playbook](../../kiro-team-playbook.md)
 
 ## 1. Decision
 
@@ -83,7 +85,7 @@ task/6-bedrock-reasoning
 task/7-streamlit-shell
 ```
 
-Do not run Kiro `Run All Tasks`. Each owner opens the existing `hoya-market-agent` spec and runs only the assigned dependency-safe task.
+Do not run Kiro `Run all Tasks`. Each owner opens the existing `hoya-market-agent` spec and runs only the assigned dependency-safe task.
 
 ## 5. Two-Day Execution
 
