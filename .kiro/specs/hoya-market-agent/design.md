@@ -6,7 +6,7 @@
 >
 > Historical product-design context: `docs/superpowers/specs/2026-07-17-hoya-bit-hackathon-agent-design.md`
 >
-> Traceability and delivery sequencing: `docs/ai/SPEC_DIFF_PLAN.md` and `docs/ai/STAGED_DELIVERY_PROPOSAL.md`
+> Traceability and delivery sequencing: `.kiro/specs/hoya-market-agent/tasks.md`
 >
 > If this design conflicts with the approved Requirements, the Requirements control.
 >
@@ -635,3 +635,90 @@ Work proceeds in this order:
 8. Complete one timed judged-flow rehearsal, artifact inspection, documentation, and submission verification without adding post-freeze features.
 
 H3 implementation is post-hackathon Future Work only and remains outside Bronze, Silver, Gold, every Feature Freeze exception, and the formal two-day delivery period. S3, CloudWatch, ECS, on-chain, and macro adapters also remain outside MVP acceptance.
+
+## 19. Creativity Layer: Trust Distillation and Market Insight
+
+This layer implements Requirement 16. It is a deterministic presentation and
+aggregation layer built entirely on data the H2-Lite core already produces. It
+adds no LLM call, no new external source, and no new blocking dependency. Every
+component degrades to an explicit `unavailable` marker rather than fabricating a
+value, and none of it may delay the four fixed artifacts, Bronze, or Silver.
+
+Design rule: this layer surfaces existing rigor; it never becomes a second
+source of truth. Confidence, reliability, independence, and conflict remain owned
+by the existing Evidence Processor and Arbiter contracts.
+
+### 19.1 Trust Scorecard (`evidence/trust.py`)
+
+- Pure deterministic function over the `EvidenceLedger`, the `ClaimEvidenceLink`
+  list, and each conclusion `Claim`. No network, no LLM, no filesystem.
+- For each conclusion it derives five ordinal dimensions, each with the raw
+  counts behind it:
+  - **source_independence** — distinct `independence_group` values among
+    `supports` links.
+  - **source_diversity** — distinct `source_type` values among supporting
+    evidence.
+  - **reliability_mix** — counts of `high`/`medium`/`low` supporting evidence.
+  - **consistency** — presence of a `ConflictIndicator` for the claim and the
+    number of `opposes` links.
+  - **freshness** — newest supporting evidence age relative to `analysis_as_of`
+    and whether any supporting evidence `is_stale`.
+- Ordinal levels are `strong|moderate|weak|unavailable`, assigned by a fixed
+  deterministic mapping (documented in `evidence-contracts.md` §16). The mapping
+  must stay consistent with the confidence rubric: `< 2` independence groups
+  cannot be `strong` independence; an active material conflict caps consistency
+  at `weak`.
+- Output is a `TrustScorecard` per conclusion attached to `AnalysisResult`. It is
+  presentation of existing facts, so the Arbiter does not generate it and cannot
+  override it.
+
+### 19.2 Market Regime (`data/regime.py`, emitted by Market Worker)
+
+- Deterministic classification from OHLCV metrics that the Market Worker already
+  computes (return, realized volatility, drawdown, rolling z-score, range
+  position). No LLM involvement.
+- **Coin-agnostic**: thresholds compare each asset to its *own* rolling history
+  (percentiles/z-scores), never to absolute cross-asset values, per the
+  Coin-Agnostic Source Policy.
+- Label enum is fixed: `trending_up|trending_down|range_bound|high_volatility|mixed`.
+  Assignment rules and default thresholds are in `evidence-contracts.md` §16 and
+  are persisted with the resulting evidence and `run_config.json`.
+- The regime is packaged as a deterministic `high`-reliability market
+  `EvidenceItem` carrying the triggering metric values, so the report headline
+  and any regime-based claim remain traceable to an Evidence ID. An LLM never
+  assigns or edits the label.
+- If required bars are missing, the regime is `unavailable` with a disclosed gap;
+  it is never forward-filled.
+
+### 19.3 Quantified Invalidation Conditions
+
+- The Market Worker additionally emits deterministic *threshold* evidence
+  (e.g., recent N-day low/high close, rolling volume mean) as normal
+  high-reliability `EvidenceItem`s.
+- When the Arbiter produces `invalidation_conditions`, it must reference these
+  Evidence-backed numeric thresholds rather than inventing numbers; the LLM
+  supplies the condition wording and links, the deterministic tools supply every
+  value. Each quantified condition carries `metric`, `operator`, `threshold`, and
+  a `basis_evidence_id`.
+- Where no deterministic threshold applies, a qualitative condition is allowed as
+  a fallback, consistent with the existing `invalidation_conditions` contract.
+
+### 19.4 Rendering (`reporting/renderer.py`)
+
+- The deterministic Renderer adds three presentation blocks to `final_report.md`:
+  a Market Regime headline, a per-conclusion Trust Scorecard, and the quantified
+  invalidation conditions. All are rendered from validated `AnalysisResult`
+  fields and the ledger; the Renderer invents nothing and calls no LLM.
+- The scorecard is shown as ordinal pips/levels plus counts and a one-line
+  rationale — never as a single uncalibrated percentage. The prohibited-advice
+  lint still runs last.
+
+### 19.5 Module and Contract Impact
+
+- New: `evidence/trust.py`, `data/regime.py`.
+- Modified: `data/market_worker.py` (emit regime + threshold evidence),
+  `models.py` (`TrustScorecard`, `MarketRegime`, structured `InvalidationCondition`,
+  and the new `AnalysisResult` fields), `reporting/renderer.py`, `reasoning/arbiter.py`
+  and `prompts/arbiter-v1.md` (reference deterministic thresholds; never mint numbers).
+- Dependency direction is unchanged: `evidence/` and `data/` stay deterministic
+  and never call Bedrock; `reasoning/` still owns no artifact writes.

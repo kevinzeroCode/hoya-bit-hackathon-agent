@@ -84,7 +84,7 @@ Reliability is deterministic and static by source class:
 | Reliability | Eligible sources |
 |---|---|
 | `high` | Organizer OHLCV benchmark, originating exchange API market data, verified official project announcement/feed, deterministic calculation whose inputs are high-reliability evidence |
-| `medium` | Identifiable original news page with URL and timestamp, CoinGecko market snapshot |
+| `medium` | Identifiable original news page with URL and timestamp |
 | `low` | Aggregator or repost records whose original page was not fetched, Alternative.me Fear & Greed, social/community claims, missing-author/missing-time summaries, unverifiable secondary commentary |
 
 - An LLM never assigns or upgrades reliability.
@@ -105,7 +105,6 @@ Fixed examples:
 
 - Organizer CSV: `organizer-public-market-data`.
 - Binance: `binance.com`.
-- CoinGecko: `coingecko.com`.
 - Alternative.me: `alternative.me`.
 - CryptoPanic item: original publisher domain when present; otherwise `cryptopanic.com`.
 - A repost and its original publisher share the original publisher's group when provenance is known.
@@ -285,3 +284,93 @@ Configuration names are fixed: `BEDROCK_PRIMARY_MODEL_ID`, `BEDROCK_FALLBACK_MOD
 - Cross-asset liquidity comparisons use comparable quote/USD volume from the same provider and period.
 - Missing input bars produce unavailable metrics, not forward-filled synthetic facts.
 - Golden fixtures define rounding and boundary behavior; calculations retain full internal precision and round only in rendering.
+
+## 16. Creativity Layer Contracts (Requirement 16)
+
+These contracts are deterministic. No LLM assigns, edits, or overrides any value
+below. Every field is derived from the Evidence Ledger, Claim-Evidence Links, or
+deterministic OHLCV output. Missing inputs produce `unavailable`, never a
+fabricated value. `AnalysisResult` gains two fields, `market_regime` and
+`trust_scorecards` (a list), both optional and both defaulting to a disclosed
+`unavailable`/empty state when the layer cannot run.
+
+### 16.1 Ordinal Levels
+
+- Shared level enum: `strong | moderate | weak | unavailable`.
+- Levels are ordinal labels, never percentages or synthetic composite scores.
+
+### 16.2 Trust Scorecard
+
+```json
+{
+  "claim_id": "cl_003",
+  "source_independence": {"level": "moderate", "distinct_groups": 2},
+  "source_diversity": {"level": "moderate", "distinct_source_types": 2},
+  "reliability_mix": {"high": 2, "medium": 1, "low": 0},
+  "consistency": {"level": "moderate", "has_material_conflict": false, "opposing_count": 1},
+  "freshness": {"level": "strong", "newest_evidence_age_hours": 12, "has_stale": false},
+  "rationale": "兩個獨立上游支持，含一個 low-reliability 反方訊號，證據時效佳。"
+}
+```
+
+Deterministic mapping (fixed; must stay consistent with §10 confidence rubric):
+
+- `source_independence`: `strong` requires `distinct_groups >= 3`; `moderate` for
+  `2`; `weak` for `1`; `unavailable` for `0`.
+- `source_diversity`: `strong` requires `distinct_source_types >= 3`; `moderate`
+  for `2`; `weak` for `1`; `unavailable` for `0`.
+- `consistency`: `weak` whenever a `ConflictIndicator` exists for the claim
+  (material conflict caps it at `weak`); otherwise `strong` if `opposing_count == 0`,
+  else `moderate`.
+- `freshness`: `strong` if newest supporting evidence age is within a configured
+  fresh window and no supporting evidence `is_stale`; `weak` if any central
+  supporting evidence `is_stale`; otherwise `moderate`; `unavailable` if no
+  supporting evidence carries a usable time.
+- A scorecard is only produced for `conclusion` claims. A claim scored `strong`
+  independence but linked to `< 2` groups is a validation error.
+
+### 16.3 Market Regime
+
+```json
+{
+  "asset": "BTC",
+  "label": "range_bound",
+  "as_of": "2026-05-31",
+  "window_days": 30,
+  "metrics": {"return_window": -0.0488, "realized_vol_pctile": 0.35, "range_position": 0.42},
+  "thresholds": {"trend_return_abs_min": 0.10, "range_return_abs_max": 0.05, "high_vol_pctile": 0.80},
+  "evidence_id": "ev_012"
+}
+```
+
+- `label` enum: `trending_up | trending_down | range_bound | high_volatility | mixed`.
+- Assignment order (first match wins), all coin-agnostic against the asset's own
+  rolling history:
+  1. `high_volatility` if `realized_vol_pctile >= high_vol_pctile`.
+  2. `trending_up` / `trending_down` if `abs(return_window) >= trend_return_abs_min`
+     (sign decides direction).
+  3. `range_bound` if `abs(return_window) <= range_return_abs_max`.
+  4. otherwise `mixed`.
+- `metrics` and `thresholds` are persisted with the regime `EvidenceItem` and in
+  `run_config.json`. `reliability` is `high`; `source_type` is `market`.
+- If required bars are missing, emit `label="unavailable"` with a degradation
+  note; never forward-fill.
+
+### 16.4 Quantified Invalidation Condition
+
+```json
+{
+  "text": "收盤跌破 68000（近 30 日最低收盤，ev_007）",
+  "metric": "close",
+  "operator": "lt",
+  "threshold": 68000,
+  "basis_evidence_id": "ev_007"
+}
+```
+
+- `operator` enum: `lt | lte | gt | gte`.
+- `threshold` must equal a value carried by the referenced deterministic
+  `EvidenceItem`; the LLM may not mint the number.
+- `basis_evidence_id` must resolve in the ledger.
+- A qualitative condition with only `text` (no `metric`/`threshold`) remains valid
+  as a fallback when no deterministic threshold applies.

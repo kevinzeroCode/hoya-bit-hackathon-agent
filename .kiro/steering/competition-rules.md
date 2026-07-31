@@ -50,7 +50,7 @@ inclusion: always
 ## Approved Data Policy
 
 - 主辦方 Daily OHLCV CSV 是共同歷史基準；metadata 僅標示 `public_market_data`，不得推定其上游交易所。
-- Binance public REST API 是 canonical live source；CoinGecko 是 live fallback。
+- Binance public REST API 是 canonical live source。CoinGecko 雖為主辦方核准的公開來源，但列為 post-hackathon Future Work，MVP 不實作；baseline market source 失敗時只做誠實降級，不宣稱切換至第二個 live provider。
 - CSV 與 live API 是不同來源。跨越兩者時標記 2026-06-01 來源切換點並揭露差異。
 - 第一次 live-source rehearsal 應保存 BTC、ETH、SOL、BNB、XRP 在 2026-05-01 至 2026-05-31 的 CSV／Binance close 差異檢查結果。
 - CryptoPanic 與新聞 RSS 用於新聞取證；幣種官方 Blog／公告頻道採 best-effort。
@@ -65,6 +65,19 @@ inclusion: always
 3. 第一手／官方來源暫指原始資料產生者，包括市場數據的交易所 API、專案官方公告與主辦方 CSV。
 
 主辦方若給出不同正式解釋，更新 steering 與 requirements 後再修改行為，不得只改 prompt。
+
+## Coin-Agnostic Source Policy（幣種無關通用作法）
+
+幣種於現場才抽選，任一支援資產都可能被指定。為避免為特定幣過度設計、或現場抽到未涵蓋的幣而開天窗，一律採以下通用作法：
+
+- **Pipeline 以 `{asset}` 為參數，五幣共用同一條路徑。** 禁止 per-coin 分支邏輯（`if asset == "BTC"`）、per-coin 特調參數或 per-coin 硬編路徑。
+- **來源必須「用幣種符號即可統一查詢五幣」才進 MVP。** 例如：主辦 CSV（`{ASSET}_daily_ohlcv.csv`）、Binance klines（`{ASSET}USDT`）、CryptoPanic（依 currency 過濾）、Alternative.me（全市場 context）。
+- **「每個幣需各自實作一套」的來源一律 best-effort 或延後，不得成為 MVP blocking dependency。** 典型為各鏈鏈上瀏覽器（Etherscan=ETH、Solscan=SOL、XRPL⋯各不同）與各專案官方 Blog；缺漏時誠實揭露，不阻塞 run。
+- **若要納入鏈上／社群訊號，只採「單一多鏈／多幣聚合來源、以幣種符號查詢」者；禁止為五條鏈各寫一套 adapter。** 找不到幣種無關的聚合來源時，該訊號列為缺口揭露，不硬做。
+- **驗證只需兩個不同幣各跑一次單幣即可證明流程幣種無關**（對齊 Gold）；不要求五幣完整矩陣或 per-coin calibration。
+- **報告與 Evidence 一律標明實際 `asset` 與 `time_range`**，不得把某一幣的取證條件假設套用到其他幣。
+
+一句話原則：**「用符號就能查五幣」的來源才進 MVP；「每個幣要各寫一套」的一律 best-effort 或跳過。**
 
 ## Evidence Integrity Rules
 
