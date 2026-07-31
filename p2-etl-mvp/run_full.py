@@ -13,6 +13,7 @@ from datetime import date
 
 from adapters.organizer_csv import default_data_dir, load_organizer_csv
 from data.market_worker import build_market_evidence
+from data.price_analysis import build_attribution_evidence, build_event_timeline_evidence
 from data.regime import build_regime_evidence
 from evidence.processor import build_ledger
 
@@ -38,16 +39,21 @@ def main() -> None:
     all_drafts = []
     total_bars = 0
     from data.regime import classify_regime
+    bars_by_asset = {a: load_organizer_csv(data_dir / f"{a}_daily_ohlcv.csv") for a in ASSETS}
     for asset in ASSETS:
-        bars = load_organizer_csv(data_dir / f"{asset}_daily_ohlcv.csv")
+        bars = bars_by_asset[asset]
         total_bars += len(bars)
         m = build_market_evidence(asset, bars, analysis_as_of=AS_OF)
         r = build_regime_evidence(asset, bars, analysis_as_of=AS_OF)
-        all_drafts += list(m.drafts) + list(r.drafts)
+        ev = build_event_timeline_evidence(asset, bars, analysis_as_of=AS_OF)  # A6
+        drafts = list(m.drafts) + list(r.drafts) + list(ev.drafts)
+        if asset != "BTC":  # A5: attribution vs BTC (single-coin vs whole-market)
+            attr = build_attribution_evidence(asset, bars, bars_by_asset["BTC"], analysis_as_of=AS_OF)
+            drafts += list(attr.drafts)
+        all_drafts += drafts
         reg = classify_regime(asset, bars, analysis_as_of=AS_OF)
         state = _LABEL.get(reg.label, "-") if reg else "-"
-        print(f"  {asset:<4} {len(bars):>5} 筆日K → {len(m.drafts) + len(r.drafts)} 筆證據"
-              f"｜狀態：{state}")
+        print(f"  {asset:<4} {len(bars):>5} 筆日K → {len(drafts)} 筆證據｜狀態：{state}")
 
     ledger = build_ledger(all_drafts)
     print()

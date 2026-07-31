@@ -122,6 +122,18 @@ LLM **只判相關性 / 分事件類型 / 抽多筆無立場事實**,不編數�
 | `relative_change(a,b)` | a/b − 1 | 跨幣可比尺度（範例三） |
 | `market_regime`（綜合） | 報酬＋波動百分位＋區間位置 → 趨勢／盤整／高波動 | **市場狀態判斷**（範例一、二） |
 
+### 延伸分析產出（A5/A6/A7，`data/price_analysis.py`）
+移植自 `price` 分支設計文件（`price-data-analysis-outputs.html`），deterministic、幣種無關,
+且**實算值對得上該文件**（回歸測試以其數字為 golden）：
+
+| 產出 | 函式 | 用途 |
+|---|---|---|
+| **A5 歸因** | `attribution` / `build_attribution_evidence` | 相關性/beta/相對強弱 → 判「單幣事件 vs 全市場」（省 Research 預算） |
+| **A6 事件時間軸** | `anomaly_days` / `build_event_timeline_evidence` | ±3σ 異常日 → 給 Research 的**有界查詢日期** |
+| **A7 歷史類比基準率** | `analog_base_rates` | 類似狀態後 N 日的結果分布（**只談幅度、不談方向**，方向≈擲硬幣並誠實揭露） |
+
+> 跨幣只用報酬/比值/百分位,**絕不比 base-asset volume**。`run_full.py` 已把 A5/A6 併入帳本示範。
+
 **市場資料鐵則**：只用 `analysis_as_of` 前**已完成**的 UTC 日 K;缺 bar 標 unavailable、**不 forward-fill**;
 **跨幣禁比 base volume**（單位不同）——跨幣只用報酬/波動/相對變化/各自 z-score/quote volume;
 CSV↔live 以 **2026-06-01** 為來源切換點並揭露差異。
