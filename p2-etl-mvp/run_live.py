@@ -27,6 +27,10 @@ import httpx
 from adapters._assets import mentions
 from adapters.alternative_me import fetch_fear_greed
 from adapters.organizer_csv import default_data_dir, load_organizer_csv
+from adapters.okx import CANDLES_URL as OKX_URL
+from adapters.okx import INDEPENDENCE_GROUP as OKX_GROUP
+from adapters.okx import SOURCE_NAME as OKX_SOURCE
+from adapters.okx import fetch_okx_daily
 from adapters.reddit import fetch_reddit_posts
 from adapters.rss import fetch_rss_news
 from data.market_worker import build_market_evidence
@@ -113,6 +117,20 @@ def main() -> None:
     reg = classify_regime(asset, bars, analysis_as_of=as_of)
     print(f"[市場] CSV {len(bars)} 筆 → {len(m.drafts) + len(r.drafts)} 筆證據"
           f"（狀態：{reg.label if reg else '-'}，as_of={as_of}）")
+
+    # 1b) 第二個獨立交易所（OKX live，high，okx.com）——高可信度市場層可交叉驗證
+    okx_bars, okx_deg = fetch_okx_daily(asset, analysis_as_of=now, client=client)
+    notes += okx_deg
+    if okx_bars:
+        om = build_market_evidence(
+            asset, okx_bars, analysis_as_of=okx_bars[-1].date,
+            source_name=OKX_SOURCE, independence_group=OKX_GROUP, source_url=OKX_URL,
+        )
+        drafts += list(om.drafts)
+        print(f"[市場] OKX live {len(okx_bars)} 筆 → {len(om.drafts)} 筆證據"
+              f"（獨立交易所，可與另一來源交叉驗證，as_of={okx_bars[-1].date}）")
+    else:
+        print("[市場] OKX live：無資料（已揭露）")
 
     # 2) 新聞（真 RSS 標題 → medium 原始新聞頁）
     news_hits = 0

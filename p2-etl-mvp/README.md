@@ -137,13 +137,15 @@ CSV↔live 以 **2026-06-01** 為來源切換點並揭露差異。
 |---|---|---|---|---|
 | 主辦 CSV | market | `high` | organizer-public-market-data | — |
 | Binance Spot | market | `high` | binance.com | 免 |
+| **OKX Spot** | market | `high` | okx.com | 免 |
 | CoinGecko | market | `medium` | coingecko.com | 免 |
 | **CoinDesk · The Block · Bitcoin Magazine · CryptoSlate · Decrypt · Cointelegraph**（RSS） | news | `medium` | 各自網域（6 群） | 免 |
 | CryptoPanic | news | `low` | 原發布者網域 | 免費 token |
 | Alternative.me F&G | social | `low` | alternative.me | — |
 | Reddit r/CryptoCurrency | social | `low` | reddit.com | — |
 
-達標:**約 11 來源、4 大類（市場/新聞/社群/情緒）、~11 個獨立群、含第一手**，且 high/medium/low 三級齊全。
+達標:**約 12 來源、4 大類（市場/新聞/社群/情緒）、~12 個獨立群、含第一手**，且 high/medium/low 三級齊全。
+市場層有 **2 個獨立交易所（Binance + OKX）**,可交叉驗證高可信度事實。
 全部**幣種無關**（用符號查五幣）。**選源原則**:只收「用符號就能查五幣」的來源;要為每條鏈各寫一套的一律跳過並揭露;
 **不收**任何第三方「已產出的完整判斷/交易訊號/投資報告」。
 
@@ -186,7 +188,7 @@ CSV↔live 以 **2026-06-01** 為來源切換點並揭露差異。
 
 ## 檔案地圖
 ```
-adapters/  organizer_csv · binance · coingecko · cryptopanic · rss · alternative_me · reddit · _assets
+adapters/  organizer_csv · binance · okx · coingecko · cryptopanic · rss · alternative_me · reddit · _assets
 data/      types(MarketBar) · indicators · market_series · market_worker · regime(市場狀態) · text_clean(清洗)
 evidence/  policies · types(EvidenceDraft/Item/Ledger) · processor
 reasoning/ llm_client · research_extractor(結構化多筆) · gpt_client   ← P3 邊界
