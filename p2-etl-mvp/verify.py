@@ -154,15 +154,17 @@ def main() -> None:
         )
     ]
     # FakeLLM stands in for the GPT mock / Bedrock client — deterministic, offline.
+    # 結構化抽取：判相關性 → 分類事件 → 抽多筆無立場事實（一篇 → 多筆證據）。
     fake_llm = FakeLLMClient(
-        '{"fact": "美國現貨比特幣 ETF 出現上市以來最大單日淨流入。"}'
+        '{"relevant": true, "event_type": "etf_flow", '
+        '"facts": ["美國現貨比特幣 ETF 出現上市以來最大單日淨流入", '
+        '"發行商申報文件為此數據來源"]}'
     )
     extracted = extract_news_facts(records, llm=fake_llm)
-    print(f"狀態：{extracted.status}｜抽取證據筆數：{len(extracted.drafts)}")
+    print(f"狀態：{extracted.status}｜一篇新聞抽出 {len(extracted.drafts)} 筆事實")
     for d in extracted.drafts:
         print(f"  - [{d.reliability}] {d.normalized_fact}")
-        print(f"      來源={d.source_name} 獨立群={d.independence_group} "
-              f"prompt={d.query_or_parameters}")
+        print(f"      {d.content_reference}")
 
     print()
     # Binance live market (sample klines via MockTransport) -> 2nd market independence group

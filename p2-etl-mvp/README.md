@@ -3,8 +3,11 @@
 HOYA 加密市場分析 AI Agent 的**資料側**原型:把多個來源的原始資料 → 正規化 →
 產出**可回溯、標好可信度**的證據,再合併成一份**統一證據帳本**交給 P3(Arbiter)。
 
-> 定位:本模組**只負責「取得 + 正規化 + 證據化 + 去重排序」**。
-> **不做**:LLM 推理判斷(P3)、報告產生(P1)、UI(P4)。我的程式碼**完全不呼叫 LLM**。
+> 定位:本模組**只負責「取得 + 清洗 + 證據化 + 去重排序」**。判斷（立場、結論）交給 P3。
+> **不做**:LLM 推理判斷(P3)、報告產生(P1)、UI(P4)。市場數值**完全 deterministic、不碰 LLM**;
+> LLM 只用於**新聞語意抽取**（結構化、無立場、不編數字），且可換 provider。
+
+> 📄 **交付／整合報告（給隊友看）**:https://claude.ai/code/artifact/a93c4643-eae4-4e50-96b0-6c9da7c30a2e
 
 ---
 
@@ -12,11 +15,16 @@ HOYA 加密市場分析 AI Agent 的**資料側**原型:把多個來源的原始
 
 ```bash
 python -m pip install -e ".[dev]"      # 或 pip install httpx pytest pandas
-python verify.py                        # 看真實輸出(五幣指標 + 各來源證據卡 + 統一帳本 + 單筆完整欄位)
-python -m pytest -q                     # 98 passed
+python -m pytest -q                     # 104 passed（含真官方資料 golden 測）
+
+python verify.py            # 離線完整流程 + 每張卡「完整欄位」（= 欄位契約，給整合對接）
+python run_full.py          # 5 幣真 CSV → 規模示範（9,130 筆日K → 25 筆證據）
+python run_live.py BTC      # 真 live 四類來源（新聞/社群/情緒/市場）+ 真 LLM 語意抽取
 ```
+> 三個腳本用途不同:**verify=離線契約/斷網備案**、**run_full=資料規模**、**run_live=真·多源信任提煉**。
 > 環境:Python 3.12（開發用 3.11 也可跑；整合/Docker 請用 3.12）。
 > 預設 `pytest` **不打外網**;所有 adapter 用 `httpx.MockTransport` 測。
+> `run_live.py` 需外網;設 `OPENAI_API_KEY` 才啟用 LLM 語意層（沒設則誠實略過，不放假資料進帳本）。
 
 ---
 
@@ -40,9 +48,11 @@ CryptoPanic / RSS / Fear&Greed / Reddit ─┤→ 每個來源產出 EvidenceDra
 | `build_regime_evidence(asset, bars, *, analysis_as_of)` · `classify_regime(...)` | `data/regime.py` | `WorkerResult`（市場狀態 Regime） |
 | `fetch_coingecko_snapshot(asset, *, analysis_as_of, client)` | `adapters/coingecko.py` | `WorkerResult` |
 | `fetch_cryptopanic_news(*, assets, analysis_as_of, client, api_token)` | `adapters/cryptopanic.py` | `WorkerResult` |
-| `fetch_rss_news(asset, *, analysis_as_of, client, feed_url, source_name, publisher_domain)` | `adapters/rss.py` | `WorkerResult` |
+| `fetch_rss_news(asset, *, analysis_as_of, client, feed_url, source_name, publisher_domain)` | `adapters/rss.py` | `WorkerResult`（第一手媒體，medium） |
 | `fetch_fear_greed(*, analysis_as_of, client)` | `adapters/alternative_me.py` | `WorkerResult` |
-| `fetch_reddit_posts(asset, *, analysis_as_of, client)` | `adapters/reddit.py` | `WorkerResult` |
+| `fetch_reddit_posts(asset, *, analysis_as_of, client)` | `adapters/reddit.py` | `WorkerResult`（**Atom feed**；`.json` 已被 Reddit 擋） |
+| `clean_text(raw)` | `data/text_clean.py` | `str`（去 HTML/實體/正規化空白） |
+| `extract_news_facts(records, *, llm)` | `reasoning/research_extractor.py` | `WorkerResult`（LLM 結構化多筆事實） |
 | `build_ledger(drafts, *, max_for_arbiter=30)` | `evidence/processor.py` | `EvidenceLedger` |
 
 **慣例**:每個 adapter 都**注入一個 `httpx.Client`**（測試給 MockTransport、正式給真 client）＋ 一個
@@ -79,12 +89,20 @@ models 後**機械式替換 import 即可**：
 
 > `related_claim`（命題第 4 欄）由 **P3 建立 Claim-Evidence Link 時補**——要先有結論才知道連到哪。
 
-### 3) P3 的語意抽取（邊界，暫放這裡）
-`reasoning/` 是 **P3 的範圍**（我先搭好骨架，整合時可交接）：
-- `reasoning/llm_client.py` → `LLMClient` 介面 + `FakeLLMClient`
-- `reasoning/research_extractor.py` → `extract_news_facts(records, llm=...)`
-- `reasoning/gpt_client.py` → 暫時 GPT mock（讀 `OPENAI_API_KEY`）
+### 3) 新聞語意抽取（P3 邊界，暫放這裡）
+`reasoning/` 是 **P3 的範圍**（我先搭好骨架，整合時可交接）。兩段式:先 deterministic 清洗，再 LLM 結構化理解——
+LLM **只判相關性 / 分事件類型 / 抽多筆無立場事實**,不編數字、不給可信度、不表態:
+- `data/text_clean.py` → `clean_text()`：去 HTML/實體/空白，LLM 只看乾淨純文字
+- `reasoning/research_extractor.py` → `extract_news_facts()`：一篇 →「相關性 + 事件類型 + 多筆原子事實」,**一篇可產多張證據卡**（非單篇摘要）
+- `reasoning/llm_client.py` → `LLMClient` 介面 + `FakeLLMClient`（測試）
+- `reasoning/gpt_client.py` → GPT mock（讀 `OPENAI_API_KEY`）
 - **正式 LLM 要用 Amazon Bedrock 上的 Claude**（`anthropic.claude-*`）——換 LLM 只改注入那一行。
+
+### 4) 刻意不做的事（界線）
+- ✕ **TA 技術指標**（MACD/RSI/K線型態）——題目明訂「不是技術指標回測」;我的指標是**狀態描述**非買賣訊號。
+- ✕ **用 LLM 產生市場數字或可信度**——數字只來自 deterministic 工具、可信度只來自靜態表。
+- ✕ **立場（利多/利空）**——只在 P3 的 Claim-Evidence Link 才產生。
+- ✕ **前端/K線圖**——P4 的事;該呈現的是「證據與信任」不是看盤圖。
 
 ---
 
@@ -120,12 +138,17 @@ CSV↔live 以 **2026-06-01** 為來源切換點並揭露差異。
 | 主辦 CSV | market | `high` | organizer-public-market-data | — |
 | Binance Spot | market | `high` | binance.com | 免 |
 | CoinGecko | market | `medium` | coingecko.com | 免 |
-| CoinDesk RSS | news | `medium` | coindesk.com | 免 |
+| **CoinDesk · The Block · Bitcoin Magazine · CryptoSlate · Decrypt · Cointelegraph**（RSS） | news | `medium` | 各自網域（6 群） | 免 |
 | CryptoPanic | news | `low` | 原發布者網域 | 免費 token |
 | Alternative.me F&G | social | `low` | alternative.me | — |
 | Reddit r/CryptoCurrency | social | `low` | reddit.com | — |
 
-達標:**3 種類型、7 個獨立群、含第一手**，且 high/medium/low 三級齊全。全部**幣種無關**（用符號查五幣）。
+達標:**約 11 來源、4 大類（市場/新聞/社群/情緒）、~11 個獨立群、含第一手**，且 high/medium/low 三級齊全。
+全部**幣種無關**（用符號查五幣）。**選源原則**:只收「用符號就能查五幣」的來源;要為每條鏈各寫一套的一律跳過並揭露;
+**不收**任何第三方「已產出的完整判斷/交易訊號/投資報告」。
+
+**噪音處理哲學**:不主觀刪源（判斷是 P3 的事），而是**分級 + 隔離**——低訊號社群鎖在 `low`,
+結構上（confidence 上限）**無法驅動高信心結論**;這比直接刪除更可回溯。
 
 ---
 
@@ -141,18 +164,20 @@ CSV↔live 以 **2026-06-01** 為來源切換點並揭露差異。
 ---
 
 ## 目前是 mock 還是真的?
-- **真資料**:主辦 CSV（歷史）。
-- **mock/樣本**:verify.py 裡的 Binance / CoinGecko / CryptoPanic / RSS / Fear&Greed / Reddit
-  都用 MockTransport 餵樣本（離線、可重現）。adapter 程式碼已照真 API 寫、測過;
-  **接真的只要換成真 `httpx.Client`（＋ CryptoPanic token），邏輯不變**。
-- **LLM 抽取**:verify.py 用 FakeLLM;`run_gpt_extract.py` 可跑真 GPT（需 `OPENAI_API_KEY`）。
+- **`verify.py`（離線）**:主辦 CSV 是真的;Binance/CoinGecko/CryptoPanic/RSS/F&G/Reddit 用 MockTransport 餵樣本;
+  LLM 用 FakeLLM。全部離線、可重現——當**欄位契約展示 + demo 斷網備案**。
+- **`run_full.py`（離線）**:5 幣**全真官方 CSV**,9,130 筆 → 25 筆市場證據。
+- **`run_live.py`（真 live）**:真打 6 家新聞 RSS + Reddit（Atom）+ Fear&Greed;設 `OPENAI_API_KEY` 則
+  用**真 GPT** 對真新聞做語意抽取。實測一次 ≈ 60 張卡（市場/新聞/社群/情緒四類齊全）。
+- **adapter 程式碼皆照真 API 寫、契約測過**;接真只要換真 `httpx.Client`。正式 LLM 換 Bedrock 只改注入一行。
 
 ---
 
 ## 待整合 / 待辦（給團隊）
+- [x] 接真 live 多源（`run_live.py`：6 新聞 + Reddit + F&G，+ 真 GPT 語意抽取）
 - [ ] 整合進主 repo `src/hoya_agent/`（目前為獨立原型）
 - [ ] 換 P1 的正式 `models.py`（替換臨時型別）
-- [ ] 接真 live（至少 Binance，免 key）＋ 落盤 `evidence.json`（等 P1 artifact 契約）
+- [ ] 落盤 `evidence.json`（等 P1 artifact 契約）
 - [ ] material conflict 偵測（需 P3 的 Claim 結構）
 - [ ] `research_extractor` 歸屬確認（P2 or P3）
 - [ ] LLM 由 GPT mock → **Bedrock 上的 Claude**
@@ -162,10 +187,10 @@ CSV↔live 以 **2026-06-01** 為來源切換點並揭露差異。
 ## 檔案地圖
 ```
 adapters/  organizer_csv · binance · coingecko · cryptopanic · rss · alternative_me · reddit · _assets
-data/      types(MarketBar) · indicators · market_series · market_worker · regime(市場狀態)
+data/      types(MarketBar) · indicators · market_series · market_worker · regime(市場狀態) · text_clean(清洗)
 evidence/  policies · types(EvidenceDraft/Item/Ledger) · processor
-reasoning/ llm_client · research_extractor · gpt_client   ← P3 邊界
-verify.py  一鍵看真實輸出       tests/  98 passed
+reasoning/ llm_client · research_extractor(結構化多筆) · gpt_client   ← P3 邊界
+verify.py  離線契約   run_full.py  規模示範   run_live.py  真·多源+LLM     tests/  104 passed
 ```
 
 > 本模組**產研究導向分析,不提供投資建議**。
