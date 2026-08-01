@@ -1,0 +1,1026 @@
+# HOYA Market Agent — 實作路線圖（分階段建置計畫）
+
+> **④ of ④ — design-pipeline 最後一份產出。**
+> 上一份：[Architecture-FileMap.md](Architecture-FileMap.md)｜索引：[README.md](README.md)
+> 無法 headless 驗證的部分收在本文 §3.2，不另立測試指南文件。
+
+> ## 🔴 開 PR 前必做：更新你那個階段的「現況」區塊
+>
+> **任何動到 `src/`、`tests/` 或 artifact 行為的 PR，都必須在同一個 PR 裡更新本文。**
+> 兩個地方，不是一個：① §1.1 現況快照那一列；② 你那個階段的「現況」區塊。
+>
+> **現況區塊寫「真的跑過的事實」**：實際測試數字（`X passed, Y failed`）、`ruff` 結果、
+> 以及**踩過的坑**。最後一項價值最高——S0 記下的三個 Bedrock 陷阱
+> （舊 `claude-3-5-haiku-20241022` 已下架、需要 `us.` inference profile 前綴、
+> 模型回應被 markdown 圍欄包住導致抽取 0 筆）省掉了後面每個人各撞一次。
+>
+> **為什麼是硬性規定：** 2026-08-01 半天之內，本文的狀態標記過時了兩次。
+> 一次寫著「Bedrock 從未呼叫過，這是最大未爆彈」，其實已經通了；
+> 一次寫著「S2 未開始、是關鍵路徑」，其實已經合併。兩次都會讓人**重做已完成的工作**，
+> 或**空等一個並不存在的阻塞**。四個人平行開發時，
+> **一份存在但過時的狀態表，比沒有狀態表更糟**——沒有的話大家會自己去查，有但過時的話大家會相信它。
+>
+> 不確定要不要更新就更新。成本是三分鐘，不更新的成本是別人半天。
+
+> **這份文件是衍生視圖，不是新的真相來源。**
+> 任務清單與驗收條件的規範性擁有者是 `.kiro/specs/hoya-market-agent/tasks.md`；
+> 「誰正在做什麼、哪些路徑已凍結」的擁有者是 `docs/ACTIVE_WORK.md`。
+> 本文把 `tasks.md` 的 task 重排成**可獨立驗證的建置階段**，每階段都用同一個模板，
+> 並帶一個會持續更新的**現況區塊**。**若本文與 `.kiro/` 或 `ACTIVE_WORK.md` 衝突，以它們為準。**
+
+## 1. Context
+
+本文把整個建置切成**階段**，每個階段都必須在下一個開始前**獨立驗證通過**。它綁定三份上游：
+
+- [Features.md](Features.md) — **做什麼**，以及每階段要引用的**契約詞彙表**（§5.1–§5.7）；
+- [Tech-Stack-Plan.md](Tech-Stack-Plan.md) — **用什麼**、共用慣例，以及**風險導向的第一個里程碑**（→ 最早的階段）；
+- [Architecture-FileMap.md](Architecture-FileMap.md) — **在哪裡**；每階段的「元件」欄位就是那份地圖的 row。
+
+**技術棧速覽：** Python 3.12 · Pydantic v2 · 標準庫 `asyncio` · `httpx` · `pandas` · boto3/Bedrock Converse ·
+Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC2。
+**每個檔的細節請看檔案地圖，本文不重列。**
+
+> ⚠️ **狀態掃描時間：2026-08-01（PR #18 合併後），基準 commit `d7245e4`。**
+> 本快照以實際 `main` 檔案、已執行驗收與外部 gate 為準；較舊章節若衝突，以本節為準。
+
+### 1.1 現況快照（authoritative）
+
+| 階段 | 狀態 | 驗證後結論 |
+|---|---|---|
+| **S0** preflight | 🟡 | 曾以 Haiku 4.5 / `invoke_model` 成功抽取，但正式 Converse 結構化證據與規定位置的 rehearsal 紀錄仍缺 |
+| **S1** 契約與接縫 | ✅ | canonical models/config/clock/ports/fakes 已落地；runtime provisional seam 已退場 |
+| **S2** 垂直切片 | ✅ | fixture application、四項 artifacts、繁中 deterministic renderer 已落地 |
+| **S3** Streamlit Bronze | ✅ | canonical `ui/`＋`streamlit_app.py`、`reporting/advice_lint.py`（已接進 renderer）、Dockerfile/compose 已落地；離線 Bronze Exit 通過、§3.2 人工清單以瀏覽器實測完成、593 tests 綠、ruff 乾淨 |
+| **S4** deadline 編排 | 🟡 | `DeadlineAwarePipeline`、deadline/run-state、fork-join 已落地；fake-clock/cancellation 完整驗收仍缺 |
+| **S5** 市場證據 | ✅ | Organizer CSV、Binance、deterministic indicators 與 market evidence 已整合 |
+| **S6** 研究與 Evidence | 🟡 | adapters/processor 大部分已整合；baseline research 的 canonical 完整驗收仍缺 |
+| **S7** bounded reasoning | ✅ | Planner、Research Agent、Arbiter 與 Bedrock boundary 已完成並凍結 |
+| **S8** H2-Lite Silver | 🟡 | 離線 orchestration/fallback/artifacts 通過；live Bedrock＋baseline market/research Silver gate 未通過 |
+| **S9** 創意層 | ✅（離線） | Trust Scorecard、regime/unavailable、Evidence-backed invalidation 與 renderer 已通過離線 smoke |
+| **S9B** 雙幣比較 | ✅（離線） | 單一 run/cutoff/ledger、UTC 對齊、balanced Arbiter projection、比較 Claim 與第 12 段已通過 |
+| **S10** Gold local Exit | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 尚缺 |
+| **S11** 部署與彩排 | 🔴 | CI、ECR/EC2、live smoke、rollback 與 15 分鐘 judged-flow rehearsal 尚缺 |
+
+**目前完成分層：**嚴格完成 S1/S2/S3/S5/S7；離線功能完成 S9/S9B；
+部分完成 S0/S4/S6/S8；未完成 S10/S11。
+
+**尚未通過的 repository-wide gate：** GitHub Actions/status checks 尚未配置；
+完整 pytest/Ruff 未在 PR #18 環境重跑，且既有紀錄仍有 87 個 Ruff errors。
+因此不得把離線 smoke 說成 Silver、Gold 或部署完成。
+
+**下一條關鍵路徑：** S3 Bronze ✅ → 補 S4/S6 驗收 → S8 live Silver →
+S10 Gold local Exit → S11 部署與計時彩排。
+
+---
+
+## 2. 共用基礎與慣例（適用於每一個階段）
+
+### 2.1 單一派發路徑（相當於「動作層」）
+
+這個系統沒有多個入口。**每一次分析都只有一條路：**
+
+```text
+streamlit_app.py  →  ApplicationService.run(request, progress)  →  DeadlineAwarePipeline.execute()
+```
+
+- **stage 順序只存在 `orchestration/pipeline.py` 一處。** 任何「先做 X 再做 Y」的決定都不得散落他處。
+- **所有外部呼叫都經過 `ports.py` 的 Protocol**，具體實作只在 `application.py` 組裝。
+- **所有可用操作來自 static `ToolRegistry`**——設定支撐的 allowlist，
+  🚫 無 runtime plugin discovery、無遠端 registry、外部內容不得變更它。
+- **UI 不做決策**：`streamlit_app.py` 只送 request、只讀 `ProgressSink` 的事件。
+  🚫 商業邏輯不得放進 Streamlit callback。
+
+### 2.2 單一 typed 設定存放
+
+- 環境變數只在 `config.py` 解析一次 → typed `Settings` 傳進 factory。
+- 鎖定名稱見 [Features.md §5.7](Features.md)。`run_config.json` 只記 optional key 的**存在布林值**。
+- `.env` 只在本機且不進 Git；`.env.example` 只有名稱佔位。
+
+### 2.3 橫切閘門（每個階段的 DoD 都包含它）
+
+[Tech-Stack-Plan.md §6.5](Tech-Stack-Plan.md) 的四條邊界檢查必須是**自動的**：
+
+1. `data/`、`evidence/`、`reporting/`、`orchestration/`、`ui/` 與根層契約檔 🚫 不得 import `boto3`/`httpx`；
+2. `reasoning/` 🚫 不得寫檔（`open(`／`Path.write*`／`os.replace`）；
+3. production code 🚫 不得 import `tests.fixtures`；
+4. `ruff check .` + required test suite 綠。
+
+### 2.4 跨階段政策（每個階段都要守）
+
+| 政策 | 內容 |
+|---|---|
+| **Artifact-first 順序** | `run_config.json`（run 開始）→ `execution_log.jsonl`（串流）→ `evidence.json`（Ledger 完成即寫，**不等 Arbiter**）→ `final_report.md`（最後）。四份共用一個 `run_id`，一律原子寫入 |
+| **Run mode 不可變** | 驗證後不可改；出現在 UI、每一筆 log 與 `run_config.json` |
+| **H3 永遠停用** | 只有 `DisabledConflictExtension`；🚫 不得建立 Bull/Bear/Judge 的檔案、prompt、task 或測試路徑 |
+| **Coin-agnostic** | pipeline 以 `{asset}` 為參數；🚫 禁止 `if asset == "BTC"` 這類 per-coin 分支、per-coin 特調參數或硬編路徑 |
+| **Red → Green → Refactor** | 先寫會失敗的聚焦測試 → 確認它是因缺功能而失敗（不是 import/路徑錯）→ 最小實作 → 跑模組測試 + 相關 regression → 才 commit |
+| **一 task 一 commit** | Conventional commits（`feat:`/`fix:`/`test:`/`docs:`/`chore:`）；同一 commit 更新 `tasks.md` 的 checkbox；🚫 不 squash 掉單一 task |
+| **誠實回報** | **絕不宣稱測試通過卻沒實際跑過。** 修 bug 先加可重現的 regression test |
+| **Kiro 分工** | `tasks.md` 的 Task 1（models/contracts）與 Task 2（fixture 垂直切片）保留給 Kiro 產生，作為「Kiro 用於開發」的證據；Claude Code 🚫 不搶先實作這兩個 task 的核心檔案。時間不夠而改由 Claude Code 補完時，須在 `docs/evidence/kiro/README.md` **誠實記錄實際產出者** |
+
+### 2.5 路徑佔用（四人可同時 commit 的依據）
+
+依 `docs/ACTIVE_WORK.md`（2026-08-01 重新分配）；路徑互不重疊：
+
+| 專長 | 任務 | 分支 | 獨佔路徑 |
+|---|---|---|---|
+| **agent 用 Kiro** | A 契約與骨幹 | `task/1a-contracts-core` | `pyproject.toml`、`models.py`、`config.py`、`clock.py`、`ports.py`、`orchestration/`、`reasoning/`（除 `research_agent.py`）、所有 `__init__.py` |
+| **分析指標** | B 市場數據層 | `task/4-market-data-layer` | `data/`、`adapters/{organizer_csv,binance}.py`、`tests/unit/data/` |
+| **資訊整理** | C 證據與敘事層 | `task/5-evidence-layer` | `evidence/`、`adapters/{_assets,cryptopanic,rss,official,alternative_me}.py`、`reasoning/research_agent.py`、`tests/unit/evidence/` |
+| **UI** | D 呈現與交付 | `task/0-preflight-and-ui` | `streamlit_app.py`、`ui/`、`reporting/`、`scripts/`、`Dockerfile`、`compose.yaml`、`docs/evidence/` |
+
+**三條協調規則（不遵守一定會撞）：**
+1. **一律從 `main` 開分支**，🚫 不要從 `feat/p2-*` 開。要 P2 的檔案時用
+   `git checkout origin/feat/p2-report-integration -- <只取自己那半>` 再 `git mv` 進 `src/hoya_agent/`。
+   這樣 `p2-etl-mvp/` 從頭到尾不會進 `main`。
+2. **S1 落地前，B 與 C 🚫 不要自己建 `pyproject.toml`**——那是 A 的獨佔路徑，自建等於開出第三棵樹。
+   用臨時 venv（見 [Tech-Stack-Plan.md §5](Tech-Stack-Plan.md)）。
+3. **`evidence/types.py` 與 `evidence/policies.py` 由 gate 負責，B 與 C 都不要碰**——兩邊都 import 它們，各搬各的會產生兩份。
+
+---
+
+## 3. 跨階段測試策略
+
+### 3.1 分層
+
+| 層 | 位置 | 網路 | 覆蓋 | 必跑時機 |
+|---|---|---|---|---|
+| Unit | `tests/unit/` | 🚫 禁 | schema、指標（golden）、deadline、Evidence policy/processor、renderer、lint、trust、regime | 每次 commit |
+| Contract | `tests/contract/` | 🚫 禁（`httpx.MockTransport` / Bedrock stub） | 每個 adapter 的成功／timeout／HTTP error／malformed／空資料；provider 錯誤正規化 | adapter/LLM 的 commit |
+| Integration | `tests/integration/` | 🚫 禁 | 垂直切片、fork-join、partial result、降級、run mode、provenance、四項 artifacts | 每次合併 |
+| Acceptance | `tests/acceptance/` | 預設禁 | 雙資產 Gold、deadline 預算、artifact 契約 | Day 2 freeze 前 |
+| Live | `tests/live/` | **明確 opt-in** | 真實 provider、真實 Bedrock、CSV/Binance overlap、部署 smoke | 手動 |
+
+**預設的 `python -m pytest` 絕對不能碰外網。** Live test 必須同時具備 `@pytest.mark.live`
+**與** `RUN_LIVE_TESTS=1`，缺任一條件就 skip。
+
+### 3.2 只能由人驗證的部分（人工檢查清單）
+
+以下無法 headless 驗證。清單直接寫在這裡，S0／S3／S11 的 Definition-of-Done 就以它們為簽核依據；
+🚫 不另開測試指南文件。每一項只有兩種結果：**pass** 或 **fail + 一句實際觀察**，
+🚫 不接受「應該可以」。簽核結論寫回該階段的現況區塊。
+
+**S0 — 服務可用性 preflight（產出是紀錄，不是測試案例）**
+
+- [ ] `aws bedrock list-foundation-models` 在目標 region 實際列出可用 model ID（🚫 不憑印象填 ID）。
+- [ ] 以最小、不含敏感內容的 prompt 完成**一次真實 Converse 結構化輸出**呼叫並取回結果。
+- [ ] optional fallback 模型獨立探測一次；不可用**不阻塞** Bronze 或 Silver。
+- [ ] 研究來源候選只探測可用性；designated baseline research source 已指定。
+- [ ] `docs/rehearsals/service-access-check.md` 記下時間戳／region／model ID／pass-fail
+      與 Python 3.12、Docker、AWS CLI 版本；🚫 不記 token、憑證、response header。
+- [ ] `git ls-files` 不含任何憑證。
+
+**S3 — Streamlit Bronze（瀏覽器與人眼才看得到的部分）**
+
+> **驗證：2026-08-01,以真實瀏覽器（chrome-cdp)驅動 `streamlit_app.py`（HOYA_DATA_DIR 指向官方資料集、無網路/Bedrock/AWS）逐項實測;截圖留存於 PR。**
+
+- [x] 在**斷網、無 AWS 憑證**的環境 `streamlit run streamlit_app.py` 能開起來且無 console error。（health `ok`、頁面渲染無錯）
+- [x] 題目輸入 + 幣種選擇只接受五幣；run mode 選擇器可見。（selectbox 綁 `Asset` 五幣;依 Task 7/278,**第二幣 opt-in 屬 Task 12,Bronze 先停用單幣路徑**;Run mode selectbox 可見）
+- [x] 送出後 run 按鈕**立即停用**;重複點擊不會產生第二次 `ApplicationService` 呼叫。（`form_submit_button(disabled=running)` + `st.session_state["_run_in_flight"]` 再入保護）
+- [x] 進度依**事件**推進,🚫 不是用「經過多久」假裝的動畫。（`ProgressSink` → `st.status` 串流真實 `ExecutionEvent`;Bronze pipeline 不執行 Planner/Research/Arbiter,故只出現實際觸發的 stage:run/market_worker/evidence_processor/artifact/run,非六列固定動畫)
+- [x] `official`／`rehearsal`／`demo` 三種模式在畫面上**一眼可辨**。（`presenter` badge official🔴／rehearsal🟡／demo⚪,單元測試 + 瀏覽器實測;recorded-fallback 常駐警示屬 Silver 範圍,Bronze 純離線不觸發)
+- [x] Report／Evidence／Execution Log 三個分頁都能渲染。（`st.tabs`:📄報告 markdown／🧾Evidence Ledger 顯示 evidence.json／🪵Execution Log 顯示 execution_log.jsonl,皆實測渲染)
+- [x] 四個下載鈕各自下載到正確檔名的檔案,且四份的 `run_id` 與畫面顯示一致。（final_report.md／evidence.json／execution_log.jsonl／run_config.json,同一 run_id)
+- [x] H3 在 UI 上標示為**未實作**。（常駐 caption「🚫 H3 多代理人辯論:未實作(Bronze 範圍外,Future Work)」)
+- [x] 報告內文抽樣:無買賣／加減倉／配置用語;confidence 只出現 `high|medium|low`。（renderer 已接 `advice_lint`;五幣輸出瀏覽器抽樣零禁語;confidence 顯示 LOW)
+
+**S11 — 部署與計時彩排（真實延遲、真實網路、真實牆鐘）**
+
+- [ ] `docker compose up -d` 後 `curl -f http://<host>:<port>/_stcore/health` 通過。
+- [ ] 推上 ECR 的 immutable tag 與 EC2 實際啟動的 tag **逐字相同**。
+- [ ] Binance／CSV 重疊區間（2026-05-01～05-31）五幣 close 差異檢查已跑並留存結果；
+      🚫 不得暗示 CSV 來自 Binance。
+- [ ] 一次**完整 15 分鐘計時**的評審流程彩排：輸入題目 → 觀察進度 → 檢視三分頁 →
+      下載四項 artifacts；記下 run ID、模式、時長、來源缺口與 artifact 路徑。
+- [ ] 第 13 分鐘前四項 artifacts 齊全（實際看時間，不是推論）。
+- [ ] 真實 provider schema 漂移檢查：live rehearsal 中沒有 adapter 因欄位變動而靜默回空。
+- [ ] recorded fallback run 在 UI 與報告都顯示 `run_mode=demo` 與原始取得時間。
+- [ ] rollback 指令實際執行過一次（或明確記錄未驗證）。
+- [ ] secret scan 通過；截圖與錄影不含 `.env`、憑證、API key。
+
+### 3.3 每階段的 Definition-of-Done（統一標準）
+
+一個階段只有在**全部**成立時才算完成：
+
+- [ ] 該階段的 unit / contract / integration 測試**實際跑過**且綠（不是「應該會過」）；
+- [ ] 相關的 regression suite 仍綠（沒弄壞別人已通過的測試）；
+- [ ] `ruff check .` 乾淨；
+- [ ] §2.3 的四條邊界閘門乾淨；
+- [ ] 本階段引入的任何 artifact/log 欄位都能在真實輸出中看到；
+- [ ] 若該階段有人工檢查項，其 checklist 已勾完（S0/S3/S11 用 §3.2 的清單）；
+- [ ] 該階段的**現況區塊已更新**，包含任何刻意的偏離；
+- [ ] `tasks.md` 對應 checkbox 已在同一個 commit 更新。
+
+---
+
+## 4. 階段相依順序
+
+```text
+S0 ──┐                    （S0 不依賴任何人，卻能否決所有人 → 排最前）
+     ├─▶ S1 ─▶ S2 ─▶ S3 ★Bronze ─┬─▶ S4 ─┐                    ┌─▶ S9  ─┐
+S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 ★Silver ─────┤        ├─▶ S10 ★Gold local Exit ─▶ S11
+                                  └─▶ S6 ─┘                    └─▶ S9B ─┘
+```
+
+- ~~**S0 與 S1 可並行**~~ — **兩者皆已完成（2026-08-01），不再是排程因素。**
+- **S4 / S5 / S6 可三路並行**（路徑互不重疊，見 §2.5）；**S5 已完成**。
+- **S2 已完成（PR #12）；S3 Bronze 已完成（2026-08-01)。關鍵路徑現在是 S4 → S8 ★Silver。**
+- **S7 已經完成**，且是在 S1 之前完成的——這是本專案最大的一個順序偏離，見 S7 的現況區塊。
+- **S9（創意層）與 S9B（雙幣比較）互不相依、可並行**，兩者都在 S8 之後、S10 之前的 additive 窗口。
+  兩者都對 Bronze 與 Silver 非阻塞，但都必須在 S10 觸發 Feature Freeze 前完成，
+  否則各自走自己的退場／降級條款。
+
+---
+
+## 5. 各階段
+
+### S0 — 服務可用性 preflight（含**專案史上第一次真實 Bedrock 呼叫**）
+
+> **現況：✅ 已完成（2026-08-01，由 P2 驗證，非原指派的任務 D）。**
+> **全案最高風險項已拆除。** 紀錄在 `p2-etl-mvp/docs/service-access-check.md`。
+> **實測結果：** `us.anthropic.claude-haiku-4-5-20251001-v1:0` @ `us-west-2`，
+> boto3 `bedrock-runtime` `invoke_model`，`python bedrock_smoke.py` → `[OK]`；
+> `python run_agent.py BTC` → 10 篇新聞抽出 30 筆結構化事實。
+> **踩過的坑（有價值，別重踩）：** ① 舊 `claude-3-5-haiku-20241022` 已下架，
+> 回 `ResourceNotFoundException: model version has reached end of life`，改用現役 Haiku 4.5 即通；
+> ② 部分模型需 inference profile，model id 要加 `us.` 前綴；
+> ③ 模型回應被 markdown 圍欄包住會導致抽取 0 筆（commit `6ee4b3e` 修）。
+> **來源可用性：** 主辦 CSV、Binance/OKX spot、資金費率、九家第一手新聞 RSS、Google News、
+> Alternative.me 全部 ✅；Reddit Atom 住宅 IP 可、資料中心 IP 403（降級揭露）；
+> CryptoPanic ⏸ 需 token。
+> **designated baseline research source 已指定：** 第一手新聞 RSS + Google News 依幣種搜尋
+> （免 key、五幣覆蓋、已驗證）；CryptoPanic 取得 token 後可升為主。
+> **剩餘尾巴：** `.env.example` 正式位置待團隊統一（目前根目錄與 `p2-etl-mvp/` 各一份）；
+> S0 紀錄尚未搬進計畫原訂的 `docs/rehearsals/service-access-check.md`。
+
+**目標**：用最小成本證明「外部服務真的可用」，並把結果記成不含秘密的紀錄。
+對應 `tasks.md` Task 0 與 ACTIVE_WORK 的任務 D 第一優先項。
+
+**元件與職責**
+- `.env.example`（修改）— 只加**名稱**：`AWS_REGION`、`BEDROCK_PRIMARY_MODEL_ID`、
+  `BEDROCK_FALLBACK_MODEL_ID`、`CRYPTOPANIC_API_TOKEN`、`ARTIFACT_ROOT`。🚫 永不加值。
+- `docs/rehearsals/service-access-check.md`（新增）— 紀錄表：時間戳 / region / model ID / pass-fail。
+- `docs/evidence/kiro/`、`docs/evidence/`（新增）— 一次成功 Converse 的證據（截圖或去識別的回應摘要）。
+
+**本階段處理的契約詞彙**：[Features.md §5.7](Features.md)（環境變數名稱）。
+
+**設定鍵**：上列五個名稱；`run_config.json` 之後只記它們的**存在布林值**。
+
+**演算法與注意**
+- 每個設定的 Bedrock 模型**各自獨立**探測一次，用最小、不含敏感內容的 prompt。
+- **optional fallback 模型不可用不阻塞 Bronze 或 Silver。**
+- 研究來源候選只探測可用性，🚫 不記錄 token、🚫 不記錄 response header。
+- 在 Silver 驗收前，必須明確指定**哪一個 adapter 是 designated baseline research source**。
+
+**測試**
+- 自動：無（本階段的產出是紀錄，不是測試）。
+- 人工：見 [§3.2 的 S0 清單](#32-只能由人驗證的部分人工檢查清單)。
+
+**退出條件**
+1. 至少一個 Bedrock 模型完成過一次**真實**的 Converse 結構化輸出呼叫，證據已存檔；
+2. `docs/rehearsals/service-access-check.md` 記下 Python 3.12 / Docker / AWS CLI 版本；
+3. designated baseline research source 已指定；
+4. 已重新確認 Platinum / CoinGecko / 五幣矩陣 / H3 / S3 / CloudWatch / ECS 為 post-hackathon Future Work；
+5. `git ls-files` 中沒有任何憑證。
+
+**明確不做**：任何實作。本階段只驗證外部世界，🚫 不寫功能程式碼。
+
+---
+
+### S1 — 凍結共用契約與執行期接縫
+
+> **現況：✅ 已完成（2026-08-01）。1a 與 1b 都已合併進 `main`。**
+> **已實作：** `pyproject.toml`、`models.py`、`config.py`、`clock.py`、`ports.py`、
+> `tests/fakes.py`、`tests/conftest.py`（PR #6 契約、PR #11 執行期接縫）。
+> **Kiro 使用證據：** Task 1a 由 Kiro 從 spec 原生執行，ledger 記在
+> `docs/evidence/kiro/README.md`（含兩輪 Codex 契約審查與誠實記錄的三項流程偏離）。
+> **契約驗收已完成，🚫 不要重做：** 八組下游替身 ↔ 正式契約逐欄比對，
+> **零個欄位在下游存在而契約沒有，且沒有任何改名**。差異全是單向的（契約多出
+> `run_id`／`run_mode`／`analysis_as_of`／`time_range` 等），細節見
+> `.kiro/steering/work-in-progress.md`。
+> **偏離：** 原計畫是「先契約、後推理」，實際是**推理層先完成**（見 S7）。
+> 代價是 `tests/unit/reasoning/_stubs.py` 仍是替身，尚未換成真 `models.py`——
+> 那一輪機械替換仍待排，且該路徑凍結，需 owner 同意。
+> **待辦：** 只剩 `_stubs.py` 替換與 `evidence/types.py` 退場。**已不再阻塞任何人。**
+
+**目標**：讓 `models.py` 成為所有共用契約的唯一擁有者，讓 `ports.py` 成為所有外部面的唯一 Protocol 集合，
+使四個人可以對著同一組型別各自實作。
+
+**元件與職責**（→ [檔案地圖 §4.1](Architecture-FileMap.md)、[§4.10](Architecture-FileMap.md)）
+- `pyproject.toml` — Python 3.12；執行期 `pydantic`/`httpx`/`pandas`/`boto3`/`streamlit`；
+  dev `pytest`/`pytest-asyncio`/`pytest-cov`/`ruff`；marker `integration`/`acceptance`/`live`；src layout + editable install。
+- `models.py` — 全部列舉（`str` 為底）＋全部契約模型，一律 `extra="forbid"`、文字欄位 strip 後不得為空。
+  `EvidenceDraft` 定義為 `EvidenceItem` 減去 processor 指派的欄位（`evidence_id`、`reliability`、
+  `independence_group`、`content_hash`），但保留回指原始來源紀錄的參照。
+- `config.py` — `parse_env() -> Settings`；`sanitized_snapshot() -> RunConfigSnapshot`（optional key 只記布林值）。
+- `clock.py` — `Clock` 實作：`now_utc() -> datetime`、`monotonic() -> float`。
+- `ports.py` — `Clock`、`LLMClient`、`SourceAdapter`、`MarketDataAdapter`、`ResearchSourceAdapter`、
+  `ProgressSink`、`ArtifactStore`、`ToolRegistry`、未來 persistence port。
+- `tests/conftest.py` + `tests/fakes.py` — fixed clock、fake LLM、fake adapter、in-memory artifact/persistence、
+  static fake `ToolRegistry`、in-memory progress sink。**同時把 `tests/contract/conftest.py` 與
+  `tests/unit/reasoning/conftest.py` 的臨時 path bootstrap 收上來並刪掉那兩個檔。**
+
+**關鍵簽章**
+```python
+class LLMClient(Protocol):
+    async def converse_structured(self, *, operation: str, messages: list[dict],
+                                  schema: type[BaseModel], max_tokens: int,
+                                  deadline: float) -> BaseModel: ...
+
+class MarketDataAdapter(Protocol):
+    async def fetch_daily_bars(...) -> SourceResult[list[MarketBar]]: ...
+    async def fetch_snapshot(...) -> SourceResult[MarketSnapshot]: ...
+
+class ResearchSourceAdapter(Protocol):
+    async def fetch(...) -> SourceResult[list[RawSourceRecord]]: ...
+
+class ApplicationService(Protocol):
+    async def run(self, request: AnalysisRequest,
+                  progress: ProgressSink | None = None) -> RunSummary: ...
+```
+
+**本階段處理的契約詞彙**：[Features.md §5.1](Features.md)（輸入契約）、[§5.2](Features.md)（全部列舉與 ID 格式）、
+[§5.4](Features.md)（confidence 上限，作為驗證器）、[§5.7](Features.md)（環境變數名稱）。
+
+**設定鍵**：`AWS_REGION`、`BEDROCK_PRIMARY_MODEL_ID`、`ARTIFACT_ROOT`（必要）；
+`BEDROCK_FALLBACK_MODEL_ID`、`CRYPTOPANIC_API_TOKEN`、`HTTP_CONNECT_TIMEOUT_SECONDS`、
+`HTTP_READ_TIMEOUT_SECONDS`、`MAX_EVIDENCE_FOR_ARBITER`（硬上限 30）、`ALLOW_RECORDED_DEMO_FALLBACK`、
+`LOG_LEVEL`（選用）。
+
+**演算法與注意**
+- **欄位名必須在 Python / JSON / prompt / fixture / test 之間完全一致**——這是欄位漂移最容易發生的一步，
+  所以 Task 1 才被切成 1a（資料契約）+ 1b（執行期接縫）兩次執行。
+- 明確拒絕：無效資產、naive datetime、**已廢的 `fetched time` / `fetched_time` 欄位名**、
+  `EvidenceItem` 上出現任何 stance 欄位、Link 上出現三個列舉以外的 stance、cache metadata 不一致
+  （`is_cached=false` 卻有 `cache_time`）、`fact` 卻帶 `based_on_claim_ids`。
+- R16 型別（`TrustScorecard` 五個面向子模型、`MarketRegime`、`InvalidationCondition`）**在這一步就定義**，
+  即使 S9 才用——後補會動到已凍結的 `AnalysisResult`。
+- 固定 ordinal 映射也在這裡測：`strong` independence 需 ≥3 distinct groups。
+
+**測試**
+- 自動：`tests/unit/test_models.py`（先寫失敗版）、`tests/unit/test_config.py`、port 契約測試。
+  ```bash
+  python -m pip install -e ".[dev]"
+  python -m pytest tests/unit/test_models.py -q
+  python -m pytest tests/unit tests/contract -q
+  ruff check .
+  ```
+- 人工：契約驗收對照 `docs/ai/P3_CONTRACT_EXPECTATIONS.md`（reasoning 層實際 import 的欄位名清單），
+  約 15 分鐘；確認每一個名稱都在 `models.py` 裡且拼字相同。
+
+**退出條件**
+`pip install -e ".[dev]"` 成功；`test_models.py` 全綠；**S7 既有的 157 個測試仍然全綠**
+（證明新契約沒弄壞下游消費者）；`reasoning/` 只剩一套 LLM 邊界。
+
+**明確不做**：任何業務邏輯、任何 adapter 實作、把 `evidence/types.py` 立刻刪掉
+（刪除留到 S5/S6 各自的機械替換那一步，避免一次動到兩個人的分支）。
+
+---
+
+### S2 — Fixture 垂直切片與 artifact 契約
+
+> **現況：✅ 已完成；PR #18 已完成 canonical seam swap。**
+> `application.py`、artifact store、renderer 與 fixture vertical slice 均在 `main`；
+> `_provisional_seams.py` 與 bridge test 已刪除，runtime imports 已指向 canonical models/ports。
+
+**目標**：在完全沒有網路、Bedrock 與 AWS 憑證的情況下，讓一個 fixture 請求穿過**真正的**
+`ApplicationService` 並產出四份可解析的 artifacts。這是 [Tech-Stack-Plan.md §7](Tech-Stack-Plan.md) 的**風險切片 A**。
+
+**元件與職責**（→ [檔案地圖 §4.1](Architecture-FileMap.md)、[§4.7](Architecture-FileMap.md)）
+- `application.py` — 驗證 request、凍結 `analysis_as_of`、造 `run_id`、建 run 目錄、組裝相依、回 `RunSummary`。
+- `reporting/artifacts.py` — `write(name, payload)`（同目錄暫存檔 → flush → `os.replace`）、
+  `append_event(ExecutionEvent)`、`finalize(terminal_state, checksums)`。
+- `reporting/renderer.py` — `render(result, ledger) -> str`（繁中 11 段）＋ insufficient-data 的 deterministic fallback。
+- `tests/fixtures/vertical_slice/{evidence.json,analysis_result.json}`。
+
+**本階段處理的契約詞彙**：[Features.md §5.5](Features.md)（四項固定 artifacts 與各自欄位）——
+這是本階段的核心引用；另引 [§5.1](Features.md)（`run_mode=rehearsal`）。
+
+**設定鍵**：`ARTIFACT_ROOT`。
+
+**橫切新增項**：本階段第一次寫出 `run_config.json` 的 schema/prompt/policy 版本欄位、
+`execution_log.jsonl` 的完整事件形狀、`evidence.json` 的 ledger 容器。**這三個形狀之後只准加欄位，不准改名。**
+
+**演算法與注意**
+- **寫入順序就是韌性設計**：`run_config.json` 必須在**任何**網路呼叫之前寫出。
+- 原子寫入用同目錄暫存檔——跨目錄 rename 在某些檔案系統上不是原子的。
+- **缺檔揭露契約**（`design.md §12.1`，這是最容易漏測的一段）：
+  - partial/degraded 但目錄可寫 → **四份都要有**，並記錄限制、缺失能力與 terminal state；
+  - 某一份寫不出來 → 在 stdout **與所有仍可寫的** `execution_log.jsonl` / `run_config.json`
+    指名**確切的**缺檔檔名與寫入失敗原因；
+  - 目錄完全不可寫 → stdout 列出全部四個缺檔檔名、寫入失敗與 terminal state。
+    **🚫 系統絕不宣稱某個沒寫出來的 artifact 存在。**
+- 報告的 11 個段落見 [Features.md §3](Features.md)；🚫 renderer 不得加入 fixture 以外的事實。
+  本階段是單幣 fixture，所以只有 11 段；雙幣的第 12 段「跨幣比較」屬 S9B。
+
+**測試**
+- 自動：
+  ```bash
+  python -m pytest tests/unit/reporting tests/integration/test_vertical_slice.py -q
+  ```
+  必含：11 段渲染、Evidence ID 出現在報告中、confidence 只用 `high|medium|low`、
+  原子寫入、partial/degraded 四份齊全、**單一寫入失敗的指名揭露**、目錄完全不可寫的 stdout 揭露。
+- 人工：無（本階段完全可 headless 驗證——這正是它先於 S3 的原因）。
+
+**退出條件**
+無網路的 fixture 路徑產出四份可解析的 artifacts、共用一個 `run_id`、誠實標為 `rehearsal`；
+報告中沒有 fixture 以外的事實；缺分析時走 deterministic fallback。
+
+**明確不做**：Streamlit（S3）、真實 adapter（S5/S6）、編排與 deadline（S4）、R16 區塊（S9）。
+
+---
+
+### S3 — Streamlit Bronze 檢查點 + 禁語 lint + 容器殼 ★ **Bronze Exit**
+
+> **現況：✅ 已完成（2026-08-01）。整合於 post-S2-swap `main`。**
+> **已落地：** `src/hoya_agent/ui/{__init__,presenter,streamlit_app}.py`、
+> `src/hoya_agent/reporting/advice_lint.py`(禁語 lint,純字串比對,已接進 `application.render(..., lint=advice_violations)`
+> —— 補上先前 renderer 未帶 lint 的缺口)、`Dockerfile` + `docker-compose.yml`(`python:3.12-slim`,打包官方資料集、Streamlit healthcheck)。
+> **驗證:** 全套 **593 tests 綠**、`ruff check .` 乾淨;離線 Bronze Exit 通過(Streamlit 提交一次 run → 四份 artifact 產出並可下載、標示 rehearsal/demo);
+> §3.2 人工清單以 **chrome-cdp 真實瀏覽器**逐項實測完成;Docker image 建置(856MB)+ 容器內完整 end-to-end run 亦驗過(超出 Bronze 要求)。
+> **輸出格式:** 報告為 **Markdown** `final_report.md`(非原型的 HTML)。商業邏輯在 `application.py`／`presenter.py`,🚫 不進 Streamlit callback。
+> **指派:** 任務 D。**相依:** S2 ✅。
+
+**目標**：讓評審能在瀏覽器裡完成一次完整的離線 run 並下載四份 artifacts。**這是 Bronze 驗收閘門。**
+
+**元件與職責**（→ [檔案地圖 §4.7](Architecture-FileMap.md)、[§4.8](Architecture-FileMap.md)）
+- `reporting/lint.py` — `check(text) -> list[LintViolation]`；純字串比對禁語表。
+- `ui/presenter.py` — `to_view(summary, events) -> RunView`：stage 進度、成功/失敗來源、
+  degradation notes、terminal state、run-mode 標籤、**H3-未實作**狀態、recorded-fallback 警示。
+- `streamlit_app.py` — 單一畫面；run 中停用按鈕（確保一次提交＝一次 `ApplicationService` 呼叫）。
+- `Dockerfile`、`.dockerignore`、`compose.yaml` — **Bronze 通過之後才做**；non-root、環境變數帶秘密、
+  Streamlit healthcheck；🚫 不加 FastAPI。
+
+**本階段處理的契約詞彙**：[Features.md §5.1](Features.md)（三種 run mode 的視覺辨識）、
+[§5.2](Features.md)（`Asset` 五幣限制、stage state 對應到六列進度）、
+[§5.5](Features.md)（四個下載鈕的檔名）。
+
+**設定鍵**：`ARTIFACT_ROOT`、`ALLOW_RECORDED_DEMO_FALLBACK`、`LOG_LEVEL`。
+
+**演算法與注意**
+- 禁語表至少涵蓋：建議買入、建議賣出、加倉、減倉、做多、做空、資產配置、下單、
+  以及它們的常見變體。**lint 永遠最後跑**，即使前面全部通過。
+- UI 只從 `ProgressSink` 事件取狀態，🚫 不得用「經過多久」推斷成功，🚫 不得檢視內部 task 物件。
+- 五幣輸入 allowlist 與一至二幣契約要保留，但 🚫 不做五幣矩陣、不做校準流程。
+  **第二幣的加選控制在此階段先停用**——雙幣比較的行為屬 S9B，Bronze 只驗單幣路徑。
+
+**測試**
+- 自動：
+  ```bash
+  python -m pytest tests/unit/ui tests/integration/test_ui_application_contract.py -q
+  docker compose config
+  ```
+- **人工（必要）：** [§3.2 的 S3 清單](#32-只能由人驗證的部分人工檢查清單)。
+  瀏覽器渲染、下載鈕、三模式視覺辨識、進度列即時性、重複提交防護都只能人工驗。
+
+**退出條件（★ Bronze Exit）**
+在**無網路、無 Bedrock、無 AWS 憑證**的環境下，從 Streamlit 提交一次 run，
+產出並下載全部四份 artifacts，標示為 `rehearsal` 或 `demo`。
+Docker 支援不重新定義 Bronze 閘門——**Bronze 不要求 Docker 驗收**。
+
+**明確不做**：任何 live 呼叫、任何 UI polish（`product.md` 明列 UI polish 優先序最低）。
+
+---
+
+### S4 — Deadline-aware fork-join 編排
+
+> **現況：🟡 核心實作已在 PR #18 合併，完整退出 gate 尚未通過。**
+> `DeadlineAwarePipeline`、`deadline.py`、`run_state.py`、720 秒 analysis hard stop
+> 與 Market/Research fork-join 已落地；仍缺規劃中的 fake-clock、cancellation、fork-join 專項測試。
+
+**目標**：讓時間與狀態成為一個地方的決定。
+
+**元件與職責**（→ [檔案地圖 §4.2](Architecture-FileMap.md)）
+- `orchestration/deadline.py` — `DeadlineManager(clock, total_seconds)`：
+  `remaining(stage) -> float`、`deadline_for(stage) -> float`、短 deadline 的比例縮放
+  （保留末 20%、可能時至少 60 秒給 finalize）。
+- `orchestration/run_state.py` — stage state 機、`WorkerResult.status` → lifecycle 映射、progress 發布。
+- `orchestration/pipeline.py` — stage 順序、`asyncio.gather(..., return_exceptions=True)`、
+  逾時取消並 await、跳過順序。
+
+**本階段處理的契約詞彙**：[Features.md §5.6](Features.md)（deadline 預算表——本階段是它的實作者）、
+[§5.2](Features.md)（stage state、terminal run state、`WorkerResult.status`）。
+
+**演算法與注意**
+- **`time.monotonic()` 算 budget，UTC 只用於落盤時間戳。** 混用是最常見的 bug。
+- 逾時後**先取消、再 await** 所有未完成的 child task，**然後**才進 Evidence Processor——
+  否則會留下 pending task 汙染下一個 stage。
+- **🚫 絕不吞掉 `asyncio.CancelledError`**；adapter 必須釋放 HTTP response 並重新拋出。
+- 狀態映射：`completed→completed`、`partial→degraded`、`failed→failed`、取消→`cancelled`。
+- **降級的分支 🚫 不得丟棄已完成的手足分支的輸出。**
+- 跳過順序固定為 **H3 → optional context adapter → 反方訊號二次搜尋**
+  （H3 在 MVP 永遠是停用的，所以實際上從 optional context 開始跳）。
+- 測試用 fake clock / fake sleeper，**🚫 不得真的 sleep 45 秒**。
+
+**測試**
+- 自動：
+  ```bash
+  python -m pytest tests/unit/orchestration tests/integration/test_fork_join.py -q
+  ```
+  必含：兩個分支在時間上**確實重疊**；一個分支逾時後另一個的結果仍進 Ledger；
+  stage deadline 取消 pending 呼叫；取消映射到 `cancelled`；terminal state 有寫進 log 與 config。
+- 人工：無。
+
+**退出條件**：單一分支逾時後仍帶著手足的完成 Evidence 抵達 Renderer 且標為 degraded；
+terminal state 由編排層決定並輸出，**🚫 不由 UI 推斷**。
+
+**明確不做**：cancellation UI、database、queue、持久化 job record、遠端編排服務。
+
+---
+
+### S5 — Deterministic 市場證據層
+
+> **現況：✅ 已整合進 `main`（2026-08-01，PR #8）。**
+> **已實作：** `src/hoya_agent/data/{indicators,market_series,market_worker,price_analysis,regime,text_clean,types}.py`
+> 與 `src/hoya_agent/adapters/{organizer_csv,binance}.py`，import 已改成 `from hoya_agent.…`。
+> **兩項待裁決已定案：** `price_analysis.py` 保留為獨立模組並入 canonical tree；
+> `okx.py`、`reddit.py`、`coingecko.py`、`derivatives.py`、`google_news.py` **不搬**
+> （PR #8 移除超出 MVP 的五個來源共十個檔，對齊 `evidence-contracts.md`）。
+> **待辦：** 型別仍是 `data/types.py` 的 provisional dataclass，尚未換成 `models.py`；
+> 這一輪機械替換與 `evidence/types.py` 退場要一起做。
+> **指派：** 任務 B。
+
+**目標**：把 OHLCV 變成可回溯的數字。
+
+**元件與職責**（→ [檔案地圖 §4.3](Architecture-FileMap.md)、[§4.4](Architecture-FileMap.md)）
+- `data/market_series.py` — UTC 解析、剔除未完成日 K、CSV↔Binance 合併與 **2026-06-01 切換點**。
+- `data/indicators.py` — 報酬、已實現波動、最大回撤、量能變化、rolling z-score、range position。
+- `data/market_worker.py` — `execute(plan, ctx) -> WorkerResult`；每個指標 → 一筆 high-reliability `EvidenceDraft`。
+- `adapters/organizer_csv.py`、`adapters/binance.py`。
+
+**本階段處理的契約詞彙**：[Features.md §5.3](Features.md)（`high` 那一列的前兩項）、
+[§5.2](Features.md)（`SourceType=market`）；市場指標的規範性定義見 `evidence-contracts.md §15`。
+
+**演算法與注意**
+- 報酬 `close_t / close_(t-n) - 1`；回撤 `close_t / cummax(close)_t - 1`，最大回撤取 window 最小值；
+  波動要**宣告** return 頻率與 window（若年化須標示年化因子）。
+- **volume z-score 只與該資產自身的 rolling base-volume 歷史比。**
+- **🚫 跨幣不得直接比較 base-asset volume**；跨幣只能用報酬、波動、相對變化、各自 z-score，
+  或**同一 provider、同一期間**的 quote volume。
+- **缺 bar → 該指標 unavailable，🚫 不 forward-fill。**
+  （實測顯示主辦方資料集 0 缺漏、0 NaN，所以這條主要防的是 live API 的缺口。）
+- CSV 用來源名 `public_market_data`、group `organizer-public-market-data`，
+  **🚫 不得推定其上游是 Binance 或任何特定交易所。**
+- baseline live market source 失敗 → typed partial/degraded，**🚫 不得宣稱切到第二個 live provider。**
+- 只保留呈現時才做 rounding；內部保留足以重算的精度。
+- **`market_worker.py` 🚫 不得有任何到 `LLMClient` 的 import 或呼叫路徑**（這是一條可測的斷言）。
+
+**測試**
+- 自動：
+  ```bash
+  python -m pytest tests/unit/data tests/contract/test_market_adapters.py -q
+  ```
+  golden fixture 必須是**可手算**的 close/volume 序列 + 明確 expected value；
+  浮點用 `pytest.approx` 並指定容許誤差。另含跨幣 base-volume 比較的**拒絕**測試。
+- 人工：CSV/Binance overlap 校準（2026-05-01～05-31 收盤差異）屬 live rehearsal，見 §3.2 的 S11 清單。
+
+**退出條件**：golden 值與 UTC 界線通過；baseline 失敗回 typed partial/degraded；
+CSV↔live 切換點被明確表示且帶 `fetched_at`；`market_worker` 無 LLM 路徑。
+
+**明確不做**：CoinGecko、五幣完整驗證矩陣、per-coin 校準、R16 的 regime（那是 S9）。
+
+---
+
+### S6 — 研究 adapters 與 Evidence Processor
+
+> **現況：🟡 大部分已整合進 `main`（PR #8），仍缺三塊。**
+> **已在 `main`：** `evidence/{policies,types,processor,evidence_json}.py`、
+> `adapters/{_assets,cryptopanic,rss,alternative_me}.py`、`data/text_clean.py`。
+> **仍缺：** ① `reasoning/research_extractor.py` **尚未搬進 `src/`**——多事實抽取
+> （relevance filtering、一篇文章 → 多個 EvidenceDraft）目前只存在於 `p2-etl-mvp/`，
+> 而 `src/hoya_agent/reasoning/research_agent.py` 是 S7 的另一套實作，**兩者尚未合併**；
+> ② `evidence/ledger.py` 未寫；③ `adapters/official.py` 未寫。
+> **`reddit.py` 已定案不搬**（PR #8 一併移除）。
+> **指派：** 任務 C。**相依：** S1 ✅、S5 ✅（皆已滿足，可立即開工）。
+
+**目標**：把新聞與社群的雜訊變成無立場、可查證、去重過的證據。
+
+**元件與職責**（→ [檔案地圖 §4.4](Architecture-FileMap.md)、[§4.5](Architecture-FileMap.md)）
+- `adapters/{cryptopanic,rss,official,alternative_me}.py`、`adapters/_assets.py`。
+- `evidence/ledger.py` — ID 配發、排序、排名、`top(n)`。
+- `evidence/processor.py` — `design.md §9` 的八步 deterministic 序列。
+- `evidence/text_clean.py`（由 P2 的 `data/text_clean.py` 搬來）。
+
+**本階段處理的契約詞彙**：[Features.md §5.3](Features.md)（**靜態 reliability 表——本階段是它的實作者**）、
+[§5.2](Features.md)（`SourceType`、`Reliability`、`Stance`）、[§5.4](Features.md)（confidence 上限的輸入端）。
+
+**設定鍵**：`CRYPTOPANIC_API_TOKEN`（缺 → 停用該 adapter 而非讓 run 失敗）、
+`HTTP_CONNECT_TIMEOUT_SECONDS`、`HTTP_READ_TIMEOUT_SECONDS`。
+
+**演算法與注意**
+- **所有 API / RSS / 研究 payload 一律視為 untrusted data。** 內嵌的指令或政策式文字只能當**引用資料**保存，
+  🚫 不得改寫系統政策、deadline、token 上限、工具/網域 allowlist 或 artifact 契約。
+- **外部呼叫前**就拒絕未在 allowlist 的 URL / host / provider / operation；
+  並驗證 ingestion **不會**變更 static `ToolRegistry`。
+- 45 秒 per-call timeout、最多一次受 deadline 約束的 retry；
+  缺源或被拒的來源正規化成 typed degradation/gap，**🚫 不讓例外穿過 port**。
+- **optional adapter 只在 baseline 路徑穩定後才跑，且其失敗 🚫 不得讓 Silver 失敗。**
+- CryptoPanic 的 `independence_group` 用**原始發布者網域**（不是 `cryptopanic.com`）；
+  但未實際取得原頁時 reliability 仍是 `low`。
+- Fear & Greed：`asset=null`、`source_type=social`、`reliability=low`、group `alternative.me`；
+  stale 標記但**不再往下降**；**🚫 不得單獨支撐單幣結論**。
+- `content_hash` 只涵蓋正規化後的內容，**排除** source name / URL / 轉載時間戳，
+  好讓 byte-equivalent 轉載塌縮。🚫 精確比對，不做模糊。
+- 缺 `published_at` → 保留 `null` + 揭露限制，**🚫 不捏造**；
+  🚫 `fetched_at` 不得被用來暗示內容比其來源時間新。
+- material conflict 只在「同一 claim、雙方 reliability ≥ medium、來自不同 independence group」時成立。
+
+**測試**
+- 自動：
+  ```bash
+  python -m pytest tests/contract/test_research_adapters.py tests/unit/evidence -q
+  ```
+  每個 adapter 至少覆蓋：成功／timeout／HTTP error／malformed payload／空資料。
+  另含：注入式文字被當引用資料而非控制輸入、allowlist 不可變更、
+  official mode 拒絕 fixture/recorded、轉載不算獨立來源。
+- 人工：無（provider schema 漂移的驗證在 S11 的 live rehearsal）。
+
+**退出條件**：designated baseline research adapter 能產出正規化、schema-valid 的 Evidence；
+optional 來源失敗非阻塞；重複轉載不被算成獨立來源；缺源產生明確 gap 而不是編造事實。
+
+**明確不做**：近似/語意去重、動態 reliability、鏈上/宏觀 adapter、Trust Scorecard（S9）。
+
+---
+
+### S7 — Bounded Planner / Research Agent / Arbiter ✅
+
+> **現況：✅ 已完成並凍結。**
+> **已實作：** `adapters/bedrock.py`（371 行）、`reasoning/{planner,research_agent,arbiter,conflict_extension,prompt_library}.py`、
+> `prompts/{planner,research-extraction,arbiter}-v1.md`、`tests/contract/test_bedrock_client.py` 與
+> `tests/unit/reasoning/`（5 檔）。已合併進 `main`（gate `fc517e7`）。
+> `main` 現為 **598 passed，零失敗**（2026-08-01 實跑於 `b84622c`，Python 3.12.13 + 完整 dev 依賴）。
+> **⚠️ 已測到的與尚未測到的：** 契約測試是對著 **Bedrock stub** 跑的，而 stub 不做 botocore
+> 的參數驗證。Bedrock 本身已由 P2 驗證可用，但**經 `adapters/bedrock.py` 的 `converse` +
+> forced `toolConfig` 取回結構化輸出，仍是零次**（→ S0）。
+> 「reasoning 完成」不等於「這條路可用」。
+> **偏離 ①：順序。** 本階段在 S1（契約凍結）**之前**完成，用 `evidence/types.py` 的 provisional dataclass
+> 與 `tests/unit/reasoning/_stubs.py` 頂著。這是刻意的（讓 P3 不必等人），代價是 S1 後要做一輪機械替換並刪 `_stubs.py`。
+> **偏離 ②：曾經有兩套 LLM 邊界。** P2 另寫了 `reasoning/llm_client.py` + `gpt_client.py`。
+> **已裁決：留 `adapters/bedrock.py`，刪 P2 那兩個**（見 [檔案地圖 §4.6](Architecture-FileMap.md)）。
+> **凍結路徑（改動前先找 owner）：** `adapters/bedrock.py`、`reasoning/`、`prompts/`、
+> `tests/contract/`、`tests/unit/reasoning/`。
+> **指派：** 原 P3；後續型別替換併入任務 A，多事實抽取併入任務 C。
+
+**目標**：在固定 schema 與固定次數的 LLM 呼叫內產生分層、可回溯、保留反方的主張。
+
+**元件與職責**（→ [檔案地圖 §4.6](Architecture-FileMap.md)）
+
+| 元件 | 關鍵簽章／常數 |
+|---|---|
+| `adapters/bedrock.py` | `BedrockLLMClient.converse_structured(...)`、`effective_timeout()`、`is_retryable_error()`、`build_repair_messages()`、`drain_events()`；`MAX_CALL_TIMEOUT_SECONDS=45.0`、`STRUCTURED_TOOL_NAME` |
+| `reasoning/planner.py` | `Planner.run()`、`plan_violations()`、`default_plan_payload()`；`DEFAULT_LOOKBACK_DAYS=14`、`MAX_PLANNED_STEPS=8` |
+| `reasoning/research_agent.py` | `ResearchAgent.run()`、`looks_like_injection()`；`INJECTION_MARKERS`、`STATUS_{COMPLETED,PARTIAL,FAILED}` |
+| `reasoning/arbiter.py` | `select_evidence()`、`build_evidence_payload()`、`detect_cycle()`、`structural_violations()`、`apply_confidence_caps()`、`Arbiter.run()`、`_fallback()`；`MAX_EVIDENCE_FOR_ARBITER=30` |
+| `reasoning/conflict_extension.py` | `DisabledConflictExtension.evaluate()`；`ARBITER_ROUTE`、`DISABLED_STATUS`、`UNIMPLEMENTED_LABEL` |
+| `reasoning/prompt_library.py` | `load_prompt()`、`cached_prompt()`、`prompt_versions()`、`Prompt.version_label` |
+
+**本階段處理的契約詞彙**：[Features.md §5.2](Features.md)（`ClaimType`、`Stance`）、
+[§5.4](Features.md)（**confidence rubric 與 deterministic 上限——`apply_confidence_caps()` 是它的實作者**）。
+
+**設定鍵**：`BEDROCK_PRIMARY_MODEL_ID`、`BEDROCK_FALLBACK_MODEL_ID`、`MAX_EVIDENCE_FOR_ARBITER`（硬上限 30）。
+
+**演算法與注意**
+- Arbiter 的證據挑選順序：**先保全部 high reliability → 再保 material-conflict pair →
+  剩餘名額以最大化 distinct independence group 填滿**。
+- 送給 LLM 的只有 **ID + normalized fact**，🚫 不送無界原始網頁。
+- 一次生成 + **最多一次** repair（共用同一 stage deadline）→ 仍失敗則 `_fallback()`。
+- 備援模型**只**用於可重試的可用性/節流失敗，且仍在同一 stage deadline 內。
+- log 只記 model ID、operation、latency、attempt、token usage、**prompt 版本**；
+  🚫 永不記 prompt 全文、秘密、chain-of-thought。
+
+**測試**（已跑過）
+```bash
+python -m pytest tests/contract/test_bedrock_client.py tests/unit/reasoning -q
+```
+- 人工：**S0 的真實 Bedrock 呼叫**——這是本階段唯一還沒被驗證的部分。
+
+**退出條件**（已達成，但 S0 是後補的必要條件）
+Arbiter 由 fake LLM 產出 schema-valid `AnalysisResult`；malformed 輸出 repair 一次後走 deterministic fallback；
+prompt/schema 版本可供 run config 使用；Research Agent 逃不出靜態 tool plan；
+H3 不做任何 Bull/Bear/Judge 呼叫。
+
+**明確不做**：H3 實作、寫 artifact（`reasoning/` 永遠不寫檔）。
+
+---
+
+### S8 — H2-Lite 整合與降級路徑 ★ **Silver Exit**
+
+> **現況：🟡 離線核心完成，Silver live gate 尚未通過。**
+> PR #18 已接通 canonical seams、deadline-aware H2-Lite、降級與 artifacts；
+> `scripts/verify_s8_s9_s9b.py` 離線通過。仍需一次 schema-valid live Bedrock run
+> 同時走 designated baseline market/research，以及獨立 deterministic fallback acceptance。
+
+**目標**：把六個 stage 接成一條真的會跑的 pipeline，並讓每一種失敗都有被測過的降級路徑。
+
+**元件與職責**：修改 `application.py`、`orchestration/pipeline.py`、`reporting/artifacts.py`；
+新增 `tests/integration/test_{h2_lite_pipeline,degradation,run_modes,provenance}.py`、
+`tests/live/test_{live_sources,bedrock_access}.py`。
+
+**本階段處理的契約詞彙**：全部——本階段是第一次讓 [Features.md §5](Features.md) 的每一張表同時生效。
+
+**演算法與注意**
+- 只接 typed same-process port（`SourceAdapter`、static `ToolRegistry`、`ProgressSink`、本機 `ArtifactStore`）。
+- **每個 stage 之後都要發 progress event**，並保持增量 artifact。
+- **Silver 需要兩個獨立的檢查，缺一不可：**
+  1. 一次使用 designated baseline market **與** research 路徑、且產出 **schema-valid Bedrock 結果**的 live run；
+  2. **另一次**強制 Bedrock 失敗、走 deterministic fallback 且誠實標示的降級測試。
+  **🚫 fallback-only 執行不滿足 Silver。**
+- 失敗注入必須覆蓋：market timeout、research timeout、baseline 來源失敗、外部來源全滅、
+  optional provider 失敗、無效 Evidence 進場、Arbiter repair 後仍失敗、時間驅動的 optional stage 跳過。
+- provenance 測試：報告裡**每一個**市場數字與 conclusion link 都要能解析到 Ledger Evidence；
+  每一個 inference/conclusion 依賴都要能回溯到 fact。
+- run mode 測試：`official` 拒 fixture；`rehearsal` 允許 deterministic fixture；
+  `demo` 可見地標記 recorded；stale/missing/mock/degraded Evidence 全部揭露。
+
+**測試**
+```bash
+python -m pytest tests/unit tests/contract tests/integration -q
+ruff check .
+# 另外手動跑（opt-in）：
+python -m pytest tests/live/test_live_sources.py tests/live/test_bedrock_access.py -m live -q
+```
+- 人工：live Silver 的部分見 [§3.2 的 S11 清單](#32-只能由人驗證的部分人工檢查清單)。
+
+**退出條件（★ Silver Exit）**
+Bronze 仍綠；一次單幣 live run 經兩條 baseline 路徑產出 schema-valid Bedrock 結果；
+**另有**一次 deterministic fallback/降級測試通過；optional 來源失敗非阻塞；
+所有被接受的 claim 仍可回溯到 Evidence；artifact 失敗遵守揭露契約。
+
+**明確不做**：R16（S9）、雙資產驗收（S10）、部署（S11）。
+
+---
+
+### S9 — 創意層：信任提煉與市場洞察（Requirement 16）
+
+> **現況：✅ 離線功能完成。**
+> `evidence/trust.py`、canonical regime/unavailable、Evidence-backed invalidation 與 renderer
+> 已由 PR #18 合併並通過離線驗收；完整 repository pytest/Ruff 仍屬全案 gate。
+
+**目標**：把既有的嚴謹度「顯影」成評審一眼看得懂的東西，而**不**變成第二個真相來源。
+
+**元件與職責**（→ [檔案地圖 §4.3](Architecture-FileMap.md)、[§4.5](Architecture-FileMap.md)、[§4.7](Architecture-FileMap.md)）
+- `evidence/trust.py` — 純函數 `(ledger, links, conclusions) -> TrustScorecard[]`；🚫 無網路、無 LLM、無檔案系統。
+- `data/regime.py` — `classify(bars, thresholds) -> MarketRegime`。
+- 修改 `data/market_worker.py`（發出 regime 與門檻 Evidence）、`models.py`、
+  `reporting/renderer.py`、`reasoning/arbiter.py` + `prompts/arbiter-v1.md`。
+
+**本階段處理的契約詞彙**：[Features.md §5.2](Features.md) 的 `TrustLevel`、`RegimeLabel`、`InvalidationOperator`；
+規範性映射在 `evidence-contracts.md §16`。
+
+**演算法與注意**
+- **Trust Scorecard 的固定映射**：`source_independence` — `strong` 需 ≥3 distinct groups、`moderate`=2、
+  `weak`=1、`unavailable`=0；`source_diversity` 同理但看 distinct `source_type`；
+  `consistency` — 有 `ConflictIndicator` 就是 `weak`（硬上限），否則 `opposing_count==0` 為 `strong`、其餘 `moderate`；
+  `freshness` — 最新支持證據在設定的新鮮窗內且無 stale 為 `strong`、有關鍵 stale 為 `weak`、
+  其餘 `moderate`、無可用時間為 `unavailable`。
+- **只為 `conclusion` 產生 scorecard。** 標了 `strong` independence 卻只連到 <2 個 group 是**驗證錯誤**，不是警告。
+- **Market Regime 判定順序（先中先贏，全部對該資產自身 rolling 歷史）：**
+  ① `realized_vol_pctile >= high_vol_pctile` → `high_volatility`；
+  ② `abs(return_window) >= trend_return_abs_min` → `trending_up`/`trending_down`（看正負號）；
+  ③ `abs(return_window) <= range_return_abs_max` → `range_bound`；④ 其餘 → `mixed`。
+- regime 打包成 `reliability=high`、`source_type=market` 的 `EvidenceItem`，
+  **保留 metrics 與 thresholds**（同時進 `run_config.json`）；🚫 LLM 不得指派或改寫。
+- 量化 invalidation：`threshold` 必須**等於**被引用的 deterministic `EvidenceItem` 攜帶的值；
+  `basis_evidence_id` 必須能在 ledger 解析。**🚫 LLM 不得自造數字。** 無法量化才退回純文字。
+- **任何面向/標籤/門檻算不出來 → 標 `unavailable` + 揭露原因，🚫 不編造，
+  且 🚫 不得阻塞四項 artifacts、Bronze 或 Silver。**
+- scorecard 用 ordinal pips + 計數 + 一行理由呈現，**🚫 不用單一未校準百分比**。禁語 lint 仍最後跑。
+
+**測試**
+```bash
+python -m pytest tests/unit/evidence/test_trust.py tests/unit/data/test_regime.py \
+                tests/unit/reporting/test_creativity_render.py -q
+ruff check .
+```
+golden 測試要用**可手算**的 OHLCV fixture；驗證 coin-agnostic（門檻用各資產自身歷史）
+與缺 bar → `label="unavailable"`。
+
+**退出條件**：scorecard / regime / 量化 invalidation 都是 deterministic、coin-agnostic、
+與 confidence 一致、無 LLM 自造數字、無投資建議、無未校準機率，
+且缺資料時明確降級為 `unavailable` 而不阻塞核心閘門。
+
+**明確不做**：任何新外部來源、任何 LLM 呼叫、任何合成分數。
+
+---
+
+### S9B — 雙幣比較（Requirement 17）
+
+> **現況：✅ 離線功能完成。**
+> PR #18 已完成單一 run/cutoff/ledger、交集 UTC 日期比較 Evidence、
+> asset/source-balanced Arbiter projection、雙資產比較 Claim 與雙幣限定第 12 段。
+> UI 第二資產控制仍由 S3 接線；這不影響本階段離線核心判定。
+
+**目標**：讓一次雙幣 run 真的回答「這兩個幣相比如何」，而不是把兩份單幣分析並排。
+
+**為什麼是單一 run**（這一點決定了整個階段的形狀）
+比較只有在兩個資產的證據進入**同一個 Arbiter payload** 時才可能存在。拆成兩個 run 還會同時破壞三條已凍結的不變量：
+Evidence ID 是 **run-local**，所以 `ev_007` 會有兩種意思；每個 run 各自凍結 `analysis_as_of`，
+比較本身就沒有單一 cutoff；跨 run 的比較產物需要第五項 artifact 或新檔名，兩者都被禁。
+所以雙 run 是**被契約否決**，不是被排序延後。
+
+**元件與職責**（→ [檔案地圖 §4.3](Architecture-FileMap.md)、[§4.6](Architecture-FileMap.md)、[§4.7](Architecture-FileMap.md)、[§4.8](Architecture-FileMap.md)）
+- `data/market_series.py` — 多資產載入路徑，回傳對齊同一 UTC `date` 索引的各資產序列；
+  對不齊或缺 bar → 該比較 `unavailable`，🚫 不 forward-fill。
+- `data/indicators.py` — 只用 Requirement 13 允許的尺度：區間報酬差、以**各自百分位**表達的波動比較、
+  相對強弱比值與其自身歷史百分位、同 provider 同期間的 quote volume 比較。
+  相關性／beta 為 optional，若輸出必須宣告 window。
+- `data/market_worker.py` — 除各資產指標外，另發比較型 `EvidenceDraft`，
+  每筆記錄兩個資產、共同 `time_range`、所用尺度與參數；`reliability=high`、`source_type=market`。
+- `reasoning/arbiter.py` — `select_evidence()` 加**per-asset 配額**。
+  ⚠️ **凍結路徑**，動之前必須取得 owner 同意（見下方「已知技術阻塞」）。
+- `reporting/renderer.py` — 只在 `assets` 有兩個資產時輸出「跨幣比較」段落。
+- `ui/presenter.py`、`streamlit_app.py` — 第二幣為**明確加選**，預設仍是單幣。
+
+**本階段處理的契約詞彙**：[Features.md §5.1](Features.md)（`assets` 一至二）、
+[§5.2](Features.md)（`Asset`）、[§5.5](Features.md)（四項 artifacts 不變）；
+規範性定義在 `requirements.md` Requirement 17 與 Requirement 13、`design.md §20`。
+
+**已知技術阻塞（動工前先解決）**
+`select_evidence()` 目前**完全沒有資產概念**：它先無上限地收下**所有** high-reliability 項目，
+再收 conflict pair，最後才按 `independence_group` round-robin。而市場證據**全都是** `high`——
+所以雙幣 run 很可能在還沒碰到任何新聞證據之前就把 30 個名額用完，
+而且不保證兩個資產各拿到多少。這是**必須修的正確性問題**，不是調參。
+`asset=null` 的全市場項目（如 Fear & Greed）不計入任一資產配額。
+
+**演算法與注意**
+- **🚫 永遠不比較不同幣的 base-asset `volume`。** 跨幣流動性只用同 provider、同期間的 quote volume，
+  否則標 `unavailable`。這條是三份文件的硬規則，也是讓比較誠實的那條線。
+- 比較型 Claim 的 `assets` 必須同時含兩個資產；數值全部來自 deterministic tool output 且可回溯 Evidence ID。
+- **Market Regime 維持每個資產各一個標籤**，🚫 不得合併成單一標籤。
+- confidence 上限與 material conflict 規則**完全不變**，照 claim 逐一套用。
+- **🚫 比較不得變成相對買賣建議**（例如「A 優於 B 所以換倉」）；禁語 lint 仍最後跑。
+- 取證預算：兩個資產在**同一個 270 秒**窗口內約兩倍工作量，per-call timeout 仍是 45 秒。
+  預算吸收不了時依既有跳過順序處理，🚫 不得延長 stage。
+
+**測試**
+```bash
+python -m pytest tests/unit/data/test_cross_asset.py \
+                tests/unit/reporting/test_comparison_render.py \
+                tests/integration/test_dual_asset_run.py -q
+python -m pytest tests/unit tests/contract tests/integration -q   # 單幣路徑不得退化
+ruff check .
+```
+必含：單一 `run_id`／單一 cutoff／一份 Ledger／四項 artifacts（🚫 無第二個 run、🚫 無第五項 artifact）；
+可手算的跨幣 golden 值；base-volume 比較被**拒絕**；兩個資產都進得了 Arbiter payload；
+段落只在雙幣 run 出現；缺一個資產時比較標 `unavailable` 且四項 artifacts 仍齊全。
+
+**退出條件**
+一次雙幣 run 產出至少一個 `assets` 含兩個資產的比較型 Claim，其每個數字都可回溯 Evidence；
+只用 Requirement 13 的尺度；兩個資產都有 Evidence 進入 Arbiter；「跨幣比較」段落正確渲染；
+單幣路徑的既有測試全部仍綠。
+
+**退場條款（Feature Freeze 前未完成時）**
+UI 停用第二幣加選、只接受單幣請求，並在文件與簡報揭露此能力未交付。
+**🚫 不得交付半完成或未驗證的比較路徑，🚫 不得以單幣結果冒稱比較結果。**
+
+**明確不做**：新 model 欄位、新 artifact、新檔名、改 `run_id` 語意、
+為比較另開第二個 run、雙幣的視覺化 polish。
+
+---
+
+### S10 — Gold local Exit：兩個資產各跑一次獨立單幣 run
+
+> **現況：🔴 未開始。相依 S8（Silver）。**
+> **指派：** 全員；任務 A 擁有這個閘門。
+
+**目標**：用兩個**不同**資產各自的獨立單幣 run，證明 pipeline 真的是 coin-agnostic。
+
+**元件**：`tests/acceptance/test_{gold_assets,deadline_budget,artifact_contract}.py`、
+`scripts/run_acceptance.py`、`docs/rehearsals/run-log.md`。
+
+**本階段處理的契約詞彙**：[Features.md §5.2](Features.md)（`Asset` allowlist）、
+[§5.5](Features.md)（四項 artifacts）、[§5.6](Features.md)（deadline 預算）。
+
+**演算法與注意**
+- 選兩個 baseline 路徑能產出完整 Evidence 的資產，**各跑一次獨立單幣 run**；
+  **🚫 不要合併成雙幣比較**——這個閘門證明的是「流程幣種無關」，
+  雙幣比較有自己的階段與驗收（S9B / Requirement 17），兩者不得互相代替。
+- 保留五幣**請求 allowlist** 測試，但 🚫 不要求五幣完整驗證矩陣或五幣校準。
+- fake-clock deadline 驗收：證明第 12 分鐘取消非必要呼叫、finalize 在保留期之前開始。
+- 把兩個 run 的 run ID、資產、模式、時長、降級結果與 artifact 路徑記進 `docs/rehearsals/run-log.md`。
+
+**測試**
+```bash
+python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q
+ruff check .
+```
+
+**退出條件（★ Gold local Exit）**
+Silver 已過；兩個不同資產各自以獨立單幣 run 通過；必要的降級檢查通過；deterministic artifact 檢查通過。
+**明確排除在這個本地閘門之外：** Docker build/runtime 驗收、ECR 部署、EC2 部署、
+完整計時的評審流程彩排、提交驗證。
+**達到這個閘門即觸發 Feature Freeze**（若 Day 2 中午尚未先觸發）。
+
+**明確不做**：部署、彩排、任何新功能。
+
+---
+
+### S11 — Feature Freeze、部署與計時彩排
+
+> **現況：🔴 未開始。**
+> **指派：** 任務 A 與 D 共同主導；全員參與彩排。
+
+**目標**：在不加新功能的前提下把東西送上去，並完成一次完整計時的評審流程彩排。
+
+**元件**：`.github/workflows/ci.yml`、`docs/deployment.md`、`docs/demo-runbook.md`、
+`docs/architecture.md`、`scripts/smoke_test.py`、修改 `README.md`。
+
+**演算法與注意**
+- **Feature Freeze 在 Gold local Exit 或 Day 2 中午（取較早者）立即開始。**
+  之後只准：bug fix、可靠性修復、部署、彩排、文件、rollback 準備、提交驗證。
+- **凍結後拒絕**：新功能、新 provider、新 artifact 格式、PDF/HTML 需求、額外視覺化、
+  五幣矩陣、Platinum 能力、H3 實作。
+- 建 image → 驗本地 runtime → push commit-SHA tag 到 ECR → 用 `docker compose` 部署**那個 immutable tag** 到單台 EC2。
+  文件記環境變數名稱、healthcheck 與 rollback 指令，🚫 不含秘密。
+- 在**原始碼控制之外**保存一次完整的 recorded fallback run，並記錄 `demo` 模式如何呈現其原始時間戳與 recorded 狀態。
+- 完成**一次**完整 15 分鐘計時的評審流程彩排（從輸入題目到檢視 artifacts），
+  記下 run ID、模式、時長、來源缺口、artifact 路徑。**額外彩排是 optional，且不得延誤部署或提交。**
+
+**測試**
+```bash
+python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q
+ruff check .
+docker compose config
+git status --short
+```
+- **人工（必要）：** [§3.2 的 S11 清單](#32-只能由人驗證的部分人工檢查清單)。
+
+**退出條件**：Feature Freeze 用了較早的核准觸發點；Docker 本地 runtime、ECR 與 EC2 交付檢查完成；
+恰好一次完整計時的評審流程彩排已完成；demo fallback 誠實；rollback 與提交證據有文件；
+H3 三處都標示未實作；secret scan 通過。
+
+**明確不做**：任何凍結後的新功能。
+
+---
+
+## 6. 里程碑地圖
+
+| 里程碑 | 階段 | 交付的成果 |
+|---|---|---|
+| **M0 可執行性** | S0 · S1 | 外部服務證實可用；共用契約凍結；四人可並行 |
+| **M1 Bronze** ★ | S2 · S3 | **完全離線**從 Streamlit 產出並下載四項 artifacts |
+| **M2 能力層** | S4 · S5 · S6 · S7 | deadline 編排、市場證據、研究證據、bounded reasoning 各自可驗證 |
+| **M3 Silver** ★ | S8 | 一次 live schema-valid Bedrock run **＋** 一次獨立的 deterministic fallback |
+| **M4 洞察** | S9 · S9B | Trust Scorecard、Market Regime、量化 invalidation、雙幣比較（皆非阻塞，皆須在 Freeze 前） |
+| **M5 Gold local Exit** ★ | S10 | 兩個不同資產各一次獨立單幣 run + 降級檢查 → **觸發 Feature Freeze** |
+| **M6 交付** | S11 | ECR/EC2 部署 + 一次 15 分鐘計時彩排 + 提交驗證 |
+
+---
+
+## 7. 可追溯性：能力目錄 → 階段
+
+| [Features.md](Features.md) 章節 | 由哪些階段實作 |
+|---|---|
+| §1 取證 — 建立分析請求 | S1（契約）· S2（application 驗證）· S3（UI 輸入） |
+| §1 取證 — 市場資料與指標 | **S5**（＋ S9 的 regime 與門檻 Evidence） |
+| §1 取證 — 研究資料 | **S6**（＋ S7 的 bounded 抽取） |
+| §1 取證 — Evidence 處理 | **S6**（policies 已在 `main`） |
+| §2 推理 — Planner / Arbiter / Claim 分層 / conflict / H3 | **S7 ✅**（＋ S8 的整合驗證） |
+| §3 交付 — 四項 artifacts | **S2**（契約）· S8（降級路徑）· S10（驗收） |
+| §3 交付 — 繁中報告與禁語 lint | **S2**（renderer）· **S3**（lint）· S9（R16 區塊）· S9B（跨幣比較段落） |
+| §3 交付 — 執行紀錄與可重現性 | S2（形狀）· S4（stage 事件）· S8（完整串接） |
+| §3 交付 — 誠實性機制（三模式） | S3（UI 標示）· S8（run mode 測試） |
+| §3 交付 — Deadline 治理 | **S4**（＋ S10 的 fake-clock 驗收） |
+| §3 交付 — Streamlit 介面 | **S3** |
+| §4 信任提煉（R16） | **S9** |
+| §5.1 `assets` 一至二 / 跨幣比較（R17） | **S9B**（＋ S1 契約、S3 的 UI 加選控制） |
+| §6 系統與基礎設施 | S1（設定/時鐘）· S3（容器殼）· S11（部署） |
+| §7 外部相依面 | S1（`ports.py`）· S5/S6（adapter 實作）· S7 ✅（`bedrock.py`） |
+
+**沒有任何一個 Features.md 章節沒有對應階段。**
+
+---
+
+## 8. 帶著往前走的未決事項
+
+這些**不假裝已經解決**；每一項都標了必須在哪個階段之前裁決。
+
+| # | 未決事項 | 必須在何時裁決 | 目前傾向 |
+|---|---|---|---|
+| ~~1~~ | ~~`price_analysis.py`、`analogs.py` 不在 canonical tree~~ | ~~S5 搬檔之前~~ | ✅ **已定案（PR #8）**：`price_analysis.py` 保留為獨立模組並納入 canonical tree；`analogs.py` 未建立 |
+| ~~2~~ | ~~`okx.py`、`reddit.py` 不在 canonical tree~~ | ~~S5 / S6 搬檔之前~~ | ✅ **已定案（PR #8）**：`okx`、`reddit`、`coingecko`、`derivatives`、`google_news` 五個來源共十個檔**不搬**，對齊 `evidence-contracts.md` |
+| 3 | `evidence/types.py` 的退場時機 | **S6 完成之前**（S1 已完成） | 仍未排。現在 `main` 上同時有 `models.py`、`evidence/types.py`、`data/types.py` 三套型別——**拖越久越貴** |
+| ~~4~~ | ~~designated baseline **research** source 是哪一個~~ | ~~S8 Silver 驗收之前~~ | ✅ **已定案（S0 實測）**：第一手新聞 RSS + Google News 依幣種搜尋（免 key、五幣覆蓋）；CryptoPanic 取得 token 後可升為主 |
+| 8 | `p2-etl-mvp/` 的退場時機 | **S3 完成之前** | 新增項。PR #8 已把核心搬進 `src/`，但 `p2-etl-mvp/` 71 個檔仍留在 `main`，與原訂「這個目錄永不進 `main`」相反。S3 接手 `app.py`／`Dockerfile` 後應整個刪除，避免兩套並存 |
+| 9 | `ruff check .` 的 87 個錯誤 | **下一階段開工前** | 新增項。違反 §3.3 的 DoD。48 個可 `--fix`，其餘多為既有程式碼與新 lint 設定的落差 |
+| 10 | `_provisional_seams.py` swap procedure | **S3 或 S4 開工前** | 新增項。S2 落地時 Task 1b 尚未存在，所以 runtime types 暫住 `_provisional_seams.py`。現在 `models.py`（40 classes）與 `ports.py` 都已在 `main`，swap procedure 見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md §4`，觸及 `application.py`、`reporting/artifacts.py`、`tests/integration/test_vertical_slice.py`，最後刪除 stand-in 與 bridge test |
+| 8b | `reasoning/arbiter.py` 的 `select_evidence()` 需加 per-asset 配額，但它是**凍結路徑** | **S9B 動工之前** | 需原 P3（該檔 owner）同意；🚫 不得逕行修改。這是正確性修復，不是調參 |
+| 5 | 15 分鐘是否含題目輸入與評審檢視時間 | 主辦方確認前不阻塞 | 實作一律**從 run 開始**計時 |
+| 6 | 主辦方 CSV 算不算一個獨立 `independence_group` | 同上 | 暫計為一個（`organizer-public-market-data`） |
+| 7 | 「第一手/官方來源」的界定 | 同上 | 暫指原始資料產生者：交易所 API、專案官方公告、主辦方 CSV |
+
+> 主辦方若給出不同的正式解釋，**先更新 steering 與 requirements，再改行為**；🚫 不得只改 prompt。
+
+---
+
+**這是 design-pipeline 的最後一份。** 無法 headless 驗證的階段（S0／S3／S11）
+其人工檢查清單在本文 [§3.2](#32-只能由人驗證的部分人工檢查清單)。
+接著要看的是 `docs/ACTIVE_WORK.md`（誰正在做什麼）與 `.kiro/specs/hoya-market-agent/tasks.md`（規範性任務）。
+
+## 2026-08-01 S8/S9/S9B implementation checkpoint
+
+- S8: core orchestration, 720-second hard stop, fork-join, progress, artifacts and deterministic degradation implemented; live Silver gate pending.
+- S9: deterministic Trust Scorecard, canonical regime/unavailable, Evidence-backed invalidation and rendering implemented offline.
+- S9B: single run/cutoff/ledger, aligned UTC comparison Evidence, balanced Arbiter projection, comparative Claim and dual-only section 12 implemented offline.
+
+Verification evidence and remaining gates are recorded in [S8-S9-S9B implementation](S8-S9-S9B-implementation.md). Full pytest/Ruff was not claimed because the current offline package cache lacks those tools.

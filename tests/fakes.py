@@ -1,0 +1,126 @@
+"""Reusable deterministic same-process fakes for owner-level tests."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from datetime import UTC, datetime
+from typing import Any
+
+from pydantic import BaseModel
+
+from hoya_agent.models import ExecutionEvent, RawSourceRecord, RunSummary
+from hoya_agent.ports import StaticToolRegistry
+
+
+class FixedClock:
+    def __init__(self, now: datetime, monotonic_value: float = 0.0) -> None:
+        if now.tzinfo is None or now.utcoffset() is None or now.utcoffset().total_seconds() != 0:
+            raise ValueError("FixedClock requires a timezone-aware UTC datetime")
+        self._now = now
+        self._monotonic = monotonic_value
+
+    def now_utc(self) -> datetime:
+        return self._now
+
+    def monotonic(self) -> float:
+        return self._monotonic
+
+    def advance(self, seconds: float) -> None:
+        from datetime import timedelta
+
+        self._now += timedelta(seconds=seconds)
+        self._monotonic += seconds
+
+
+class FakeLLM:
+    def __init__(self, responses: list[BaseModel | Exception]) -> None:
+        self.responses = list(responses)
+        self.calls: list[dict[str, Any]] = []
+
+    async def converse_structured(self, **kwargs: Any) -> BaseModel:
+        self.calls.append(kwargs)
+        if not self.responses:
+            raise AssertionError("FakeLLM has no response configured")
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+class FakeSourceAdapter:
+    def __init__(self, result: object) -> None:
+        self.result = result
+        self.calls: list[dict[str, object]] = []
+
+    async def fetch(self, **params: object) -> object:
+        self.calls.append(params)
+        return self.result
+
+
+class FakeResearchSourceAdapter(FakeSourceAdapter):
+    async def fetch(self, **params: object) -> list[RawSourceRecord]:
+        result = await super().fetch(**params)
+        return list(result)  # type: ignore[arg-type]
+
+
+class FakeMarketDataAdapter:
+    def __init__(self, bars: object = None, snapshot: object = None) -> None:
+        self.bars = bars
+        self.snapshot = snapshot
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    async def fetch_daily_bars(self, **params: object) -> object:
+        self.calls.append(("fetch_daily_bars", params))
+        return self.bars
+
+    async def fetch_snapshot(self, **params: object) -> object:
+        self.calls.append(("fetch_snapshot", params))
+        return self.snapshot
+
+
+class InMemoryProgressSink:
+    def __init__(self) -> None:
+        self.events: list[ExecutionEvent] = []
+
+    async def publish(self, event: ExecutionEvent) -> None:
+        self.events.append(event)
+
+
+class InMemoryArtifactStore:
+    def __init__(self) -> None:
+        self.files: dict[tuple[str, str], object] = {}
+        self.events: dict[str, list[ExecutionEvent]] = {}
+
+    async def write_text(self, run_id: str, filename: str, content: str) -> str:
+        self.files[(run_id, filename)] = content
+        return f"memory://{run_id}/{filename}"
+
+    async def write_json(self, run_id: str, filename: str, payload: object) -> str:
+        self.files[(run_id, filename)] = payload
+        return f"memory://{run_id}/{filename}"
+
+    async def append_event(self, run_id: str, event: ExecutionEvent) -> str:
+        self.events.setdefault(run_id, []).append(event)
+        return f"memory://{run_id}/execution_log.jsonl"
+
+
+class InMemoryRunPersistence:
+    def __init__(self) -> None:
+        self.summaries: dict[str, RunSummary] = {}
+        self.artifact_references: dict[str, dict[str, str]] = {}
+
+    async def save_summary(self, summary: RunSummary) -> None:
+        self.summaries[summary.run_id] = summary
+
+    async def get_summary(self, run_id: str) -> RunSummary | None:
+        return self.summaries.get(run_id)
+
+    async def save_artifact_references(self, run_id: str, references: Mapping[str, str]) -> None:
+        self.artifact_references[run_id] = dict(references)
+
+
+def fake_tool_registry(**operations: Any) -> StaticToolRegistry:
+    return StaticToolRegistry(operations)
+
+
+UTC_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)

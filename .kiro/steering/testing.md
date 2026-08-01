@@ -118,7 +118,7 @@ ruff check .
 ### Report 與安全 lint
 
 - Renderer 為 deterministic，輸入僅為 `AnalysisResult` 與 Ledger。
-- 繁體中文報告包含 approved spec 6.2 的 11 個段落。
+- 繁體中文報告包含 approved spec 6.2 的 11 個段落；雙幣 run 另含「跨幣比較」段落（Requirement 17），單幣 run 不得出現該段落。
 - 市場數值必須能回溯至 Evidence ID；report 不得加入 Ledger 外的新事實。
 - 至少呈現一個反方訊號；找不到時列出查詢過的來源與限制。
 - 禁止明確買賣或配置用語，包括「建議買入」、「建議賣出」、「加倉」、「減倉」、「做多」、「做空」。

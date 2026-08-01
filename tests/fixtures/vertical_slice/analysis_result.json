@@ -1,0 +1,135 @@
+{
+  "run_id": "run_20260531_000000_fx01",
+  "question": "BTC 近期市場行為可以由哪些因素解釋？",
+  "assets": ["BTC"],
+  "analysis_as_of": "2026-05-31T00:00:00Z",
+  "direct_answer": "截至 2026-05-31 UTC，證據支持一個有保留的解釋：BTC 過去 14 日呈現小幅回落，同時成交金額高於自身滾動基準，屬於量能放大下的區間整理，而非可確認的趨勢反轉。",
+  "market_context": {
+    "summary": "本次分析以主辦方 Daily OHLCV 與 Binance 現貨日線為市場基準，全部採 UTC 日界。",
+    "time_range": {"start": "2026-05-02", "end": "2026-05-31"}
+  },
+  "claims": [
+    {
+      "claim_id": "cl_001",
+      "claim_type": "fact",
+      "assets": ["BTC"],
+      "time_range": {"start": "2026-05-17", "end": "2026-05-31"},
+      "text": "BTC 在 2026-05-17 至 2026-05-31 UTC 的 14 日報酬為 -4.88%。",
+      "based_on_claim_ids": [],
+      "confidence": "high",
+      "limitations": [],
+      "invalidation_conditions": []
+    },
+    {
+      "claim_id": "cl_002",
+      "claim_type": "fact",
+      "assets": ["BTC"],
+      "time_range": {"start": "2026-05-02", "end": "2026-05-31"},
+      "text": "BTC 在 2026-05-31 UTC 的日成交金額對自身 30 日滾動基準的 z-score 為 +1.80。",
+      "based_on_claim_ids": [],
+      "confidence": "medium",
+      "limitations": ["即時成交金額僅來自單一交易所。"],
+      "invalidation_conditions": []
+    },
+    {
+      "claim_id": "cl_003",
+      "claim_type": "inference",
+      "assets": ["BTC"],
+      "time_range": {"start": "2026-05-02", "end": "2026-05-31"},
+      "text": "近期回落伴隨高於自身基準的成交金額，較符合量能放大下的區間整理，而非低量陰跌。",
+      "based_on_claim_ids": ["cl_001", "cl_002"],
+      "confidence": "medium",
+      "limitations": ["量能可比性僅限同一交易所、同一期間的計價金額。"],
+      "invalidation_conditions": ["可比較的成交金額回落至滾動基準以下。"]
+    },
+    {
+      "claim_id": "cl_004",
+      "claim_type": "conclusion",
+      "assets": ["BTC"],
+      "time_range": {"start": "2026-05-02", "end": "2026-05-31"},
+      "text": "現有證據可解釋 BTC 近期為量能放大的區間整理，但方向性判讀受反方資金流訊號牽制，無法可靠確認趨勢轉向。",
+      "based_on_claim_ids": ["cl_003"],
+      "confidence": "low",
+      "limitations": ["支持與反對證據同時存在且來自不同獨立上游，構成 material conflict。"],
+      "invalidation_conditions": ["日收盤跌破 30 日最低收盤。"]
+    }
+  ],
+  "claim_evidence_links": [
+    {
+      "claim_id": "cl_001",
+      "evidence_id": "ev_001",
+      "stance": "supports",
+      "reason": "該筆計算的報酬期間與此 claim 陳述的期間一致。"
+    },
+    {
+      "claim_id": "cl_002",
+      "evidence_id": "ev_002",
+      "stance": "supports",
+      "reason": "z-score 直接量測此 claim 所述的成交金額偏離程度。"
+    },
+    {
+      "claim_id": "cl_003",
+      "evidence_id": "ev_001",
+      "stance": "supports",
+      "reason": "價格回落是此推論的其中一個構成條件。"
+    },
+    {
+      "claim_id": "cl_003",
+      "evidence_id": "ev_002",
+      "stance": "supports",
+      "reason": "量能高於基準是此推論的另一個構成條件。"
+    },
+    {
+      "claim_id": "cl_004",
+      "evidence_id": "ev_001",
+      "stance": "supports",
+      "reason": "報酬為負是結論中「回落」部分的直接依據。"
+    },
+    {
+      "claim_id": "cl_004",
+      "evidence_id": "ev_003",
+      "stance": "opposes",
+      "reason": "連續淨流入與單純的回落敘事方向相反，構成反方訊號。"
+    },
+    {
+      "claim_id": "cl_004",
+      "evidence_id": "ev_004",
+      "stance": "neutral",
+      "reason": "全市場情緒讀值提供背景，但不單獨支撐單幣結論。"
+    }
+  ],
+  "confidence": "medium",
+  "confidence_rationale": "兩個獨立上游（主辦方 CSV 與 Binance）支持主要觀察，但結論層存在 material conflict，且缺少官方管道證據，因此整體不列為 high。",
+  "limitations": [
+    "官方公告來源在本次 run 未取得，官方管道證據缺口未被覆蓋。",
+    "全市場情緒指標為 low reliability，且不可單獨支撐單幣結論。",
+    "成交金額僅來自單一交易所，跨交易所可比性未驗證。"
+  ],
+  "invalidation_conditions": [
+    {
+      "text": "日收盤跌破 92400.0（2026-05-02 至 2026-05-31 UTC 最低日收盤，ev_005）",
+      "metric": "close",
+      "operator": "lt",
+      "threshold": 92400.0,
+      "basis_evidence_id": "ev_005"
+    },
+    {
+      "text": "可比較的日成交金額回落至自身 30 日滾動基準以下",
+      "metric": null,
+      "operator": null,
+      "threshold": null,
+      "basis_evidence_id": null
+    }
+  ],
+  "watch_items": [
+    "官方公告管道是否於後續 run 恢復可取得。",
+    "成交金額 z-score 是否維持在滾動基準之上。",
+    "具名媒體報導的資金流方向是否延續。"
+  ],
+  "insufficient_data": false,
+  "degradation_notes": [
+    "官方公告來源不可用，已於 Evidence Ledger 記錄 degradation event。"
+  ],
+  "market_regime": null,
+  "trust_scorecards": []
+}

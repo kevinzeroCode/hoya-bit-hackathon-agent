@@ -1,0 +1,18 @@
+# HOYA Market Agent — Streamlit Bronze。
+#   docker compose up --build   → http://localhost:8501
+# Bronze 為離線 rehearsal/demo,無需金鑰。Silver+ 再於 environment 加 Bedrock 變數。
+services:
+  hoya-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hoya-agent
+    ports:
+      - "8501:8501"
+    environment:
+      - HOYA_DATA_DIR=/app/HOYA_BIT_crypto_market_dataset/data
+      # Silver+（接 Bedrock）時解除註解並注入:
+      # - AWS_REGION=us-west-2
+      # - BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0
+      # - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK}
+    restart: unless-stopped
