@@ -40,7 +40,7 @@
 Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC2。
 **每個檔的細節請看檔案地圖，本文不重列。**
 
-> ⚠️ **狀態掃描時間：2026-08-01（PR #18 合併後），基準 commit `d7245e4`。**
+> ⚠️ **狀態掃描時間：2026-08-01，基準 commit `3158031`（加計 PR #25）。**
 > 本快照以實際 `main` 檔案、已執行驗收與外部 gate 為準；較舊章節若衝突，以本節為準。
 
 ### 1.1 現況快照（authoritative）
@@ -55,7 +55,7 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S5** 市場證據 | ✅ | Organizer CSV、Binance、deterministic indicators 與 market evidence 已整合 |
 | **S6** 研究與 Evidence | 🟡 | adapters/processor 大部分已整合；baseline research 的 canonical 完整驗收仍缺 |
 | **S7** bounded reasoning | ✅ | Planner、Research Agent、Arbiter 與 Bedrock boundary 已完成並凍結 |
-| **S8** H2-Lite Silver | 🟡 | 離線 orchestration/fallback/artifacts 通過；live Bedrock＋baseline market/research Silver gate 未通過 |
+| **S8** H2-Lite Silver | 🟡 | run-mode/provenance/degradation 與 opt-in source/Bedrock gate 已補；目前環境無網路、AWS 與 Python 3.12 dev runtime，尚未實跑 live Silver |
 | **S9** 創意層 | ✅（離線） | Trust Scorecard、regime/unavailable、Evidence-backed invalidation 與 renderer 已通過離線 smoke |
 | **S9B** 雙幣比較 | ✅（離線） | 單一 run/cutoff/ledger、UTC 對齊、balanced Arbiter projection、比較 Claim 與第 12 段已通過 |
 | **S10** Gold local Exit | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 尚缺 |
@@ -788,10 +788,14 @@ H3 不做任何 Bull/Bear/Judge 呼叫。
 
 ### S8 — H2-Lite 整合與降級路徑 ★ **Silver Exit**
 
-> **現況：🟡 離線核心完成，Silver live gate 尚未通過。**
-> PR #18 已接通 canonical seams、deadline-aware H2-Lite、降級與 artifacts；
-> `scripts/verify_s8_s9_s9b.py` 離線通過。仍需一次 schema-valid live Bedrock run
-> 同時走 designated baseline market/research，以及獨立 deterministic fallback acceptance。
+> **現況：🟡 gate 程式已補，Silver live gate 尚未實跑通過。**
+> PR #25 補上 run/data-mode 傳遞與最終
+> `RunConfigSnapshot` 重新驗證，並新增 run-mode、provenance、research timeout、
+> invalid Evidence、Arbiter failure，以及兩個 opt-in live gate。
+> 本次執行環境無 GitHub/外部網路、AWS credentials，且只有 Python 3.9/3.14
+>（專案要求 3.12，離線 cache 也缺 pytest/pandas），因此 **沒有捏造測試數字**：
+> 非 live、Ruff 與 live Silver 本輪皆標記為「未執行」。退出條件仍需在具
+> Python 3.12、網路與 Bedrock 權限的環境跑完下列命令才可改為 ✅。
 
 **目標**：把六個 stage 接成一條真的會跑的 pipeline，並讓每一種失敗都有被測過的降級路徑。
 
