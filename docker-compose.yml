@@ -1,6 +1,8 @@
-# HOYA Market Agent — Streamlit Bronze。
+# HOYA Market Agent。
 #   docker compose up --build   → http://localhost:8501
-# Bronze 為離線 rehearsal/demo,無需金鑰。Silver+ 再於 environment 加 Bedrock 變數。
+# 離線模式無需金鑰。即時模式打 Binance/Fear&Greed(免金鑰)。
+# 設 AWS_REGION + BEDROCK_PRIMARY_MODEL_ID 後,即時模式會加上 Bedrock 推理。
+# 憑證走標準 AWS 鏈:EC2 用 IAM instance role(免金鑰);本機用環境變數。
 services:
   hoya-agent:
     build:
@@ -11,8 +13,9 @@ services:
       - "8501:8501"
     environment:
       - HOYA_DATA_DIR=/app/HOYA_BIT_crypto_market_dataset/data
-      # Silver+（接 Bedrock）時解除註解並注入:
-      # - AWS_REGION=us-west-2
-      # - BEDROCK_MODEL_ID=us.anthropic.claude-haiku-4-5-20251001-v1:0
-      # - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK}
+      # 設了這兩個 → 即時模式啟用 Bedrock 推理(有結論);沒設 → 只用決定論證據。
+      - AWS_REGION=${AWS_REGION:-}
+      - BEDROCK_PRIMARY_MODEL_ID=${BEDROCK_PRIMARY_MODEL_ID:-}
+      - BEDROCK_FALLBACK_MODEL_ID=${BEDROCK_FALLBACK_MODEL_ID:-}
+      # 🚫 不放金鑰。EC2 用 IAM role;本機開發才用標準 AWS 憑證環境變數(不寫進此檔)。
     restart: unless-stopped
