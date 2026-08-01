@@ -8,6 +8,7 @@
 
 | Need | Document |
 |---|---|
+| **開工前先看**：誰正在做什麼、哪些路徑已凍結、下一個可認領的工作 | [Active Work](docs/ACTIVE_WORK.md) |
 | 快速了解 FR、NFR、API、HLD、時序、AWS 與 failure design | [System Design](docs/system-design.md) |
 | 四人現在怎麼開 branch、怎麼用 Kiro、怎麼交接 | [Kiro Team Playbook](docs/kiro-team-playbook.md) |
 | 核准產品邊界與競賽策略 | [Product Spec](docs/superpowers/specs/2026-07-17-hoya-bit-hackathon-agent-design.md) |

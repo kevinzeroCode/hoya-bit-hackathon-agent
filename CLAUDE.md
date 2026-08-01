@@ -15,6 +15,10 @@
 - 契約鐵則：`.kiro/steering/`（competition-rules / evidence-contracts / tech / structure / testing / product / development-workflow）
 - Evidence/Claim/Result 的欄位定義以 `.kiro/steering/evidence-contracts.md` 為**唯一**權威。
 
+**開工前先讀 `docs/ACTIVE_WORK.md`**：誰正在做什麼、哪些路徑已完成凍結、有哪些現成設計文件、
+下一個可認領的工作。它記的是「現在的狀態」而非設計權威——認領工作時更新它，
+只有當某個路徑變成「碰了會弄壞別人已通過的測試」時，才同步到 `.kiro/steering/work-in-progress.md`。
+
 ---
 
 ## 🔀 工具分工（重要 — Claude Code 必守）
