@@ -15,19 +15,26 @@ Two run shapes:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+import httpx
+
 from hoya_agent.adapters.bedrock import BedrockLLMClient, BedrockSettings
 from hoya_agent.adapters.live_sources import binance_bar_loader, fear_greed_drafts
+from hoya_agent.adapters.port_adapters import RssResearchAdapter
+from hoya_agent.models import Asset, ResearchPlan, ResearchStep, SourceStatus, SourceType
 from hoya_agent.orchestration.pipeline import DeadlineAwarePipeline, OrganizerCsvPipeline
-from hoya_agent.ports import Clock
+from hoya_agent.ports import Clock, StaticToolRegistry
 from hoya_agent.reasoning.arbiter import Arbiter, ArbiterSettings
 from hoya_agent.reasoning.mapping import build_analysis_result
-from hoya_agent.reasoning.schemas import ArbiterGeneration
+from hoya_agent.reasoning.research_agent import ResearchAgent
+from hoya_agent.reasoning.schemas import ArbiterGeneration, DraftBatch
 
 _BINANCE_URL = "https://api.binance.com/api/v3/klines"
+_COINDESK_RSS = "https://www.coindesk.com/arc/outboundfeeds/rss/"
 
 
 def build_bedrock_llm(
@@ -92,20 +99,84 @@ class MappingArbiter:
         return result, notes
 
 
+class _BaselinePlanner:
+    """Deterministic planner: always plan the one baseline news source.
+
+    No LLM call for planning — cheaper and more robust than an LLM planner, and
+    the tool allowlist is fixed anyway. Matches the ResearchAgent's expected shape.
+    """
+
+    def __init__(self, lookback_days: int = 30) -> None:
+        self._lookback = lookback_days
+
+    async def run(self, *, request: Any, deadline: float) -> tuple[ResearchPlan, list[str]]:
+        del deadline
+        return (
+            ResearchPlan(
+                assets=[Asset(a) for a in request.assets],
+                question_summary=getattr(request, "question", "") or "市場研究",
+                lookback_days=self._lookback,
+                required_evidence_types=[SourceType.news],
+                planned_steps=[
+                    ResearchStep(
+                        step_id="baseline_01",
+                        tool_operation="baseline_news",
+                        rationale="baseline first-party news source",
+                    )
+                ],
+            ),
+            [],
+        )
+
+
+def _news_tool_registry(analysis_as_of: datetime, assets: Sequence[Asset]) -> StaticToolRegistry:
+    """Static allowlist with one op: fetch first-party CoinDesk RSS records.
+
+    The op owns its own AsyncClient per call (closed cleanly) and passes the
+    frozen cutoff + assets as params — the registry invokes ops with plain params,
+    not a RunContext.
+    """
+    asset_values = [a.value for a in assets]
+
+    async def _baseline_news(**params: Any) -> Any:
+        lookback = params.get("lookback_days", 30)
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            rss = RssResearchAdapter(
+                feed_url=_COINDESK_RSS,
+                source_name="CoinDesk",
+                publisher_domain="coindesk.com",
+                client=client,
+            )
+            result = await rss.fetch(
+                operation="baseline_news",
+                lookback_days=lookback,
+                analysis_as_of=analysis_as_of,
+                assets=asset_values,
+            )
+        if result.status is not SourceStatus.ok or not result.data:
+            raise RuntimeError(result.error_category or "baseline RSS returned no records")
+        return result.data
+
+    return StaticToolRegistry({"baseline_news": _baseline_news})
+
+
 def build_live_pipeline(
     *,
     clock: Clock,
     llm: Any,
     analysis_as_of: datetime,
+    assets: Sequence[Asset] = (),
     per_stage_timeout_seconds: float = 45.0,
     kline_limit: int = 1000,
     arbiter_max_tokens: int = 3000,
+    enable_news: bool = True,
 ) -> DeadlineAwarePipeline:
-    """Live market + sentiment evidence, then Arbiter (Bedrock) reasoning.
+    """Live market + sentiment + (optional) first-party news, then Arbiter reasoning.
 
-    Planner / Research (news extraction) are left off for the first live cut —
-    they are the fragile multi-stage layer and are added once the Arbiter path is
-    proven. The market branch alone still yields real-time, multi-source evidence.
+    With `enable_news` and at least one asset, a deterministic planner + Research
+    Agent extract facts from CoinDesk RSS (a third, independent source type). The
+    news branch runs in parallel with market and degrades on its own if the feed
+    or extraction fails — the market + sentiment + Arbiter path is unaffected.
     """
     market_pipeline = OrganizerCsvPipeline(
         load_bars=binance_bar_loader(analysis_as_of, limit=kline_limit),
@@ -127,11 +198,22 @@ def build_live_pipeline(
             settings=ArbiterSettings(max_tokens=arbiter_max_tokens),
         )
     )
+
+    planner = None
+    research_agent = None
+    if enable_news and assets:
+        planner = _BaselinePlanner()
+        research_agent = ResearchAgent(
+            llm=llm,
+            draft_schema=DraftBatch,
+            tool_registry=_news_tool_registry(analysis_as_of, assets),
+        )
+
     return DeadlineAwarePipeline(
         clock=clock,
         market_pipeline=market_pipeline,
-        planner=None,
-        research_agent=None,
+        planner=planner,
+        research_agent=research_agent,
         arbiter=arbiter,
         per_stage_timeout_seconds=per_stage_timeout_seconds,
     )

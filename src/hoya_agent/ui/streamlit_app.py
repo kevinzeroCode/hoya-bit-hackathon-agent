@@ -100,7 +100,7 @@ def _bedrock_env() -> tuple[str, str] | None:
     return None
 
 
-def _live_pipeline(now):
+def _live_pipeline(now, assets):
     """Bedrock-reasoning pipeline when configured; else deterministic live data.
 
     Any failure building the reasoning path degrades to the deterministic market
@@ -118,7 +118,10 @@ def _live_pipeline(now):
                 primary_model_id=model_id,
                 fallback_model_id=os.getenv("BEDROCK_FALLBACK_MODEL_ID") or None,
             )
-            return build_live_pipeline(clock=SystemClock(), llm=llm, analysis_as_of=now), True
+            pipeline = build_live_pipeline(
+                clock=SystemClock(), llm=llm, analysis_as_of=now, assets=assets
+            )
+            return pipeline, True
         except Exception:  # noqa: BLE001 - fall back to deterministic live data
             pass
     return (
@@ -145,8 +148,8 @@ def _run_live(assets: list[Asset], question: str, progress=None) -> object:
         now=now,
         run_id_suffix="live",
     )
-    pipeline, with_bedrock = _live_pipeline(now)
-    sources = ["binance_spot", "fear_greed"] + (["bedrock"] if with_bedrock else [])
+    pipeline, with_bedrock = _live_pipeline(now, assets)
+    sources = ["binance_spot", "fear_greed"] + (["coindesk_rss", "bedrock"] if with_bedrock else [])
     service = ApplicationService(
         artifact_root=Path(tempfile.mkdtemp(prefix="hoya-live-")),
         clock=SystemClock(),
