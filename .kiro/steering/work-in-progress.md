@@ -26,7 +26,6 @@ prompts/
 tests/contract/
 tests/unit/reasoning/
 ```
-
 If a change genuinely requires editing one of these, stop and report why instead
 of editing. The owner must agree first.
 
@@ -89,6 +88,82 @@ happens — and `models.py` is imported by all four owners.
   `tests/conftest.py`, and the remaining plumbing models).
 
 Do not tick Task 1's parent checkbox until both halves are done.
+
+## Task 2 (S2) landed before Task 1b — provisional seam in place
+
+Task 2 (fixture vertical slice) is **complete** on branch
+`task/2-fixture-vertical-slice`: `application.py`, `reporting/artifacts.py`,
+`reporting/renderer.py`, the `tests/fixtures/vertical_slice/` pair, and the
+offline four-artifact integration test. Verified on Python 3.12.13:
+422 passed / 6 skipped, `ruff check .` clean.
+
+It landed **before Task 1b**, so the four runtime seams 1b owns are stubbed in
+`src/hoya_agent/_provisional_seams.py` (`ExecutionEvent`, `RunConfigSnapshot`,
+`RunSummary`, `RunContext`, `Clock`, `ProgressSink`, plus Task 3's
+`TerminalState` / `AnalysisPipeline` / `PipelineOutcome`). Field names are copied
+verbatim from `evidence-contracts.md` §13/§14.
+
+- **Task 1b owner: do not work around this file.** Define the real names in
+  `models.py` / `ports.py` as planned. On any disagreement the contract and 1b
+  win, and S2 is the side that changes.
+- `tests/integration/test_s1_seam_bridge.py` skips while the real seams are
+  absent and starts enforcing field-name parity the moment they exist; when every
+  seam has landed it fails on purpose to demand the swap.
+- The swap procedure is in `docs/ai/S2_CONTRACT_EXPECTATIONS.md` §4. It touches
+  only `application.py`, `reporting/artifacts.py` and
+  `tests/integration/test_vertical_slice.py`, then deletes the stand-in and the
+  bridge test.
+- S2 deliberately did **not** create `tests/conftest.py`, `tests/fakes.py`,
+  `config.py`, `clock.py`, `ports.py` or `reporting/lint.py`. Fixture loaders sit
+  in `tests/unit/reporting/conftest.py` until 1b's shared conftest exists.
+
+**`reporting/lint.py` is still nobody's committed file.** It appears in
+`structure.md` and `Implementation-Plan.md` S3 but in no `tasks.md` file list.
+`renderer.render(result, ledger, lint=hook)` already accepts it; until the UI
+owner lands it, the prohibited-advice check exists only in the S2 tests.
+
+The three shapes first written to disk by S2 — the `run_config.json` snapshot,
+the `execution_log.jsonl` event, and the `evidence.json` container — may gain
+fields later but **must not be renamed**.
+
+## S2 is now joined to the data/evidence layer on `main`
+
+`src/hoya_agent/orchestration/pipeline.py` exists as a **first increment of Task 3,
+not Task 3 itself**. Do not tick Task 3. It contains:
+
+- `OrganizerCsvPipeline` — implements the `AnalysisPipeline` seam over the
+  organizer Daily OHLCV CSV. Offline, no LLM, coin-agnostic (the symbol is a
+  parameter). Task 3 extends this file with `DeadlineManager` and Market/Research
+  fork-join; `deadline.py` and `run_state.py` are still unwritten.
+- `to_contract_ledger()` — bridges `evidence/types.py` frozen dataclasses to
+  `models.py` contracts. It retires when the dataclasses do.
+
+Verified offline: a BTC run produces four artifacts with four `high`-reliability
+market Evidence Items whose values trace to `data/indicators.py`. No Arbiter is
+wired, so the run is honestly `degraded` and renders the insufficient-data report
+over real evidence.
+
+**Two decisions are open and belong to the contract/data owners, not to S2:**
+
+1. **`evidence/evidence_json.py` is a second writer of the fixed `evidence.json`.**
+   Its `dump_evidence_json()` calls `Path.write_text` from inside `evidence/`,
+   which `structure.md` reserves for `reporting/artifacts.py`, and its payload
+   (`"schema": "evidence-ledger/p2-prototype-v1"`, top-level `asset` /
+   `generated_at` / `llm_provider` / `summary` / `evidence`) contradicts
+   `evidence-contracts.md` §12 (`schema_version` / `run_id` / `analysis_as_of` /
+   `run_mode` / `items` / `conflict_indicators` / `degradation_events`). Two
+   incompatible writers of one graded filename cannot both ship.
+2. **`metric_name` / `metric_value` are on the dataclass but not on
+   `models.EvidenceItem`** (16 fields, `extra="forbid"`). §16.4 requires a
+   quantified invalidation threshold to equal a value *carried by* its evidence,
+   so dropping them makes that contract unsatisfiable. Until it is decided,
+   `to_contract_ledger()` preserves them in `MappedLedger.metric_index`, keyed by
+   `evidence_id`. Adding the two optional fields to `models.EvidenceItem` looks
+   like the right fix, but it is a `models.py` change and needs the owner.
+
+Also note: `ruff check .` is red on `main` with 86 errors — 76 in the duplicated
+`p2-etl-mvp/` tree and 10 inside `src/`/`tests/` from the PR #8 integration. None
+are in S2's paths.
 
 ## Downstream consumer already written
 
