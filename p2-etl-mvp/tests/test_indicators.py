@@ -12,7 +12,6 @@ from __future__ import annotations
 import csv
 
 import pytest
-
 from adapters.organizer_csv import default_data_dir
 from data.indicators import (
     max_drawdown,

@@ -16,7 +16,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import httpx
-
 from data.types import MarketBar
 
 CANDLES_URL = "https://www.okx.com/api/v5/market/history-candles"
@@ -60,7 +59,8 @@ def fetch_okx_daily(
         return [], [f"OKX fetch failed for {symbol}: {type(exc).__name__}"]
 
     if not isinstance(payload, dict) or payload.get("code") != "0":
-        return [], [f"OKX returned error code for {symbol}: {payload.get('code') if isinstance(payload, dict) else 'malformed'}"]
+        code = payload.get('code') if isinstance(payload, dict) else 'malformed'
+        return [], [f"OKX returned error code for {symbol}: {code}"]
 
     bars: list[MarketBar] = []
     degradation: list[str] = []

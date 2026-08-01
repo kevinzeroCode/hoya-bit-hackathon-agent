@@ -14,11 +14,11 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 import httpx
-
-from adapters._assets import mentions
 from data.market_worker import WorkerResult
 from evidence.policies import SourceClass, independence_group, reliability_for
 from evidence.types import EvidenceDraft
+
+from adapters._assets import mentions
 
 UTC = timezone.utc
 _ATOM = "{http://www.w3.org/2005/Atom}"

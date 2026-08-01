@@ -17,12 +17,11 @@ from __future__ import annotations
 
 import re
 import sys
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 
 import httpx
-
 from adapters.alternative_me import fetch_fear_greed
 from adapters.okx import CANDLES_URL as OKX_URL
 from adapters.okx import INDEPENDENCE_GROUP as OKX_GROUP
@@ -231,7 +230,7 @@ def render(v: dict, template: str) -> str:
     rep("<p class=\"verdict\">偏多，但尚未形成高信心趨勢</p>",
         f'<p class="verdict">市場狀態：{v["regime_zh"]}（方向性結論待 P3）</p>')
     rep("<p class=\"reason\">這是展示模板，不代表即時市場判斷。</p>",
-        f'<p class="reason">P2 本地整合：市場/證據為真實資料；方向判斷由 P3 推理層產生。</p>')
+        '<p class="reason">P2 本地整合：市場/證據為真實資料；方向判斷由 P3 推理層產生。</p>')
     rep("<dd>2026-05-31 UTC</dd>", f"<dd>{v['as_of']} UTC</dd>")
 
     # stats (4)
@@ -267,7 +266,8 @@ def render(v: dict, template: str) -> str:
     rep("<small>獨立性</small><strong>Strong</strong><p>3 個 independence groups</p>",
         f"<small>獨立性</small><strong>{_ordinal(v['groups'],3,2)}</strong><p>{v['groups']} 個 independence groups</p>")
     rep("<small>來源多樣性</small><strong>Moderate</strong><p>3 類；缺鏈上</p>",
-        f"<small>來源多樣性</small><strong>{_ordinal(v['n_types'],3,2)}</strong><p>{v['n_types']} 類：{escape(v['type_list'])}</p>")
+        f"<small>來源多樣性</small><strong>{_ordinal(v['n_types'],3,2)}</strong>"
+        f"<p>{v['n_types']} 類：{escape(v['type_list'])}</p>")
     rep("<small>可信度組成</small><strong>Strong</strong><p>high 4 · medium 3</p>",
         f"<small>可信度組成</small><strong>{'Strong' if v['rel']['high'] else 'Moderate'}</strong>"
         f"<p>high {v['rel']['high']} · medium {v['rel']['medium']} · low {v['rel']['low']}</p>")
@@ -277,14 +277,19 @@ def render(v: dict, template: str) -> str:
         f"<small>時效性</small><strong>—</strong><p>{v['with_pub']}/{v['n_items']} 筆具 published_at</p>")
 
     # direct-answer + reasoning: mark as P3's
-    rep("<p>目前證據較支持「市場處於偏多但仍混合的狀態」，而不是已確認的單邊上升趨勢。價格動能提供支持，但量能與外部風險訊號仍不足以把信心提高至 high。</p>",
+    rep("<p>目前證據較支持「市場處於偏多但仍混合的狀態」，而不是已確認的單邊上升趨勢。"
+        "價格動能提供支持，但量能與外部風險訊號仍不足以把信心提高至 high。</p>",
         f"<p>P2 提供的 deterministic 市場狀態為「{v['regime_zh']}」（{escape(v['regime_desc'])}）。"
         f"方向性結論與信心值由 P3 推理層依下方 Evidence Ledger 產生——此處不由 P2 判斷。</p>")
-    rep("<div class=\"answer-foot\"><span>CONCLUSION · C-03</span><span>CONFIDENCE · MEDIUM</span><span>SUPPORT · E-001, E-003, E-006</span><span>OPPOSE · E-008</span></div>",
+    rep("<div class=\"answer-foot\"><span>CONCLUSION · C-03</span>"
+        "<span>CONFIDENCE · MEDIUM</span>"
+        "<span>SUPPORT · E-001, E-003, E-006</span>"
+        "<span>OPPOSE · E-008</span></div>",
         f'<div class="answer-foot"><span>EVIDENCE · {v["n_items"]} 筆</span>'
         f'<span>CONFIDENCE 上限 · {v["cap"].upper()}</span>'
         f'<span>獨立群 · {v["groups"]}</span><span>STANCE · 待 P3</span></div>')
-    rep("本頁使用示意資料展示報告結構。正式執行必須替換為該次 run 的 Evidence Ledger、原始時間戳與真實降級狀態；fixture 不得標示為 official。",
+    rep("本頁使用示意資料展示報告結構。正式執行必須替換為該次 run 的 Evidence Ledger、"
+        "原始時間戳與真實降級狀態；fixture 不得標示為 official。",
         "本頁為 P2 本地整合：市場圖表、Evidence Ledger、信任計數為該次 run 的真實 deterministic 資料；"
         "推理鏈與正反立場區塊仍為 P3 待接（示意）。非 official run。")
     return h
@@ -322,7 +327,9 @@ def _svg_two_paths(cl_a, cl_b, n: int = 14):
     ra = [c / wa[0] * 100 for c in wa]
     rb = [c / wb[0] * 100 for c in wb]
     x0, x1, ytop, ybot, base = 54.0, 730.0, 55.0, 235.0, 250.0
-    lo = min(min(ra), min(rb)); hi = max(max(ra), max(rb)); span = (hi - lo) or 1.0
+    lo = min(min(ra), min(rb))
+    hi = max(max(ra), max(rb))
+    span = (hi - lo) or 1.0
     xs = [x0 + i * (x1 - x0) / (m - 1) for i in range(m)] if m > 1 else [x0]
     ya = [ybot - (v - lo) / span * (ybot - ytop) for v in ra]
     yb = [ybot - (v - lo) / span * (ybot - ytop) for v in rb]
@@ -345,7 +352,6 @@ def render_comparison(cb, template: str) -> str:
     m = cb.metrics or {}
     ret_a, ret_b = m.get("ret_a", 0.0), m.get("ret_b", 0.0)
     corr, beta, pct = m.get("corr", 0.0), m.get("beta", 0.0), m.get("pct", 0.0)
-    stronger = a if ret_a >= ret_b else b
 
     def rep(old: str, new: str) -> None:
         nonlocal h
@@ -363,7 +369,7 @@ def render_comparison(cb, template: str) -> str:
     rep("<p class=\"verdict\">偏多，但尚未形成高信心趨勢</p>",
         f'<p class="verdict">{a} 近 14 日相對 {b} {"較強" if ret_a >= ret_b else "較弱"}（方向性結論待 P3）</p>')
     rep("<p class=\"reason\">這是展示模板，不代表即時市場判斷。</p>",
-        f'<p class="reason">P2 跨幣比較：市場/證據為真實資料；方向判斷由 P3 推理層產生。</p>')
+        '<p class="reason">P2 跨幣比較：市場/證據為真實資料；方向判斷由 P3 推理層產生。</p>')
     rep("<dd>2026-05-31 UTC</dd>", f"<dd>{cb.as_of} UTC</dd>")
 
     rep("<small>Market Regime</small><strong>Mixed</strong><p>動能偏正，波動與量能未同步確認</p>",
@@ -410,13 +416,18 @@ def render_comparison(cb, template: str) -> str:
     rep("<small>時效性</small><strong>Moderate</strong><p>1 個來源 freshness 未知</p>",
         f"<small>時效性</small><strong>—</strong><p>{with_pub}/{len(items)} 筆具 published_at</p>")
 
-    rep("<p>目前證據較支持「市場處於偏多但仍混合的狀態」，而不是已確認的單邊上升趨勢。價格動能提供支持，但量能與外部風險訊號仍不足以把信心提高至 high。</p>",
+    rep("<p>目前證據較支持「市場處於偏多但仍混合的狀態」，而不是已確認的單邊上升趨勢。"
+        "價格動能提供支持，但量能與外部風險訊號仍不足以把信心提高至 high。</p>",
         f"<p>P2 提供 {a} 與 {b} 的 deterministic 跨幣比較(相對報酬 {(ret_a-ret_b)*100:+.2f} 個百分點、"
         f"相關性 {corr:.2f}、beta {beta:.2f})。哪一個較值得布局的方向性結論由 P3 推理層產生——此處不由 P2 判斷。</p>")
-    rep("<div class=\"answer-foot\"><span>CONCLUSION · C-03</span><span>CONFIDENCE · MEDIUM</span><span>SUPPORT · E-001, E-003, E-006</span><span>OPPOSE · E-008</span></div>",
+    rep("<div class=\"answer-foot\"><span>CONCLUSION · C-03</span>"
+        "<span>CONFIDENCE · MEDIUM</span>"
+        "<span>SUPPORT · E-001, E-003, E-006</span>"
+        "<span>OPPOSE · E-008</span></div>",
         f'<div class="answer-foot"><span>比較 · {a} vs {b}</span><span>證據 · {len(items)} 筆</span>'
         f'<span>獨立群 · {groups}</span><span>STANCE · 待 P3</span></div>')
-    rep("本頁使用示意資料展示報告結構。正式執行必須替換為該次 run 的 Evidence Ledger、原始時間戳與真實降級狀態；fixture 不得標示為 official。",
-        f"本頁為 P2 跨幣比較(輕量,保留 1–2 幣契約)：市場/比較證據為真實 deterministic 資料；"
+    rep("本頁使用示意資料展示報告結構。正式執行必須替換為該次 run 的 Evidence Ledger、"
+        "原始時間戳與真實降級狀態；fixture 不得標示為 official。",
+        "本頁為 P2 跨幣比較(輕量,保留 1–2 幣契約)：市場/比較證據為真實 deterministic 資料；"
         "推理與方向結論待 P3。非 official run。")
     return h

@@ -16,7 +16,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import httpx
-
 from data.market_worker import WorkerResult
 from evidence.policies import SourceClass, independence_group, reliability_for
 from evidence.types import EvidenceDraft

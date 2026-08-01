@@ -9,17 +9,16 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 import pytest
-
 from adapters.organizer_csv import default_data_dir, load_organizer_csv
 from data.market_series import closes
 from data.price_analysis import (
+    _quantile,
     analog_base_rates,
     anomaly_days,
     attribution,
     daily_log_returns,
     rolling_beta,
     rolling_correlation,
-    _quantile,
 )
 from data.types import MarketBar
 

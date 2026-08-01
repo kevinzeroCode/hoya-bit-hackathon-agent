@@ -24,7 +24,9 @@ from hoya_agent.data.market_worker import WorkerResult
 from hoya_agent.data.types import MarketBar
 from hoya_agent.evidence.policies import SourceClass, reliability_for
 from hoya_agent.evidence.types import EvidenceDraft
-from hoya_agent.models import Asset, MarketRegime as ContractMarketRegime, RegimeLabel as ContractRegimeLabel
+from hoya_agent.models import Asset
+from hoya_agent.models import MarketRegime as ContractMarketRegime
+from hoya_agent.models import RegimeLabel as ContractRegimeLabel
 
 UTC = timezone.utc
 RegimeLabel = Literal["trending_up", "trending_down", "range_bound", "high_volatility", "mixed"]

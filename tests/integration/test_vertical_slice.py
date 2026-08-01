@@ -16,10 +16,16 @@ import pytest
 
 from hoya_agent.application import ApplicationService, build_request, make_run_id
 from hoya_agent.models import (
-    AnalysisResult, Asset, EvidenceLedger, ExecutionEvent, Reliability,
-    RunContext, RunMode, TerminalState,
+    AnalysisResult,
+    Asset,
+    EvidenceLedger,
+    ExecutionEvent,
+    Reliability,
+    RunContext,
+    RunMode,
+    TerminalState,
 )
-from hoya_agent.orchestration.pipeline import EventEmitter, PipelineOutcome
+from hoya_agent.orchestration.pipeline import AnalysisPipeline, EventEmitter, PipelineOutcome
 from hoya_agent.reporting.artifacts import (
     ARTIFACT_NAMES,
     EVIDENCE_LEDGER,

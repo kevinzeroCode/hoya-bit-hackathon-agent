@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import httpx
-
 from adapters.alternative_me import fetch_fear_greed
 from data.market_worker import WorkerResult
 from evidence.types import EvidenceDraft

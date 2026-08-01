@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from reasoning.bedrock_client import BedrockClient
 from reasoning.research_extractor import NewsRecord, extract_news_facts
 

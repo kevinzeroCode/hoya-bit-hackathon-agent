@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 
 import pytest
-
 from adapters.organizer_csv import default_data_dir, load_organizer_csv
 from data.indicators import simple_return
 from data.market_series import (

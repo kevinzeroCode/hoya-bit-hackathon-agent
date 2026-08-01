@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from pathlib import Path
 
 import pytest
-
 from adapters.organizer_csv import (
     INDEPENDENCE_GROUP,
     default_data_dir,

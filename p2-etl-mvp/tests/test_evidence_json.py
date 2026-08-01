@@ -6,7 +6,6 @@ import json
 from datetime import date, datetime, timezone
 
 import pytest
-
 from evidence.evidence_json import build_evidence_payload, dump_evidence_json
 from evidence.types import EvidenceItem, EvidenceLedger
 

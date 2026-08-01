@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 
 import httpx
 import pytest
-
 from adapters.rss import fetch_rss_news
 from data.market_worker import WorkerResult
 from evidence.types import EvidenceDraft

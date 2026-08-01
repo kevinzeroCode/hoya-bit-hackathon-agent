@@ -17,7 +17,6 @@ from pathlib import Path
 
 import streamlit as st
 import streamlit.components.v1 as components
-
 from evidence.evidence_json import build_evidence_payload
 from pipeline import collect_comparison, collect_evidence
 from render_report import build_values, render, render_comparison

@@ -22,6 +22,17 @@ from adapters.alternative_me import fetch_fear_greed
 from adapters.binance import fetch_binance_daily
 from adapters.cryptopanic import fetch_cryptopanic_news
 from adapters.organizer_csv import default_data_dir, load_organizer_csv
+from data.indicators import max_drawdown, realized_volatility, simple_return
+from data.market_series import closes
+from data.market_worker import build_market_evidence
+from data.regime import build_regime_evidence, classify_regime
+from evidence.policies import (
+    ConfidenceSignals,
+    SourceClass,
+    independence_group,
+    max_confidence,
+    reliability_for,
+)
 from evidence.processor import build_ledger
 from reasoning.llm_client import FakeLLMClient
 from reasoning.research_extractor import NewsRecord, extract_news_facts
@@ -38,17 +49,6 @@ def _sample_klines(n: int, start: date = date(2026, 6, 1), base: float = 70000.0
              ot + 86_400_000 - 1, "0", 0, "0", "0", "0"]
         )
     return rows
-from data.indicators import max_drawdown, realized_volatility, simple_return
-from data.market_series import closes
-from data.market_worker import build_market_evidence
-from data.regime import build_regime_evidence, classify_regime
-from evidence.policies import (
-    SourceClass,
-    ConfidenceSignals,
-    independence_group,
-    max_confidence,
-    reliability_for,
-)
 
 ASSETS = ["BTC", "ETH", "SOL", "BNB", "XRP"]
 

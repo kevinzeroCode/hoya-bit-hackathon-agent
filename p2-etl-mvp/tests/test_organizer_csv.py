@@ -7,7 +7,6 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-
 from adapters.organizer_csv import (
     INDEPENDENCE_GROUP,
     SOURCE_NAME,

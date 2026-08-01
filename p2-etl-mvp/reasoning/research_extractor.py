@@ -32,6 +32,7 @@ from data.market_worker import WorkerResult
 from data.text_clean import clean_text
 from evidence.policies import independence_group, news_reliability
 from evidence.types import EvidenceDraft
+
 from reasoning.llm_client import LLMClient
 
 PROMPT_VERSION = "research-extraction-v2"

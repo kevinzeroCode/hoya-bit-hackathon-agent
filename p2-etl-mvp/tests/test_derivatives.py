@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
-
 from adapters.derivatives import fetch_funding_rate
 from data.market_worker import WorkerResult
 from evidence.types import EvidenceDraft

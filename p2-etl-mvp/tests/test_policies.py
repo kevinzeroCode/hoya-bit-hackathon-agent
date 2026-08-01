@@ -7,7 +7,6 @@ All rules are static (no LLM). See CLAUDE.md and evidence-contracts.md sections 
 from __future__ import annotations
 
 import pytest
-
 from evidence.policies import (
     ORGANIZER_GROUP,
     ConfidenceSignals,

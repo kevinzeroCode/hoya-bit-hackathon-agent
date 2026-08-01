@@ -18,7 +18,6 @@ from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 import httpx
-
 from adapters._assets import mentions
 from adapters.alternative_me import fetch_fear_greed
 from adapters.derivatives import fetch_funding_rate
@@ -167,32 +166,42 @@ def collect_evidence(
         for url, name, dom in FEEDS:
             res = fetch_rss_news(asset, analysis_as_of=now, client=client,
                                  feed_url=url, source_name=name, publisher_domain=dom, lookback_days=30)
-            drafts += list(res.drafts); notes += res.degradation; n_news += len(res.drafts)
+            drafts += list(res.drafts)
+            notes += res.degradation
+            n_news += len(res.drafts)
         gn = fetch_google_news(asset, analysis_as_of=now, client=client, lookback_days=14)
-        drafts += list(gn.drafts); notes += gn.degradation; n_news += len(gn.drafts)
+        drafts += list(gn.drafts)
+        notes += gn.degradation
+        n_news += len(gn.drafts)
         lines.append(f"新聞(9 媒體 + Google News) {n_news} 篇")
 
         records = _rss_records(asset, client)
         llm = None
         if os.getenv("BEDROCK_MODEL_ID") and records:
             from reasoning.bedrock_client import BedrockClient
-            llm = BedrockClient(); provider = f"bedrock:{os.getenv('BEDROCK_MODEL_ID')}"
+            llm = BedrockClient()
+            provider = f"bedrock:{os.getenv('BEDROCK_MODEL_ID')}"
         elif os.getenv("OPENAI_API_KEY") and records:
             from reasoning.gpt_client import GptClient
-            llm = GptClient(); provider = "openai-gpt (dev)"
+            llm = GptClient()
+            provider = "openai-gpt (dev)"
         if llm is not None:
             ext = extract_news_facts(records[:max_llm_articles], llm=llm)
-            drafts += list(ext.drafts); notes += ext.degradation
+            drafts += list(ext.drafts)
+            notes += ext.degradation
             lines.append(f"LLM 語意抽取({provider}) → {len(ext.drafts)} 筆事實")
 
         rd = fetch_reddit_posts(asset, analysis_as_of=now, client=client)
-        drafts += list(rd.drafts); notes += rd.degradation
+        drafts += list(rd.drafts)
+        notes += rd.degradation
         lines.append(f"社群(Reddit) {len(rd.drafts)} 篇")
         fg = fetch_fear_greed(analysis_as_of=now, client=client)
-        drafts += list(fg.drafts); notes += fg.degradation
+        drafts += list(fg.drafts)
+        notes += fg.degradation
         lines.append(f"情緒(Fear & Greed) {len(fg.drafts)} 筆")
         fr = fetch_funding_rate(asset, analysis_as_of=now, client=client)
-        drafts += list(fr.drafts); notes += fr.degradation
+        drafts += list(fr.drafts)
+        notes += fr.degradation
         lines.append(f"衍生品(資金費率) {len(fr.drafts)} 筆")
 
     ledger = build_ledger(drafts)

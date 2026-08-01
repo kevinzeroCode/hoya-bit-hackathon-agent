@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 
 import httpx
 import pytest
-
 from adapters.coingecko import fetch_coingecko_snapshot
 from data.market_worker import WorkerResult
 from evidence.types import EvidenceDraft
@@ -21,7 +20,10 @@ def _client(handler) -> httpx.Client:
 
 
 def test_parses_medium_market_snapshot():
-    result = fetch_coingecko_snapshot("BTC", analysis_as_of=AS_OF, client=_client(lambda r: httpx.Response(200, json=PAYLOAD)))
+    result = fetch_coingecko_snapshot(
+        "BTC", analysis_as_of=AS_OF,
+        client=_client(lambda r: httpx.Response(200, json=PAYLOAD)),
+    )
     assert isinstance(result, WorkerResult)
     assert len(result.drafts) == 1
     d = result.drafts[0]
@@ -46,7 +48,10 @@ def test_id_mapping_in_request():
 
 def test_unsupported_asset_raises():
     with pytest.raises(ValueError):
-        fetch_coingecko_snapshot("DOGE", analysis_as_of=AS_OF, client=_client(lambda r: httpx.Response(200, json=PAYLOAD)))
+        fetch_coingecko_snapshot(
+            "DOGE", analysis_as_of=AS_OF,
+            client=_client(lambda r: httpx.Response(200, json=PAYLOAD)),
+        )
 
 
 def test_http_error_is_degradation():

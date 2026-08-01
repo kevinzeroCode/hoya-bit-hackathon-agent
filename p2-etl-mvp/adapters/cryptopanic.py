@@ -24,7 +24,6 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta, timezone
 
 import httpx
-
 from data.market_worker import WorkerResult
 from evidence.policies import independence_group, news_reliability
 from evidence.types import EvidenceDraft

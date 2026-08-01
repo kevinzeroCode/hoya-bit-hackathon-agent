@@ -26,8 +26,16 @@ from pathlib import Path
 from typing import TextIO
 
 from hoya_agent.clock import build_run_context
-from hoya_agent.models import AnalysisRequest, Asset, RunMode
-from hoya_agent.models import ExecutionEvent, RunConfigSnapshot, RunContext, RunSummary, TerminalState
+from hoya_agent.models import (
+    AnalysisRequest,
+    Asset,
+    ExecutionEvent,
+    RunConfigSnapshot,
+    RunContext,
+    RunMode,
+    RunSummary,
+    TerminalState,
+)
 from hoya_agent.orchestration.pipeline import AnalysisPipeline
 from hoya_agent.ports import Clock, ProgressSink
 from hoya_agent.reporting.artifacts import (

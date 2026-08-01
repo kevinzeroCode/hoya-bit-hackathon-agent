@@ -24,16 +24,15 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import httpx
-
 from adapters._assets import mentions
 from adapters.alternative_me import fetch_fear_greed
 from adapters.derivatives import fetch_funding_rate
 from adapters.google_news import fetch_google_news
-from adapters.organizer_csv import default_data_dir, load_organizer_csv
 from adapters.okx import CANDLES_URL as OKX_URL
 from adapters.okx import INDEPENDENCE_GROUP as OKX_GROUP
 from adapters.okx import SOURCE_NAME as OKX_SOURCE
 from adapters.okx import fetch_okx_daily
+from adapters.organizer_csv import default_data_dir, load_organizer_csv
 from adapters.reddit import fetch_reddit_posts
 from adapters.rss import fetch_rss_news
 from data.market_worker import build_market_evidence
@@ -227,7 +226,11 @@ def main() -> None:
         ledger, out_path, asset=asset, analysis_as_of=as_of,
         run_id=run_id, run_mode="rehearsal", llm_provider=llm_provider,
     )
-    print(f"\n[artifact] evidence.json 已輸出（run_mode=rehearsal, {payload['summary']['evidence_count']} 筆）：{out_path}")
+    count = payload['summary']['evidence_count']
+    print(
+        f"\n[artifact] evidence.json 已輸出"
+        f"（run_mode=rehearsal, {count} 筆）：{out_path}"
+    )
 
 
 if __name__ == "__main__":

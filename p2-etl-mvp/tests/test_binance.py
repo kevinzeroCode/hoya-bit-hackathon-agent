@@ -6,7 +6,6 @@ from datetime import date, datetime, timezone
 
 import httpx
 import pytest
-
 from adapters.binance import fetch_binance_daily
 from data.types import MarketBar
 
@@ -32,7 +31,10 @@ def _client(handler) -> httpx.Client:
 
 
 def test_parses_klines_into_marketbars_up_to_as_of():
-    bars, degradation = fetch_binance_daily("BTC", analysis_as_of=AS_OF, client=_client(lambda r: httpx.Response(200, json=KLINES)))
+    bars, degradation = fetch_binance_daily(
+        "BTC", analysis_as_of=AS_OF,
+        client=_client(lambda r: httpx.Response(200, json=KLINES)),
+    )
     assert all(isinstance(b, MarketBar) for b in bars)
     assert [b.date for b in bars] == [date(2026, 6, 1), date(2026, 6, 2)]  # 6/5 excluded
     assert bars[0].close == 105.0

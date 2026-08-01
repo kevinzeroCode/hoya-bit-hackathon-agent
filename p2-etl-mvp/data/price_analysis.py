@@ -20,12 +20,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
-from data.indicators import realized_volatility, simple_return
-from data.market_series import bars_asof, closes
-from data.types import MarketBar
 from evidence.policies import SourceClass, reliability_for
 from evidence.types import EvidenceDraft
+
+from data.indicators import realized_volatility, simple_return
+from data.market_series import bars_asof, closes
 from data.market_worker import WorkerResult
+from data.types import MarketBar
 
 UTC = timezone.utc
 

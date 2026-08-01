@@ -13,6 +13,9 @@ from datetime import date, datetime, timezone
 from typing import Literal
 
 from adapters.organizer_csv import INDEPENDENCE_GROUP, SOURCE_NAME
+from evidence.policies import SourceClass, reliability_for
+from evidence.types import EvidenceDraft
+
 from data.indicators import (
     max_drawdown,
     realized_volatility,
@@ -21,8 +24,6 @@ from data.indicators import (
 )
 from data.market_series import bars_asof, closes, volumes
 from data.types import MarketBar
-from evidence.policies import SourceClass, reliability_for
-from evidence.types import EvidenceDraft
 
 WorkerStatus = Literal["completed", "partial", "failed"]
 
@@ -106,25 +107,29 @@ def build_market_evidence(
     w = windows
     try:
         r = simple_return(c, w.return_window)
-        add("return_14d", r, w.return_window, f"{asset} 近 {w.return_window} 日報酬為 {_pct(r)}（截至 {last_date} UTC）")
+        fact = f"{asset} 近 {w.return_window} 日報酬為 {_pct(r)}（截至 {last_date} UTC）"
+        add("return_14d", r, w.return_window, fact)
     except ValueError as e:
         degradation.append(f"return_{w.return_window}d unavailable: {e}")
 
     try:
         vol = realized_volatility(c, w.vol_window)
-        add("realized_vol_30d", vol, w.vol_window, f"{asset} 近 {w.vol_window} 日已實現波動（日）為 {vol:.4f}（截至 {last_date} UTC）")
+        fact = f"{asset} 近 {w.vol_window} 日已實現波動（日）為 {vol:.4f}（截至 {last_date} UTC）"
+        add("realized_vol_30d", vol, w.vol_window, fact)
     except ValueError as e:
         degradation.append(f"realized_vol_{w.vol_window}d unavailable: {e}")
 
     try:
         mdd = max_drawdown(c, w.drawdown_window)
-        add("max_drawdown_90d", mdd, w.drawdown_window, f"{asset} 近 {w.drawdown_window} 日最大回撤為 {_pct(mdd)}（截至 {last_date} UTC）")
+        fact = f"{asset} 近 {w.drawdown_window} 日最大回撤為 {_pct(mdd)}（截至 {last_date} UTC）"
+        add("max_drawdown_90d", mdd, w.drawdown_window, fact)
     except ValueError as e:
         degradation.append(f"max_drawdown_{w.drawdown_window}d unavailable: {e}")
 
     try:
         z = rolling_volume_zscore(v, w.volume_window)
-        add("volume_zscore_30d", z, w.volume_window, f"{asset} 最新成交量相對自身近 {w.volume_window} 日的 z-score 為 {z:.2f}")
+        fact = f"{asset} 最新成交量相對自身近 {w.volume_window} 日的 z-score 為 {z:.2f}"
+        add("volume_zscore_30d", z, w.volume_window, fact)
     except ValueError as e:
         degradation.append(f"volume_zscore_{w.volume_window}d unavailable: {e}")
 

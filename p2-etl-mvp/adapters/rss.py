@@ -13,11 +13,11 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 import httpx
-
-from adapters._assets import mentions
 from data.market_worker import WorkerResult
 from evidence.policies import SourceClass, independence_group, reliability_for
 from evidence.types import EvidenceDraft
+
+from adapters._assets import mentions
 
 UTC = timezone.utc
 

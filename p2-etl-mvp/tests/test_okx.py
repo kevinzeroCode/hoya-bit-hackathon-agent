@@ -6,7 +6,6 @@ from datetime import date, datetime, timezone
 
 import httpx
 import pytest
-
 from adapters.okx import INDEPENDENCE_GROUP, fetch_okx_daily
 from data.types import MarketBar
 

@@ -44,6 +44,7 @@ from hoya_agent.models import (
     DegradationEvent,
     EvidenceItem,
     EvidenceLedger,
+    ExecutionEvent,
     InvalidationCondition,
     InvalidationOperator,
     MarketContext,
@@ -51,9 +52,8 @@ from hoya_agent.models import (
     RunContext,
     SourceType,
     Stance,
-    TimeRange,
-    ExecutionEvent,
     TerminalState,
+    TimeRange,
 )
 from hoya_agent.orchestration.deadline import DeadlineExceeded, DeadlineManager
 from hoya_agent.ports import Clock

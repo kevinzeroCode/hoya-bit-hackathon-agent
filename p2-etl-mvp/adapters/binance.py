@@ -15,7 +15,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import httpx
-
 from data.types import MarketBar
 
 KLINES_URL = "https://api.binance.com/api/v3/klines"

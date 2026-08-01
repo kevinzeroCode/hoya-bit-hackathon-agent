@@ -7,7 +7,6 @@ import pytest
 from hoya_agent.config import Settings
 from hoya_agent.models import AnalysisRequest, Asset, RunMode
 
-
 REQUIRED_ENV = {
     "AWS_REGION": "ap-northeast-1",
     "BEDROCK_PRIMARY_MODEL_ID": "anthropic.primary",

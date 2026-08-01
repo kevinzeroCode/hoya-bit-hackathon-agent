@@ -18,12 +18,13 @@ from datetime import date, datetime, timezone
 from typing import Literal
 
 from adapters.organizer_csv import INDEPENDENCE_GROUP, SOURCE_NAME
+from evidence.policies import SourceClass, reliability_for
+from evidence.types import EvidenceDraft
+
 from data.indicators import realized_volatility, simple_return
 from data.market_series import bars_asof, closes
 from data.market_worker import WorkerResult
 from data.types import MarketBar
-from evidence.policies import SourceClass, reliability_for
-from evidence.types import EvidenceDraft
 
 UTC = timezone.utc
 RegimeLabel = Literal["trending_up", "trending_down", "range_bound", "high_volatility", "mixed"]

@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import httpx
-import pytest
-
 from adapters.cryptopanic import fetch_cryptopanic_news
 from data.market_worker import WorkerResult
 from evidence.types import EvidenceDraft

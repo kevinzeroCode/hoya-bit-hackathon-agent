@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
-
 from adapters.google_news import fetch_google_news
 from data.market_worker import WorkerResult
 from evidence.types import EvidenceDraft
