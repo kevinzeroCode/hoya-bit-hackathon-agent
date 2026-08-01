@@ -16,7 +16,7 @@
 | S5 | ✅ | deterministic market evidence 完成 |
 | S6 | 🟡 | research adapters/processor 大部分完成；canonical baseline acceptance 未完成 |
 | S7 | ✅ | bounded reasoning 完成並凍結 |
-| S8 | 🟡 | component live source／Bedrock 已實跑通過；完整單次 ApplicationService live gate 已補，待 D 槽實跑 |
+| S8 | ✅ | 完整單次 ApplicationService live gate 通過（1 passed in 50.15s）；Silver Exit 完成 |
 | S9 | ✅（離線） | Trust/Regime/Invalidation 完成 |
 | S9B | ✅（離線） | one-run dual-asset comparison 完成 |
 | S10 | 🔴 | Gold local Exit 未開始 |
@@ -29,9 +29,10 @@
 - `_provisional_seams.py` 與 `test_s1_seam_bridge.py` 已刪除。
 - 新增 `orchestration/{deadline,pipeline,run_state}.py`、`evidence/trust.py` 與雙幣報告路徑。
 - PR #18 的離線 S8/S9/S9B acceptance smoke、compileall、變更 whitespace check 通過。
-- GitHub Actions/status checks 尚未配置；component live gates 不等於完整 Silver，仍不得宣稱通過。
+- GitHub Actions/status checks 尚未配置；S8 以 D 槽 credentialed manual live gate 驗收通過。
 - 2026-08-02：非 live `1143 passed, 3 skipped`、Ruff clean；新增 deterministic research
   provenance bridge，避免把 reliability／independence policy 交給 LLM。
+- 完整 live gate：`tests/live/test_live_silver_pipeline.py` → `1 passed in 50.15s`；S8 關閉。
 - **完整 pytest／Ruff 已於 `b84622c` 實跑**（Claude Code，2026-08-01，Python 3.12.13，
   `uv pip install -e ".[dev]"` 後的乾淨 venv，含 streamlit 1.60.0）：
   `pytest tests -q` → **598 passed，零失敗**；`ruff check .` → **All checks passed**。
