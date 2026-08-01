@@ -44,6 +44,7 @@ from hoya_agent.reporting.artifacts import (
     RUN_CONFIG,
     LocalArtifactStore,
 )
+from hoya_agent.reporting.advice_lint import advice_violations
 from hoya_agent.reporting.renderer import build_insufficient_data_result, render
 
 SCHEMA_VERSION = "1.0"
@@ -178,7 +179,7 @@ class ApplicationService:
                 analysis_as_of=context.analysis_as_of,
                 reason=_fallback_reason(outcome.degradation_notes),
             )
-        report = render(result, ledger)
+        report = render(result, ledger, lint=advice_violations)
         if store.write_text(FINAL_REPORT, report):
             emit(
                 self._event(
