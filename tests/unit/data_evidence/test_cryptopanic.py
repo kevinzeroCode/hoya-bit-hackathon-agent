@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import httpx
-import pytest
 
 from hoya_agent.adapters.cryptopanic import fetch_cryptopanic_news
 from hoya_agent.data.market_worker import WorkerResult

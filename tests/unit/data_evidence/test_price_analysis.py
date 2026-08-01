@@ -13,13 +13,13 @@ import pytest
 from hoya_agent.adapters.organizer_csv import default_data_dir, load_organizer_csv
 from hoya_agent.data.market_series import closes
 from hoya_agent.data.price_analysis import (
+    _quantile,
     analog_base_rates,
     anomaly_days,
     attribution,
     daily_log_returns,
     rolling_beta,
     rolling_correlation,
-    _quantile,
 )
 from hoya_agent.data.types import MarketBar
 
