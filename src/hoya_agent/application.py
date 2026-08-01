@@ -29,6 +29,7 @@ from hoya_agent.clock import build_run_context
 from hoya_agent.models import (
     AnalysisRequest,
     Asset,
+    DataMode,
     ExecutionEvent,
     RunConfigSnapshot,
     RunContext,
@@ -226,6 +227,7 @@ class ApplicationService:
         return RunSummary(
             run_id=context.run_id,
             run_mode=context.run_mode,
+            effective_data_mode=final_snapshot.effective_data_mode,
             terminal_state=terminal_state,
             artifact_dir=str(store.run_dir),
             artifact_paths=store.artifact_paths(),
@@ -252,6 +254,10 @@ class ApplicationService:
             run_id=context.run_id,
             requested_run_mode=request.run_mode,
             effective_run_mode=context.run_mode,
+            # Both start equal. Only the pipeline may lower the effective mode,
+            # and `official` is forbidden from ever leaving `live`.
+            requested_data_mode=DataMode.requested_for(request.run_mode),
+            effective_data_mode=DataMode.requested_for(context.run_mode),
             sanitized_request={
                 "question": request.question,
                 "assets": [asset.value for asset in request.assets],

@@ -83,6 +83,30 @@ class RunMode(str, Enum):
     demo = "demo"
 
 
+class DataMode(str, Enum):
+    """Where a run's evidence actually came from.
+
+    `evidence-contracts.md` §14 requires `run_config.json` to record the
+    requested *and* effective run/data modes. Run mode says what the operator
+    asked for; data mode says what the evidence turned out to be, which is the
+    half a reader needs in order to trust a report.
+    """
+
+    live = "live"
+    fixture = "fixture"
+    recorded_fallback = "recorded_fallback"
+
+    @classmethod
+    def requested_for(cls, run_mode: RunMode) -> DataMode:
+        """The data mode a run starts out asking for.
+
+        `official` and `demo` both begin by attempting live sources; only `demo`
+        may later degrade to `recorded_fallback` (design.md §7). `rehearsal` is
+        the one mode that deliberately starts from deterministic fixtures.
+        """
+        return cls.fixture if run_mode is RunMode.rehearsal else cls.live
+
+
 class SourceType(str, Enum):
     official = "official"
     market = "market"
@@ -1049,6 +1073,8 @@ class RunConfigSnapshot(BaseModel):
     run_id: str
     requested_run_mode: RunMode
     effective_run_mode: RunMode
+    requested_data_mode: DataMode
+    effective_data_mode: DataMode
     sanitized_request: dict[str, object]
     analysis_as_of: datetime
     deadline_seconds: int
@@ -1075,6 +1101,25 @@ class RunConfigSnapshot(BaseModel):
     def _analysis_as_of_utc(cls, v: datetime) -> datetime:
         return _validate_utc(v, "analysis_as_of")
 
+    @model_validator(mode="after")
+    def _official_runs_stay_live(self) -> RunConfigSnapshot:
+        """An `official` run may never report fixture or recorded evidence.
+
+        Recording both modes is only worth something if the pair cannot lie.
+        `official` is defined as live sources plus the organizer CSV and never
+        loads fixtures or recorded responses, so this combination means a bug
+        upstream rather than an honest degradation.
+        """
+        if (
+            self.effective_run_mode is RunMode.official
+            and self.effective_data_mode is not DataMode.live
+        ):
+            raise ValueError(
+                "official runs must report effective_data_mode='live'; "
+                f"got '{self.effective_data_mode.value}'"
+            )
+        return self
+
     @property
     def run_mode(self) -> RunMode:
         return self.effective_run_mode
@@ -1088,7 +1133,9 @@ class RunSummary(BaseModel):
 
     run_id: str
     run_mode: RunMode
+    effective_data_mode: DataMode
     terminal_state: TerminalState
+    stage_statuses: dict[str, str] = Field(default_factory=dict)
     artifact_dir: str
     artifact_paths: dict[str, str] = Field(default_factory=dict)
     missing_artifacts: list[str] = Field(default_factory=list)

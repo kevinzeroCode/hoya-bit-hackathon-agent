@@ -273,6 +273,27 @@ Allowed event categories include run/stage/tool start/end, timeout, retry, cance
 
 Configuration names are fixed: `BEDROCK_PRIMARY_MODEL_ID`, `BEDROCK_FALLBACK_MODEL_ID`, and `CRYPTOPANIC_API_TOKEN`.
 
+### 14.1 Data Mode Vocabulary
+
+`DataMode` is a closed enum with exactly three values:
+
+| Value | Meaning |
+|---|---|
+| `live` | Evidence came from live providers and/or the organizer CSV. |
+| `fixture` | Deterministic fixtures were used, as permitted in `rehearsal`. |
+| `recorded_fallback` | A previously recorded bundle was replayed after live failure, permitted only in `demo`. |
+
+`run_config.json` records both `requested_data_mode` and `effective_data_mode`;
+`RunSummary` reports `effective_data_mode` using the same enum. Data mode is
+distinct from run mode and must not be conflated with it. An `official` run's
+`effective_data_mode` is always `live`, because `official` never loads fixtures
+or recorded responses.
+
+Cache, stale, partial, and degraded conditions are **separate** fields and
+states. They are never additional `DataMode` labels, because a run can be
+`live` while still serving cached or stale evidence, and that distinction has to
+survive into the artifact.
+
 ## 15. Market Metric Contracts
 
 - All windows and parameters are persisted with the resulting evidence.
