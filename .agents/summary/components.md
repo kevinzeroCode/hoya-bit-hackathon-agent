@@ -1,0 +1,263 @@
+# Components
+
+## Component Map
+
+```mermaid
+graph TB
+    subgraph Core["Core Services"]
+        App["ApplicationService<br/>application.py"]
+        Models["Domain Models<br/>models.py"]
+        Seams["Provisional Seams<br/>_provisional_seams.py"]
+    end
+
+    subgraph Adapters["Adapters (src/hoya_agent/adapters/)"]
+        Bedrock["bedrock.py<br/>BedrockLLMClient"]
+        BinanceA["binance.py<br/>fetch_binance_daily"]
+        CryptoA["cryptopanic.py<br/>fetch_cryptopanic_news"]
+        OrgCSV["organizer_csv.py<br/>load_organizer_csv"]
+        AltMe["alternative_me.py<br/>fetch_fear_greed"]
+        RSSA["rss.py<br/>fetch_rss_news"]
+        Assets["_assets.py<br/>mentions()"]
+    end
+
+    subgraph DataLayer["Data Layer (src/hoya_agent/data/)"]
+        Indicators["indicators.py<br/>return, vol, drawdown, z-score"]
+        MWorker["market_worker.py<br/>build_market_evidence"]
+        MSeries["market_series.py<br/>bars_asof, merge_with_cutover"]
+        Regime["regime.py<br/>classify_regime"]
+        PriceAn["price_analysis.py<br/>anomaly, attribution, comparison"]
+    end
+
+    subgraph EvidenceLayer["Evidence Layer (src/hoya_agent/evidence/)"]
+        Processor["processor.py<br/>build_ledger"]
+        Policies["policies.py<br/>reliability_for, max_confidence"]
+        ETypes["types.py<br/>EvidenceDraft, EvidenceLedger"]
+        EJson["evidence_json.py<br/>dump_evidence_json"]
+    end
+
+    subgraph ReasoningLayer["Reasoning Layer (src/hoya_agent/reasoning/)"]
+        Planner["planner.py<br/>Planner"]
+        ResAgent["research_agent.py<br/>ResearchAgent"]
+        Arbiter["arbiter.py<br/>Arbiter"]
+        PromptLib["prompt_library.py<br/>load_prompt"]
+        Conflict["conflict_extension.py<br/>DisabledConflictExtension"]
+    end
+
+    subgraph ReportingLayer["Reporting Layer (src/hoya_agent/reporting/)"]
+        Renderer["renderer.py<br/>render()"]
+        ArtStore["artifacts.py<br/>LocalArtifactStore"]
+    end
+
+    subgraph Orchestration["Orchestration (src/hoya_agent/orchestration/)"]
+        Pipeline["pipeline.py<br/>OrganizerCsvPipeline"]
+    end
+```
+
+## Component Details
+
+### ApplicationService (`application.py`)
+
+**Responsibility:** Single entry point for a complete analysis run. Owns run identity, immutable cutoff, artifact write ordering, and terminal state determination.
+
+**Key behaviors:**
+- Mints `run_id` from injected clock
+- Official mode: freezes `analysis_as_of` to current UTC, rejects caller-supplied values
+- Writes `run_config.json` before pipeline starts (crash recoverability)
+- Writes `evidence.json` immediately when ledger is ready (traceability before reasoning)
+- Determines terminal state: `completed` → `degraded` if artifacts missing → `failed` if all 4 missing
+- Detects question/asset mismatch and logs warning
+
+**Injected dependencies:** `clock`, `pipeline`, `prompt_version`, `configured_sources`, `optional_keys_present`
+
+---
+
+### Planner (`reasoning/planner.py`)
+
+**Responsibility:** Converts user question into a bounded, allowlisted execution plan. Deliberately weak — it only selects which pre-registered operations to run.
+
+**Key behaviors:**
+- Single LLM call with max_tokens=2000
+- Validates plan: ≤8 steps, all operations in allowlist, assets unchanged, lookback_days positive
+- Any violation → deterministic default plan (all allowed operations, default windows)
+- LLM failure → deterministic default plan with degradation note
+
+**Cannot:** Name providers, hosts, or URLs outside configuration; change asset list; add unbounded loops.
+
+---
+
+### Research Agent (`reasoning/research_agent.py`)
+
+**Responsibility:** Executes plan steps by invoking registered tool operations (adapters), then makes one bounded LLM extraction call over collected records.
+
+**Key behaviors:**
+- Runs only allowlisted operations from the plan
+- Collects up to 40 records from adapters
+- Single LLM extraction call with max_tokens=6000
+- Discards any draft citing a `record_id` not in the fetched set (anti-fabrication)
+- Detects injection-like text in records (flags but processes normally)
+- Status: `completed` (all operations + extraction OK), `partial` (some failed), `failed` (no records)
+
+**Cannot:** Browse URLs decided by the model; make follow-up calls; modify source reliability.
+
+---
+
+### Arbiter (`reasoning/arbiter.py`)
+
+**Responsibility:** Forms the market judgement. Receives ≤30 ranked evidence items and produces a layered `AnalysisResult` with fact→inference→conclusion claims.
+
+**Key behaviors:**
+- Selects evidence: prioritizes high-reliability, conflict-involved items, round-robin across groups
+- Single LLM call with max_tokens=8000
+- Structural validation: DAG acyclicity, link resolution, fact layering, coverage rules
+- Deterministic confidence caps applied post-LLM (never loosens confidence)
+- Fallback on failure: low-confidence insufficient-data result from up to 5 high-reliability facts
+
+**Cannot:** Assign reliability; create evidence; loosen confidence caps; make multiple calls.
+
+---
+
+### Market Worker (`data/market_worker.py`)
+
+**Responsibility:** Transforms OHLCV bars into traceable high-reliability `EvidenceDraft` objects. Pure computation, no LLM, no network.
+
+**Metrics produced:**
+- 14-day simple return
+- 30-day realized volatility
+- 90-day maximum drawdown
+- 30-day volume z-score
+
+**Key behaviors:**
+- Each metric computed independently — one failure doesn't block others
+- Status: `completed` (all 4 metrics), `partial` (some), `failed` (no bars at all)
+- Each draft carries full traceability (source, parameters, query range)
+
+---
+
+### Market Regime Classifier (`data/regime.py`)
+
+**Responsibility:** Deterministic synthesis of indicators into a descriptive market state label. Uses each asset's OWN rolling history (coin-agnostic).
+
+**Classification (first match wins):**
+1. Realized vol percentile ≥ 0.80 → `high_volatility`
+2. |14d return| ≥ 10% → `trending_up` / `trending_down`
+3. |14d return| ≤ 5% → `range_bound`
+4. Otherwise → `mixed`
+
+---
+
+### Price Analysis (`data/price_analysis.py`)
+
+**Responsibility:** Extended deterministic analysis for cross-asset comparison, anomaly detection, and attribution. Implements design doc outputs A5/A6/A7.
+
+**Capabilities:**
+- Anomaly days (±Nσ log-return z-scores)
+- Attribution: rolling correlation, beta, relative-strength percentile vs reference asset
+- Analog base rates: conditional self-history frequency analysis
+- Cross-asset comparison: uses only returns/ratios/percentiles (NEVER base-asset volume)
+
+---
+
+### Evidence Processor (`evidence/processor.py`)
+
+**Responsibility:** Merges all `EvidenceDraft` items into one clean, ranked, deduplicated `EvidenceLedger`.
+
+**Pipeline:**
+1. Rank by reliability (high→medium→low), then by freshness
+2. Exact-hash dedup (SHA-256 of canonicalized normalized_fact)
+3. Assign stable IDs (`ev_001`, `ev_002`, ...)
+4. Return `EvidenceLedger` with items + dropped_duplicates count
+
+---
+
+### Evidence Policies (`evidence/policies.py`)
+
+**Responsibility:** Deterministic policy enforcement — reliability assignment, independence group resolution, and confidence cap calculation.
+
+**Static reliability table:**
+| Level | Sources |
+|---|---|
+| `high` | Exchange API data, organizer CSV, official announcements, deterministic calculations |
+| `medium` | Original news pages with URL and timestamp |
+| `low` | Aggregators, social, Fear & Greed, secondary commentary |
+
+---
+
+### Renderer (`reporting/renderer.py`)
+
+**Responsibility:** Produces the final 11-section Traditional Chinese report from `AnalysisResult` + `EvidenceLedger`. Completely deterministic.
+
+**Fixed sections (in order):**
+1. 報告標題與摘要 (Header)
+2. 直接回答 (Direct Answer)
+3. 市場範圍 (Market Context)
+4. 事實 (Facts)
+5. 支持證據 (Supporting Evidence)
+6. 反方訊號 (Counter Evidence)
+7. 推論 (Inferences)
+8. 結論 (Conclusions)
+9. 信心與理據 (Confidence)
+10. 限制與降級 (Limitations)
+11. 失效條件與觀察項目 (Invalidation + Watch Items)
+
+**Key behaviors:**
+- `build_insufficient_data_result()` for fallback reports
+- Runs pluggable `lint` hook for prohibited language detection
+- Raises on lint violation (report must not ship with investment advice)
+
+---
+
+### Artifact Store (`reporting/artifacts.py`)
+
+**Responsibility:** Atomic file writing for the 4 fixed competition artifacts.
+
+**Fixed artifact names:** `run_config.json`, `execution_log.jsonl`, `evidence.json`, `final_report.md`
+
+**Key behaviors:**
+- Atomic writes: tmp file in same directory → `os.replace`
+- `os.fsync` after every write
+- Streaming execution log (append + flush per event)
+- Failure tracking: records which artifacts failed but never crashes
+- `disclose_missing()`: prints exactly which artifacts are absent
+
+---
+
+### BedrockLLMClient (`adapters/bedrock.py`)
+
+**Responsibility:** Single gateway to Amazon Bedrock Converse API. Forces structured output via synthetic tool call.
+
+**Key behaviors:**
+- `converse_structured()`: generic over any Pydantic result model
+- One schema repair attempt within same deadline
+- One fallback model switch for retryable availability/throttling errors
+- Timeout clamped to min(configured_cap, remaining_stage_budget)
+- Sanitized `CallEvent` logging (no prompts, no credentials)
+
+---
+
+### Pipeline (`orchestration/pipeline.py`)
+
+**Responsibility:** Current increment — offline organizer-CSV-only pipeline. Bridges provisional `evidence/types.py` dataclasses to canonical `models.py` contracts.
+
+**Key behaviors:**
+- `OrganizerCsvPipeline.execute()`: iterates assets, loads bars, builds market evidence
+- `to_contract_ledger()`: maps frozen dataclasses to Pydantic models, preserves `metric_name`/`metric_value` in side index
+- Arbiter not yet wired — honestly reports `degraded` terminal state
+
+---
+
+### Prompt Library (`reasoning/prompt_library.py`)
+
+**Responsibility:** Loads versioned markdown prompt files. Only version identifiers reach logs — prompt bodies never do.
+
+**Registered prompts:**
+- `planner` → `planner-v1.md`
+- `research_extraction` → `research-extraction-v1.md`
+- `arbiter` → `arbiter-v1.md`
+
+---
+
+### Conflict Extension (`reasoning/conflict_extension.py`)
+
+**Responsibility:** H3 conditional-debate seam. MVP implementation is a **deterministic pass-through** — always routes to Arbiter, always reports disabled.
+
+**Status:** Stub only. No debate participants, no LLM calls. Exists to satisfy the interface contract for future H3 work.
