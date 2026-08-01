@@ -11,6 +11,7 @@ For every Kiro-executed task, append a row after the commit exists:
 | Kiro task | Commit | Operator | Verification | Notes |
 |---|---|---|---|---|
 | _Example: 2.1_ | _short SHA_ | _team member_ | _exact command_ | _Kiro session or decision summary_ |
+| 1a | `b9f57db` | Kiro (spec-native execution) | `ruff check .` → All checks passed; `python -m pytest tests/unit tests/contract -q` → 254 passed | Executed from the spec sidebar against the eight always-included steering files, not a pasted prompt. Kiro caught two contract deviations on its own by re-reading `evidence-contracts.md` §16.2: `TrustScorecard` used a generic `count` where the contract names `distinct_groups`/`distinct_source_types`, and `DegradationEvent` was missing `source`. **Deviations from the workflow, recorded honestly:** (1) implementation preceded the tests — the "first write failing model tests" subtask is checked with an inline note, since the Red step was skipped; (2) the lint cleanup was driven by Claude Code diagnosis (ruff config `line-length = 120`, because `select = ["E", ...]` enables E501 at 88 while frozen code reaches 115 chars) with Kiro applying the edits; (3) environment setup (`uv` Python 3.12.13, `pip install -e ".[dev]"`) was done by Claude Code after Kiro stalled ~1 h on a venv that `uv venv` had created without `pip`. The contracts themselves — `pyproject.toml`, `models.py`, `tests/unit/test_models.py` — are Kiro's output. |
 
 ## Evidence Checklist
 

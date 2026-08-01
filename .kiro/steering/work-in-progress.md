@@ -46,6 +46,30 @@ at the package root and under `adapters/` and `evidence/`. Leave them as they ar
 
 Record every resolution here so the next session does not re-litigate it.
 
+- **Task 1a contract acceptance is done — do not redo it.** After `models.py`
+  landed (`b9f57db`), all eight downstream stand-in contracts in
+  `tests/unit/reasoning/_stubs.py` were compared field-by-field against the real
+  models. Result: **zero fields exist downstream that the contracts lack, and
+  nothing was renamed.** `EvidenceItem`, `ConflictIndicator`, `ClaimEvidenceLink`
+  and `InvalidationCondition` match exactly; `EvidenceLedger`, `Claim`,
+  `AnalysisResult` and `AnalysisRequest` differ in one direction only, where the
+  contracts carry fields the stubs never modelled.
+
+  Eleven of those added fields are **required**: `run_id`, `run_mode` and
+  `analysis_as_of` on the ledger, request and result; `question` and `assets` on
+  the result; `requested_at` on the request; `time_range` on `Claim`. Whoever
+  constructs these objects must supply them. That is orchestration's job — it is
+  the only layer that knows a run's identity — so this is Task 3 work, not a
+  defect in the reasoning layer.
+
+  `Claim.time_range` being required is contract-faithful: `evidence-contracts.md`
+  shows it unconditionally in the Claim example and constrains it in the rules
+  (`time_range.start <= time_range.end <= analysis_as_of`).
+
+  This was verified by comparing model fields programmatically, so
+  `tests/unit/reasoning/` was never edited and stays frozen. Swapping `_stubs.py`
+  for the real models remains a later task requiring the owner's agreement.
+
 - **`invalidation_conditions` shape.** `evidence-contracts.md` §7 shows a string
   list on `Claim`; §16.4 defines a structured object. Resolution:
   `Claim.invalidation_conditions` is `list[str]`;
