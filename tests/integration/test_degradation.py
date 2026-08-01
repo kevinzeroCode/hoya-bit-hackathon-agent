@@ -54,7 +54,6 @@ async def test_market_timeout_degrades_to_an_honest_empty_ledger() -> None:
     assert any("市場分支失敗" in note for note in outcome.degradation_notes)
 
 
-
 class OneStepPlanner:
     async def run(self, *, request, deadline):
         del deadline
