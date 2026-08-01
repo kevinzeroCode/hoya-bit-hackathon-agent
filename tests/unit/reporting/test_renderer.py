@@ -149,6 +149,26 @@ def test_run_mode_and_run_id_are_visible(result, ledger) -> None:
     assert "fixture" in report or "非 live" in report
 
 
+def test_rehearsal_label_does_not_assert_fixture_or_live_data(result, ledger) -> None:
+    # rehearsal covers deterministic fixtures and replayable real data alike, so
+    # the label must not claim either one.
+    report = render(result, ledger)
+    assert "rehearsal" in report
+    assert "非 live official 結果" in report
+    assert "fixture 資料" not in report
+
+
+def test_fallback_reason_is_not_double_punctuated(ledger) -> None:
+    fallback = build_insufficient_data_result(
+        run_id=ledger.run_id,
+        question="BTC 近期市場行為可以由哪些因素解釋？",
+        assets=[Asset.BTC],
+        analysis_as_of=ledger.analysis_as_of,
+        reason="Arbiter 尚未接線，本次僅產出 deterministic 市場證據。",
+    )
+    assert "。。" not in render(fallback, ledger)
+
+
 def test_report_contains_no_prohibited_advice_language(result, ledger) -> None:
     report = render(result, ledger)
     for term in PROHIBITED_TERMS:

@@ -126,6 +126,45 @@ The three shapes first written to disk by S2 — the `run_config.json` snapshot,
 the `execution_log.jsonl` event, and the `evidence.json` container — may gain
 fields later but **must not be renamed**.
 
+## S2 is now joined to the data/evidence layer on `main`
+
+`src/hoya_agent/orchestration/pipeline.py` exists as a **first increment of Task 3,
+not Task 3 itself**. Do not tick Task 3. It contains:
+
+- `OrganizerCsvPipeline` — implements the `AnalysisPipeline` seam over the
+  organizer Daily OHLCV CSV. Offline, no LLM, coin-agnostic (the symbol is a
+  parameter). Task 3 extends this file with `DeadlineManager` and Market/Research
+  fork-join; `deadline.py` and `run_state.py` are still unwritten.
+- `to_contract_ledger()` — bridges `evidence/types.py` frozen dataclasses to
+  `models.py` contracts. It retires when the dataclasses do.
+
+Verified offline: a BTC run produces four artifacts with four `high`-reliability
+market Evidence Items whose values trace to `data/indicators.py`. No Arbiter is
+wired, so the run is honestly `degraded` and renders the insufficient-data report
+over real evidence.
+
+**Two decisions are open and belong to the contract/data owners, not to S2:**
+
+1. **`evidence/evidence_json.py` is a second writer of the fixed `evidence.json`.**
+   Its `dump_evidence_json()` calls `Path.write_text` from inside `evidence/`,
+   which `structure.md` reserves for `reporting/artifacts.py`, and its payload
+   (`"schema": "evidence-ledger/p2-prototype-v1"`, top-level `asset` /
+   `generated_at` / `llm_provider` / `summary` / `evidence`) contradicts
+   `evidence-contracts.md` §12 (`schema_version` / `run_id` / `analysis_as_of` /
+   `run_mode` / `items` / `conflict_indicators` / `degradation_events`). Two
+   incompatible writers of one graded filename cannot both ship.
+2. **`metric_name` / `metric_value` are on the dataclass but not on
+   `models.EvidenceItem`** (16 fields, `extra="forbid"`). §16.4 requires a
+   quantified invalidation threshold to equal a value *carried by* its evidence,
+   so dropping them makes that contract unsatisfiable. Until it is decided,
+   `to_contract_ledger()` preserves them in `MappedLedger.metric_index`, keyed by
+   `evidence_id`. Adding the two optional fields to `models.EvidenceItem` looks
+   like the right fix, but it is a `models.py` change and needs the owner.
+
+Also note: `ruff check .` is red on `main` with 86 errors — 76 in the duplicated
+`p2-etl-mvp/` tree and 10 inside `src/`/`tests/` from the PR #8 integration. None
+are in S2's paths.
+
 ## Downstream consumer already written
 
 `src/hoya_agent/reasoning/` (Task 6) was written before Task 1 existed. It takes

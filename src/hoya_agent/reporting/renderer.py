@@ -43,7 +43,9 @@ INSUFFICIENT_DATA_HEADLINE = "目前無法可靠判定"
 
 _RUN_MODE_LABELS: dict[RunMode, str] = {
     RunMode.official: "official（live 來源）",
-    RunMode.rehearsal: "rehearsal（deterministic fixture 資料，非 live official 結果）",
+    # rehearsal permits deterministic fixtures *or* replayable real data with a
+    # supplied cutoff, so the label must not assert which one was used.
+    RunMode.rehearsal: "rehearsal（可重現資料與自訂 cutoff，非 live official 結果）",
     RunMode.demo: "demo（可能包含 recorded fallback，非現場新分析）",
 }
 
@@ -105,13 +107,14 @@ def build_insufficient_data_result(
     This keeps a single rendering path: the fallback report is the normal report
     of an explicitly insufficient result, so it cannot silently look complete.
     """
+    reason_text = reason.strip().rstrip("。.")
     return AnalysisResult(
         run_id=run_id,
         question=question,
         assets=assets,
         analysis_as_of=analysis_as_of,
         direct_answer=(
-            f"{INSUFFICIENT_DATA_HEADLINE}。原因：{reason}。"
+            f"{INSUFFICIENT_DATA_HEADLINE}。原因：{reason_text}。"
             "本次 run 未取得經驗證的分析結果，以下僅呈現已取得的證據與資料缺口。"
         ),
         market_context=None,
@@ -122,13 +125,13 @@ def build_insufficient_data_result(
             "資料或分析不足，依 deterministic 政策將整體信心設為 low，且不得升級。"
         ),
         limitations=[
-            f"分析未完成：{reason}。",
+            f"分析未完成：{reason_text}。",
             "本報告為 deterministic insufficient-data fallback，不含經驗證的推論或結論。",
         ],
         invalidation_conditions=[],
         watch_items=[],
         insufficient_data=True,
-        degradation_notes=[f"分析階段未產出可驗證結果：{reason}。"],
+        degradation_notes=[f"分析階段未產出可驗證結果：{reason_text}。"],
     )
 
 
