@@ -62,6 +62,28 @@ def test_claim_with_empty_assets_defaults_to_request_assets():
     assert [a.value for a in result.claims[0].assets] == ["BTC"]
 
 
+def test_future_claim_time_range_is_clamped_to_cutoff():
+    # Prediction-style questions push the model to emit a future end date, which
+    # the research-only AnalysisResult rejects; the mapper must clamp it.
+    gen = ArbiterGeneration(
+        direct_answer="本工具不預測價格;以下為研究導向分析。",
+        claims=[
+            GenClaim(
+                claim_id="cl_001", claim_type="fact", assets=["BTC"], text="近14日報酬-1.6%",
+                time_range={"start": "2026-08-01", "end": "2026-08-08"},  # future end
+            )
+        ],
+        claim_evidence_links=[
+            GenLink(claim_id="cl_001", evidence_id="ev_001", stance="supports", reason="市場數據"),
+        ],
+        confidence="low",
+        confidence_rationale="研究導向。",
+    )
+    result = to_analysis_result(gen, request=_request(), ledger=None)
+    assert result is not None
+    assert result.claims[0].time_range.end == "2026-08-01"  # clamped to analysis_as_of
+
+
 def test_insufficient_generation_maps_cleanly():
     gen = ArbiterGeneration(
         direct_answer="目前無法可靠判定。",

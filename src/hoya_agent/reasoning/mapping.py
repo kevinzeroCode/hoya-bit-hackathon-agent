@@ -13,7 +13,7 @@ worst case is the same honest "資料不足" output the offline path already pro
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from pydantic import ValidationError
@@ -41,12 +41,29 @@ def _attr(obj: Any, name: str, default: Any = None) -> Any:
     return getattr(obj, name, default)
 
 
+def _parse_iso_date(value: object) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
 def _time_range(claim: GenClaim, analysis_as_of: datetime) -> TimeRange:
-    """Use the model's time_range when given, else a default lookback window."""
-    if claim.time_range and claim.time_range.get("start") and claim.time_range.get("end"):
-        return TimeRange(start=claim.time_range["start"], end=claim.time_range["end"])
-    end = analysis_as_of.date()
-    start = end - timedelta(days=_DEFAULT_LOOKBACK_DAYS)
+    """Build a claim window, clamped to never extend past the analysis cutoff.
+
+    This is a research tool, not a forecaster: a claim can only describe data up
+    to `analysis_as_of`. The model sometimes emits a future end date (especially
+    for prediction-style questions), which the strict AnalysisResult rejects, so
+    we clamp rather than fail.
+    """
+    as_of = analysis_as_of.date()
+    tr = claim.time_range or {}
+    end = _parse_iso_date(tr.get("end")) or as_of
+    start = _parse_iso_date(tr.get("start")) or (as_of - timedelta(days=_DEFAULT_LOOKBACK_DAYS))
+    if end > as_of:
+        end = as_of
+    if start > end:
+        start = end - timedelta(days=_DEFAULT_LOOKBACK_DAYS)
     return TimeRange(start=start.isoformat(), end=end.isoformat())
 
 
