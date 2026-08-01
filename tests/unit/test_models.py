@@ -25,6 +25,7 @@ from hoya_agent.models import (
     ClaimType,
     ConflictIndicator,
     ConsistencyDimension,
+    DataMode,
     DegradationEvent,
     EvidenceDraft,
     EvidenceItem,
@@ -38,11 +39,14 @@ from hoya_agent.models import (
     RegimeLabel,
     Reliability,
     ReliabilityMix,
+    RunConfigSnapshot,
     RunMode,
+    RunSummary,
     SourceDiversityDimension,
     SourceIndependenceDimension,
     SourceType,
     Stance,
+    TerminalState,
     TimeRange,
     TrustLevel,
     TrustScorecard,
@@ -2034,3 +2038,95 @@ class TestAnalysisResult:
                     trust_scorecards=[sc],
                 )
             )
+
+
+# ---------------------------------------------------------------------------
+# Data mode — evidence-contracts.md §14 requires run_config.json to record
+# "requested and effective run/data modes". The run half landed with Task 1b;
+# the data half did not, so a run could not state where its evidence came from.
+# design.md §3 step 11 also names effective data mode and stage statuses as
+# RunSummary content.
+# ---------------------------------------------------------------------------
+
+
+def _run_config_kwargs(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "prompt_version": "planner-v1",
+        "policy_version": "1.0",
+        "run_id": "run_20260801_120000_abcd",
+        "requested_run_mode": RunMode.official,
+        "effective_run_mode": RunMode.official,
+        "requested_data_mode": DataMode.live,
+        "effective_data_mode": DataMode.live,
+        "sanitized_request": {"question": "測試", "assets": ["BTC"]},
+        "analysis_as_of": datetime(2026, 8, 1, tzinfo=timezone.utc),
+        "deadline_seconds": 900,
+    }
+    base.update(overrides)
+    return base
+
+
+def test_data_mode_has_the_three_contract_values() -> None:
+    assert {mode.value for mode in DataMode} == {"live", "fixture", "recorded_fallback"}
+
+
+@pytest.mark.parametrize(
+    ("run_mode", "expected"),
+    [
+        (RunMode.official, DataMode.live),
+        (RunMode.demo, DataMode.live),
+        (RunMode.rehearsal, DataMode.fixture),
+    ],
+)
+def test_requested_data_mode_follows_the_run_mode_policy(
+    run_mode: RunMode, expected: DataMode
+) -> None:
+    """`demo` starts live and may degrade later; only `rehearsal` starts on fixtures."""
+    assert DataMode.requested_for(run_mode) is expected
+
+
+def test_run_config_snapshot_requires_both_data_modes() -> None:
+    kwargs = _run_config_kwargs()
+    kwargs.pop("effective_data_mode")
+    with pytest.raises(ValidationError):
+        RunConfigSnapshot(**kwargs)
+
+
+def test_official_run_may_not_report_fixture_data() -> None:
+    """Rule 7: `official` never loads fixtures or recorded responses."""
+    with pytest.raises(ValidationError):
+        RunConfigSnapshot(**_run_config_kwargs(effective_data_mode=DataMode.fixture))
+
+
+def test_official_run_may_not_report_recorded_fallback() -> None:
+    with pytest.raises(ValidationError):
+        RunConfigSnapshot(
+            **_run_config_kwargs(effective_data_mode=DataMode.recorded_fallback)
+        )
+
+
+def test_demo_run_may_degrade_to_recorded_fallback() -> None:
+    snapshot = RunConfigSnapshot(
+        **_run_config_kwargs(
+            requested_run_mode=RunMode.demo,
+            effective_run_mode=RunMode.demo,
+            effective_data_mode=DataMode.recorded_fallback,
+        )
+    )
+    assert snapshot.requested_data_mode is DataMode.live
+    assert snapshot.effective_data_mode is DataMode.recorded_fallback
+
+
+def test_run_summary_carries_effective_data_mode_and_stage_statuses() -> None:
+    summary = RunSummary(
+        run_id="run_20260801_120000_abcd",
+        run_mode=RunMode.rehearsal,
+        effective_data_mode=DataMode.fixture,
+        terminal_state=TerminalState.completed,
+        artifact_dir="artifacts/run_20260801_120000_abcd",
+        confidence=Reliability.medium,
+        insufficient_data=False,
+        stage_statuses={"planner": "completed", "arbiter": "completed"},
+    )
+    assert summary.effective_data_mode is DataMode.fixture
+    assert summary.stage_statuses["planner"] == "completed"

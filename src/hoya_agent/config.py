@@ -8,7 +8,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from hoya_agent.models import AnalysisRequest, RunConfigSnapshot
+from hoya_agent.models import AnalysisRequest, DataMode, RunConfigSnapshot
 
 OPTIONAL_ENV_NAMES = (
     "BEDROCK_FALLBACK_MODEL_ID",
@@ -148,6 +148,10 @@ class Settings(BaseModel):
             policy_version="unknown",
             requested_run_mode=request.run_mode,
             effective_run_mode=request.run_mode,
+            # Effective data mode starts equal to the requested one; only the
+            # pipeline can lower it, and only `demo` may end on a fallback.
+            requested_data_mode=DataMode.requested_for(request.run_mode),
+            effective_data_mode=DataMode.requested_for(request.run_mode),
             sanitized_request={
                 "question": request.question,
                 "assets": [asset.value for asset in request.assets],
