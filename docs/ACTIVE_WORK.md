@@ -20,8 +20,10 @@
 | S5 市場證據 data 層 | ✅ **已整合進 `main`**：`data/indicators.py`、`data/market_worker.py`、`data/market_series.py`、`data/regime.py`、`data/price_analysis.py` |
 | Port adapters | ✅ **已在 `main`**：`adapters/port_adapters.py`（112 LOC） |
 | 可執行的 Agent 程式碼 | `adapters/bedrock.py`、`reasoning/`、`evidence/{types,policies}.py` 都在 `main` 上 |
-| Bedrock 實際呼叫 | ⚠️ **仍未驗證過任何一次**——這是目前最大的未爆彈 |
-| ruff | ⚠️ 87 errors（76 在 `p2-etl-mvp/`，~10 在 `src/`/`tests/` 來自 PR #8 整合） |
+| Bedrock 實際呼叫 | 🟡 **已成功呼叫過**。P2 於 2026-08-01 在 `us-west-2` 以 `us.anthropic.claude-haiku-4-5-20251001-v1:0` 驗證（`p2-etl-mvp/docs/service-access-check.md`）。**但 S0 未關閉**——見下方阻擋點 |
+| **S0 剩餘阻擋點** | ❌ **AWS 帳號未提交 Anthropic use case details 表單**。目前每次 Anthropic 模型呼叫都回 `ResourceNotFoundException: Model use case details have not been submitted for this account`。Bedrock 本身可達（列得到 112 個模型、Haiku 4.5 在清單內），標準 AWS profile 憑證有效。**這是主控台操作，不是程式問題** |
+| **`main` 測試狀態** | ❌ **紅燈：6 failed / 564 passed**。`tests/integration/test_s1_seam_bridge.py` 失敗——那是刻意設計的信號，代表 Task 1b 落地後該做 S2 的 seam swap（刪 `_provisional_seams.py`）。詳見下方「待裁決」 |
+| ruff | ⚠️ 77 errors（PR #16 清掉一部分後的實測值；`Implementation-Plan.md` §3.3 的 DoD 要求 `ruff check .` 乾淨） |
 | `tests/acceptance/`、`tests/live/` | ⚠️ **尚不存在**，Day 2 計劃建立 |
 
 跑測試：
@@ -214,6 +216,6 @@ ruff check .
   ```
 
   已於 2026-08-01 在 3.12.13 上實跑：501+ passed。
-- **ruff 87 errors**：76 在 `p2-etl-mvp/`（歷史殘留），~10 在 `src/`/`tests/`（PR #8 整合）。
+- **ruff 77 errors**（PR #16 清理後的實測值，43 個可自動修）：多數在 `p2-etl-mvp/`（歷史殘留）。
   建議：將 `p2-etl-mvp/` 加入 ruff exclude 或直接刪除該目錄（其核心已搬入 `src/hoya_agent/`）。
 - `feature/crypto-data-html` 分支的 `tests/` 佔用了 Agent 測試的保留路徑，合併時會撞。

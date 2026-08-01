@@ -72,7 +72,7 @@ message broker、向量資料庫、任何其他 orchestration 框架。
 
 這個專案的優勢是**不必猜**：repo 裡已經有三份真實產出可以反推。
 
-### 3.1 已合併進 `main` 的 reasoning 層（`task/6-bedrock-reasoning`，22 個 `.py`，157 passed）
+### 3.1 已合併進 `main` 的 reasoning 層（`task/6-bedrock-reasoning`；`main` 現為 `src/hoya_agent/` 40 個 `.py`，全庫 564 passed / 6 failed）
 
 實測結論：
 
@@ -364,12 +364,19 @@ python -m pytest tests/unit tests/contract tests/integration -q
 > integration test 已驗證通過（422 passed / 6 skipped, `ruff check .` clean on Python 3.12.13）。
 > 剩餘的 provisional seam 收斂（`_provisional_seams.py` 退役）屬 Task 1b 後的 swap 工作。
 
-### 風險 B — Bedrock 從來沒有真的被呼叫過一次
+### 風險 B — Converse 結構化輸出路徑尚未驗證，且帳號被 AWS 擋住
 
-> ⚠️ `docs/ACTIVE_WORK.md`（2026-08-01）：**「Bedrock 實際呼叫 — 仍未驗證過任何一次，
-> 這是目前最大的未爆彈。」** `adapters/bedrock.py` 有 371 行、契約測試全綠——
-> **但那全是對著 stub 測的。** 若模型未開通、region 不對或 model ID 錯，
-> 整個 H2-Lite 是死的，切片 A 做得再漂亮也沒用。
+> 🟡 **已部分降級（2026-08-01 更新）**：Bedrock **已經成功呼叫過**——P2 在 `us-west-2` 以
+> `us.anthropic.claude-haiku-4-5-20251001-v1:0` 驗證通過，憑證、region、模型存取權皆 PASS
+> （紀錄見 `p2-etl-mvp/docs/service-access-check.md`）。
+>
+> **但仍有兩個缺口：**
+>
+> 1. **AWS 帳號未提交 Anthropic use case details 表單** —— 目前每次呼叫穩定回
+>    `ResourceNotFoundException`。這是主控台操作，不是程式問題，但沒做完什麼都驗不了。
+> 2. **走的不是同一條路** —— P2 用 `invoke_model`；`adapters/bedrock.py` 用
+>    `converse` + forced `toolConfig`。契約測試全綠但**全是對著 stub 測的**，
+>    stub 不做 botocore 的參數驗證，所以強制工具呼叫的結構化輸出還沒真的跑過一次。
 
 **切片 B：一次真實的 Bedrock Converse 呼叫**
 1. 確認 region 與 `BEDROCK_PRIMARY_MODEL_ID` 已開通。

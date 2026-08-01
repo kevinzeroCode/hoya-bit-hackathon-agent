@@ -632,9 +632,11 @@ optional 來源失敗非阻塞；重複轉載不被算成獨立來源；缺源�
 > **已實作：** `adapters/bedrock.py`（371 行）、`reasoning/{planner,research_agent,arbiter,conflict_extension,prompt_library}.py`、
 > `prompts/{planner,research-extraction,arbiter}-v1.md`、`tests/contract/test_bedrock_client.py` 與
 > `tests/unit/reasoning/`（5 檔）。已合併進 `main`（gate `fc517e7`）。
-> `main` 上 **157 passed + 15 subtests**，Python 3.12.13 離線實跑（2026-08-01）。
-> **⚠️ 已測到的與尚未測到的：** 契約測試是對著 **Bedrock stub** 跑的。
-> **真實 Converse 呼叫仍是零次**（→ S0）。「reasoning 完成」不等於「Bedrock 可用」。
+> `main` 現為 **564 passed / 6 failed + 15 subtests**（2026-08-01 離線實跑；6 個失敗來自
+> `test_s1_seam_bridge.py`，是刻意設計的 seam-swap 信號，不是 reasoning 層的問題）。
+> **⚠️ 已測到的與尚未測到的：** 契約測試是對著 **Bedrock stub** 跑的，而 stub 不做 botocore 的參數驗證。
+> Bedrock 本身已由 P2 驗證可用，但**經 `adapters/bedrock.py` 的 `converse` + forced `toolConfig`
+> 取回結構化輸出，仍是零次**（→ S0）。「reasoning 完成」不等於「這條路可用」。
 > **偏離 ①：順序。** 本階段在 S1（契約凍結）**之前**完成，用 `evidence/types.py` 的 provisional dataclass
 > 與 `tests/unit/reasoning/_stubs.py` 頂著。這是刻意的（讓 P3 不必等人），代價是 S1 後要做一輪機械替換並刪 `_stubs.py`。
 > **偏離 ②：曾經有兩套 LLM 邊界。** P2 另寫了 `reasoning/llm_client.py` + `gpt_client.py`。
