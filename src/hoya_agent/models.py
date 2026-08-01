@@ -48,7 +48,14 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    HttpUrl,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 # ---------------------------------------------------------------------------
 # Enums (all str-backed for direct serialization)
@@ -126,11 +133,12 @@ class InvalidationOperator(str, Enum):
 # Helpers
 # ---------------------------------------------------------------------------
 
-_RUN_ID_RE = re.compile(r"^run_\d{8}_\d{6}_.+$")
+_RUN_ID_RE = re.compile(r"^run_\d{8}_\d{6}_[A-Za-z0-9][A-Za-z0-9_-]*$")
 _EV_ID_RE = re.compile(r"^ev_\d{3,}$")
 _CL_ID_RE = re.compile(r"^cl_\d{3,}$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _ZERO_OFFSET = timedelta(0)
+_HTTP_URL_ADAPTER = TypeAdapter(HttpUrl)
 
 
 def _validate_utc(v: datetime, field_name: str) -> datetime:
@@ -159,6 +167,27 @@ def _strip_non_empty(v: str, field_name: str) -> str:
     stripped = v.strip()
     if not stripped:
         raise ValueError(f"{field_name} must not be empty or blank")
+    return stripped
+
+
+def _strip_optional_non_empty(v: str | None, field_name: str) -> str | None:
+    """Strip an optional string, rejecting a present but blank value."""
+    if v is None:
+        return None
+    return _strip_non_empty(v, field_name)
+
+
+def _validate_optional_http_url(v: str | None, field_name: str) -> str | None:
+    """Accept only a present, nonblank HTTP(S) URL with a hostname."""
+    stripped = _strip_optional_non_empty(v, field_name)
+    if stripped is None:
+        return None
+    try:
+        parsed = _HTTP_URL_ADAPTER.validate_python(stripped)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be a valid HTTP(S) URL") from exc
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(f"{field_name} must be a valid HTTP(S) URL without credentials")
     return stripped
 
 
@@ -285,6 +314,11 @@ class EvidenceItem(BaseModel):
     def _source_name_non_empty(cls, v: str) -> str:
         return _strip_non_empty(v, "source_name")
 
+    @field_validator("source_url")
+    @classmethod
+    def _source_url_valid(cls, v: str | None) -> str | None:
+        return _validate_optional_http_url(v, "source_url")
+
     @field_validator("content_reference")
     @classmethod
     def _content_reference_non_empty(cls, v: str) -> str:
@@ -375,6 +409,16 @@ class EvidenceDraft(BaseModel):
     @classmethod
     def _source_name_non_empty(cls, v: str) -> str:
         return _strip_non_empty(v, "source_name")
+
+    @field_validator("source_url")
+    @classmethod
+    def _source_url_valid(cls, v: str | None) -> str | None:
+        return _validate_optional_http_url(v, "source_url")
+
+    @field_validator("source_record_id")
+    @classmethod
+    def _source_record_id_non_empty(cls, v: str | None) -> str | None:
+        return _strip_optional_non_empty(v, "source_record_id")
 
     @field_validator("content_reference")
     @classmethod
@@ -675,6 +719,16 @@ class ConflictIndicator(BaseModel):
                 raise ValueError(f"evidence id must match ev_NNN: {eid!r}")
         return v
 
+    @field_validator("independence_groups")
+    @classmethod
+    def _independence_groups_nonblank(cls, v: list[str]) -> list[str]:
+        return _validate_non_blank_list(v, "independence_groups")
+
+    @field_validator("rule_version")
+    @classmethod
+    def _rule_version_nonblank(cls, v: str) -> str:
+        return _strip_non_empty(v, "rule_version")
+
 
 class DegradationEvent(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -706,6 +760,11 @@ class EvidenceLedger(BaseModel):
     items: list[EvidenceItem] = []
     conflict_indicators: list[ConflictIndicator] = []
     degradation_events: list[DegradationEvent] = []
+
+    @field_validator("schema_version")
+    @classmethod
+    def _schema_version_nonblank(cls, v: str) -> str:
+        return _strip_non_empty(v, "schema_version")
 
     @field_validator("run_id")
     @classmethod
@@ -752,6 +811,11 @@ class InvalidationCondition(BaseModel):
     @classmethod
     def _text_non_empty(cls, v: str) -> str:
         return _strip_non_empty(v, "text")
+
+    @field_validator("metric")
+    @classmethod
+    def _metric_non_empty(cls, v: str | None) -> str | None:
+        return _strip_optional_non_empty(v, "metric")
 
     @field_validator("basis_evidence_id")
     @classmethod

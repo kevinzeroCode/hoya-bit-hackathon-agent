@@ -263,6 +263,10 @@ class TestAnalysisRequest:
         with pytest.raises(ValidationError, match="run_YYYYMMDD"):
             AnalysisRequest(**_valid_request(run_id="bad_id"))
 
+    def test_run_id_rejects_whitespace_suffix(self):
+        with pytest.raises(ValidationError, match="run_YYYYMMDD"):
+            AnalysisRequest(**_valid_request(run_id="run_20260717_060000_   "))
+
     def test_run_mode_enum(self):
         for mode in ("official", "rehearsal", "demo"):
             req = AnalysisRequest(**_valid_request(run_mode=mode))
@@ -350,6 +354,32 @@ class TestEvidenceItem:
     def test_rejects_empty_source_name(self):
         with pytest.raises(ValidationError, match="empty"):
             EvidenceItem(**_valid_evidence_item(source_name=""))
+
+    def test_rejects_blank_source_url(self):
+        with pytest.raises(ValidationError, match="source_url"):
+            EvidenceItem(**_valid_evidence_item(source_url="   "))
+
+    def test_rejects_non_http_source_url(self):
+        with pytest.raises(ValidationError, match=r"HTTP\(S\) URL"):
+            EvidenceItem(**_valid_evidence_item(source_url="not a url"))
+
+    @pytest.mark.parametrize(
+        "source_url",
+        [
+            "https://exa mple.com/source",
+            "https://example.com:notaport/source",
+            "https://user:secret@example.com/source",
+        ],
+    )
+    def test_rejects_malformed_or_credentialed_source_url(self, source_url):
+        with pytest.raises(ValidationError, match=r"HTTP\(S\) URL"):
+            EvidenceItem(**_valid_evidence_item(source_url=source_url))
+
+    def test_source_url_is_stripped(self):
+        item = EvidenceItem(
+            **_valid_evidence_item(source_url="  https://example.com/source  ")
+        )
+        assert item.source_url == "https://example.com/source"
 
     def test_rejects_blank_content_reference(self):
         with pytest.raises(ValidationError, match="empty"):
@@ -523,6 +553,60 @@ class TestEvidenceDraft:
                 content_reference="ref",
                 normalized_fact="fact",
             )
+
+    def test_draft_rejects_blank_source_url(self):
+        with pytest.raises(ValidationError, match="source_url"):
+            EvidenceDraft(
+                asset="BTC",
+                source_type="market",
+                source_name="Binance",
+                source_url="   ",
+                fetched_at=NOW,
+                query_or_parameters="x",
+                content_reference="ref",
+                normalized_fact="fact",
+            )
+
+    def test_draft_rejects_non_http_source_url(self):
+        with pytest.raises(ValidationError, match=r"HTTP\(S\) URL"):
+            EvidenceDraft(
+                asset="BTC",
+                source_type="market",
+                source_name="Binance",
+                source_url="ftp://example.com/source",
+                fetched_at=NOW,
+                query_or_parameters="x",
+                content_reference="ref",
+                normalized_fact="fact",
+            )
+
+    def test_draft_source_record_id_rejects_blank(self):
+        with pytest.raises(ValidationError, match="source_record_id"):
+            EvidenceDraft(
+                asset="BTC",
+                source_type="market",
+                source_name="Binance",
+                fetched_at=NOW,
+                query_or_parameters="x",
+                content_reference="ref",
+                normalized_fact="fact",
+                source_record_id="   ",
+            )
+
+    def test_draft_optional_text_is_stripped(self):
+        draft = EvidenceDraft(
+            asset="BTC",
+            source_type="market",
+            source_name="Binance",
+            source_url="  https://example.com/source  ",
+            fetched_at=NOW,
+            query_or_parameters="x",
+            content_reference="ref",
+            normalized_fact="fact",
+            source_record_id="  rec_001  ",
+        )
+        assert draft.source_url == "https://example.com/source"
+        assert draft.source_record_id == "rec_001"
 
 
 # ===========================================================================
@@ -932,6 +1016,26 @@ class TestEvidenceLedger:
         with pytest.raises(ValidationError, match="run_YYYYMMDD"):
             EvidenceLedger(run_id="bad", analysis_as_of=NOW, run_mode="official")
 
+    def test_ledger_schema_version_rejects_blank(self):
+        with pytest.raises(ValidationError, match="schema_version"):
+            EvidenceLedger(
+                schema_version="   ",
+                run_id="run_20260717_060000_ab12",
+                analysis_as_of=NOW,
+                run_mode="official",
+                degradation_events=[DegradationEvent(**_valid_degradation())],
+            )
+
+    def test_ledger_schema_version_is_stripped(self):
+        ledger = EvidenceLedger(
+            schema_version="  1.0  ",
+            run_id="run_20260717_060000_ab12",
+            analysis_as_of=NOW,
+            run_mode="official",
+            degradation_events=[DegradationEvent(**_valid_degradation())],
+        )
+        assert ledger.schema_version == "1.0"
+
     # ------------------------------------------------------------------
     # Finding 11: sorting, empty-requires-degradation, duplicate IDs
     # ------------------------------------------------------------------
@@ -1010,6 +1114,24 @@ class TestConflictIndicator:
         with pytest.raises(ValidationError, match="ev_NNN"):
             ConflictIndicator(claim_id="cl_001", opposing_evidence_ids=["nope"])
 
+    def test_conflict_indicator_rejects_blank_independence_group(self):
+        with pytest.raises(ValidationError, match="independence_groups"):
+            ConflictIndicator(claim_id="cl_001", independence_groups=["   "])
+
+    def test_conflict_indicator_independence_groups_are_stripped(self):
+        indicator = ConflictIndicator(
+            claim_id="cl_001", independence_groups=["  binance.com  "]
+        )
+        assert indicator.independence_groups == ["binance.com"]
+
+    def test_conflict_indicator_rejects_blank_rule_version(self):
+        with pytest.raises(ValidationError, match="rule_version"):
+            ConflictIndicator(claim_id="cl_001", rule_version="   ")
+
+    def test_conflict_indicator_rule_version_is_stripped(self):
+        indicator = ConflictIndicator(claim_id="cl_001", rule_version="  1.0  ")
+        assert indicator.rule_version == "1.0"
+
 
 class TestDegradationEvent:
     def test_valid(self):
@@ -1062,6 +1184,26 @@ class TestInvalidationCondition:
     def test_rejects_blank_text(self):
         with pytest.raises(ValidationError, match="empty"):
             InvalidationCondition(text="")
+
+    def test_rejects_blank_metric(self):
+        with pytest.raises(ValidationError, match="empty or blank"):
+            InvalidationCondition(
+                text="x",
+                metric="   ",
+                operator="lt",
+                threshold=1.0,
+                basis_evidence_id="ev_001",
+            )
+
+    def test_metric_is_stripped(self):
+        condition = InvalidationCondition(
+            text="x",
+            metric="  close  ",
+            operator="lt",
+            threshold=1.0,
+            basis_evidence_id="ev_001",
+        )
+        assert condition.metric == "close"
 
     def test_invalidation_partial_structured_rejected_only_metric(self):
         with pytest.raises(ValidationError, match="all of"):
