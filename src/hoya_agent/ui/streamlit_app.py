@@ -247,7 +247,10 @@ h3{border-left:3px solid var(--green);padding-left:.55rem;}
 border-radius:12px;padding:14px 16px;}
 [data-testid="stMetricLabel"]{font-family:var(--mono);text-transform:uppercase;
 letter-spacing:.06em;color:var(--muted);font-size:.72rem;}
-[data-testid="stMetricValue"]{font-family:var(--serif);}
+/* smaller serif + allow wrap so long values (OFFICIAL / 完成(含降級)) show in full */
+[data-testid="stMetricValue"]{font-family:var(--serif);font-size:1.5rem;line-height:1.2;
+white-space:normal;overflow:visible;overflow-wrap:anywhere;}
+[data-testid="stMetricValue"]>div{white-space:normal;overflow:visible;text-overflow:clip;}
 /* primary action + tabs pick up the green accent */
 .stButton>button,.stFormSubmitButton>button{border-radius:999px;font-weight:600;}
 [data-baseweb="tab-list"]{gap:.4rem;}
