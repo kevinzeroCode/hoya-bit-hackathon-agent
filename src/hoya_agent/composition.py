@@ -94,6 +94,7 @@ def build_live_pipeline(
     analysis_as_of: datetime,
     per_stage_timeout_seconds: float = 45.0,
     kline_limit: int = 1000,
+    arbiter_max_tokens: int = 3000,
 ) -> DeadlineAwarePipeline:
     """Live market + sentiment evidence, then Arbiter (Bedrock) reasoning.
 
@@ -109,8 +110,14 @@ def build_live_pipeline(
         market_independence_group="binance",
         market_source_url=_BINANCE_URL,
     )
+    # Cap output so a full analysis finishes inside the 45s single-call limit
+    # (default 8000 tokens can overrun → DeadlineExceeded → fallback).
     arbiter = MappingArbiter(
-        inner=Arbiter(llm=llm, result_schema=ArbiterGeneration, settings=ArbiterSettings())
+        inner=Arbiter(
+            llm=llm,
+            result_schema=ArbiterGeneration,
+            settings=ArbiterSettings(max_tokens=arbiter_max_tokens),
+        )
     )
     return DeadlineAwarePipeline(
         clock=clock,
