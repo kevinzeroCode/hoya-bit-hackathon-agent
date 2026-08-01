@@ -36,9 +36,12 @@ NOT enforced here. They belong to a later boundary that has both artifacts:
 - Link.evidence_id resolution + Scorecard/InvalidationCondition evidence_id
   resolution → Task 5 (Evidence Processor) / Task 8 (integration).
 - Confidence caps requiring ledger/conflict inputs → Task 5 / Task 6 (Arbiter).
-- Configured clock tolerance for fetched-vs-published slack → Task 1b.
-- Clock-freeze of `analysis_as_of` in official mode → Task 1b (RunContext).
-- Configured maximum `question` length → Task 1b (Settings).
+- Ledger enforcement of the configured fetched-vs-published clock tolerance
+  → Task 5 (the tolerance value itself is frozen in Task 1b Settings).
+- Official `analysis_as_of` is frozen by Task 1b `build_run_context` using the
+  injected UTC clock.
+- The configured maximum `question` length is enforced by Task 1b Settings at
+  the application boundary.
 """
 
 from __future__ import annotations
@@ -51,6 +54,7 @@ from enum import Enum
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Field,
     HttpUrl,
     TypeAdapter,
     field_validator,
@@ -127,6 +131,28 @@ class InvalidationOperator(str, Enum):
     lte = "lte"
     gt = "gt"
     gte = "gte"
+
+
+class WorkerStatus(str, Enum):
+    completed = "completed"
+    partial = "partial"
+    failed = "failed"
+
+
+class StageState(str, Enum):
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    degraded = "degraded"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class TerminalState(str, Enum):
+    completed = "completed"
+    degraded = "degraded"
+    failed = "failed"
+    cancelled = "cancelled"
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +290,7 @@ class AnalysisRequest(BaseModel):
     @classmethod
     def _deadline_range(cls, v: int) -> int:
         # requirements.md AC 8.1 + competition-rules: 900s external hard deadline.
-        # Clock-freeze of the cutoff itself lives in Task 1b RunContext.
+        # Clock-freeze of the cutoff itself lives in RunContext/build_run_context.
         if v <= 0 or v > 900:
             raise ValueError("deadline_seconds must be in (0, 900]")
         return v
@@ -275,6 +301,119 @@ class AnalysisRequest(BaseModel):
         if not _RUN_ID_RE.match(v):
             raise ValueError("run_id must match format run_YYYYMMDD_HHMMSS_<suffix>")
         return v
+
+
+class RunContext(BaseModel):
+    """Immutable run-scoped timing and request state.
+
+    Use :func:`hoya_agent.clock.build_run_context` rather than constructing this
+    model directly so official runs take their cutoff from the injected clock.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: str
+    request: AnalysisRequest
+    analysis_as_of: datetime
+    started_at: datetime
+    started_monotonic: float
+    deadline_monotonic: float
+
+    @field_validator("run_id")
+    @classmethod
+    def _run_id_format(cls, v: str) -> str:
+        if not _RUN_ID_RE.match(v):
+            raise ValueError("run_id must match format run_YYYYMMDD_HHMMSS_<suffix>")
+        return v
+
+    @field_validator("analysis_as_of", "started_at")
+    @classmethod
+    def _timestamps_utc(cls, v: datetime) -> datetime:
+        return _validate_utc(v, "run context timestamp")
+
+    @model_validator(mode="after")
+    def _consistent_with_request(self) -> "RunContext":
+        if self.run_id != self.request.run_id:
+            raise ValueError("run_id must match request.run_id")
+        if self.analysis_as_of != self.request.analysis_as_of:
+            raise ValueError("analysis_as_of must match request.analysis_as_of")
+        if self.request.run_mode is RunMode.official and self.analysis_as_of != self.started_at:
+            raise ValueError("official analysis_as_of must equal the injected clock time")
+        if self.started_monotonic < 0:
+            raise ValueError("started_monotonic must be non-negative")
+        expected_deadline = self.started_monotonic + self.request.deadline_seconds
+        if self.deadline_monotonic != expected_deadline:
+            raise ValueError("deadline_monotonic must equal start plus deadline_seconds")
+        return self
+
+
+class ResearchStep(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    step_id: str
+    tool_operation: str
+    rationale: str
+
+    @field_validator("step_id", "tool_operation", "rationale")
+    @classmethod
+    def _nonblank(cls, v: str) -> str:
+        return _strip_non_empty(v, "research step field")
+
+
+class ResearchPlan(BaseModel):
+    """Bounded Planner output; operation allowlisting is enforced at execution."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    plan_version: str = "planner-v1"
+    assets: list[Asset]
+    question_summary: str
+    lookback_days: int = 14
+    required_evidence_types: list[SourceType] = Field(default_factory=list)
+    planned_steps: list[ResearchStep]
+    asset_question_mismatch_warning: str | None = None
+    notes: list[str] = Field(default_factory=list)
+
+    @field_validator("plan_version", "question_summary")
+    @classmethod
+    def _nonblank(cls, v: str) -> str:
+        return _strip_non_empty(v, "research plan field")
+
+    @field_validator("assets")
+    @classmethod
+    def _assets_valid(cls, v: list[Asset]) -> list[Asset]:
+        if not (1 <= len(v) <= 2):
+            raise ValueError("assets must contain 1 or 2 items")
+        if len(set(v)) != len(v):
+            raise ValueError("assets must be unique")
+        return v
+
+    @field_validator("lookback_days")
+    @classmethod
+    def _lookback_positive(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("lookback_days must be positive")
+        return v
+
+    @field_validator("planned_steps")
+    @classmethod
+    def _bounded_steps(cls, v: list[ResearchStep]) -> list[ResearchStep]:
+        if not (1 <= len(v) <= 8):
+            raise ValueError("planned_steps must contain 1 to 8 steps")
+        step_ids = [step.step_id for step in v]
+        if len(step_ids) != len(set(step_ids)):
+            raise ValueError("planned step IDs must be unique")
+        return v
+
+    @field_validator("asset_question_mismatch_warning")
+    @classmethod
+    def _optional_warning(cls, v: str | None) -> str | None:
+        return _strip_optional_non_empty(v, "asset_question_mismatch_warning")
+
+    @field_validator("notes")
+    @classmethod
+    def _notes_nonblank(cls, v: list[str]) -> list[str]:
+        return _validate_non_blank_list(v, "notes")
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +517,7 @@ class EvidenceItem(BaseModel):
     # `published_at` by up to the configured clock tolerance. A strict
     # zero-tolerance rule is stricter than the contract permits, not a valid
     # subset of it, so the whole comparison is deferred. Owners:
-    # - Configured clock tolerance → Task 1b (Settings).
+    # - Configured clock tolerance → Settings.
     # - Combined tolerance + ledger-cutoff enforcement → Task 5 (Evidence
     #   Processor), which has both the tolerance and the ledger.
 
@@ -461,6 +600,49 @@ class EvidenceDraft(BaseModel):
         if self.is_cached and self.cache_time is None:
             raise ValueError("is_cached=true requires cache_time to be set")
         return self
+
+
+class RawSourceRecord(BaseModel):
+    """Normalized provider record before Evidence admission."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str
+    source_name: str
+    source_type: SourceType
+    source_url: str | None = None
+    asset: Asset | None = None
+    published_at: datetime | None = None
+    fetched_at: datetime
+    title: str | None = None
+    content: str
+    query_or_parameters: str
+    metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+    @field_validator("record_id", "source_name", "content", "query_or_parameters")
+    @classmethod
+    def _required_text(cls, v: str) -> str:
+        return _strip_non_empty(v, "raw source field")
+
+    @field_validator("title")
+    @classmethod
+    def _optional_title(cls, v: str | None) -> str | None:
+        return _strip_optional_non_empty(v, "title")
+
+    @field_validator("source_url")
+    @classmethod
+    def _source_url_valid(cls, v: str | None) -> str | None:
+        return _validate_optional_http_url(v, "source_url")
+
+    @field_validator("published_at")
+    @classmethod
+    def _published_at_utc(cls, v: datetime | None) -> datetime | None:
+        return _validate_utc(v, "published_at") if v is not None else None
+
+    @field_validator("fetched_at")
+    @classmethod
+    def _fetched_at_utc(cls, v: datetime) -> datetime:
+        return _validate_utc(v, "fetched_at")
 
     # fetched_at vs published_at ordering deferred; see EvidenceItem note.
 
@@ -748,6 +930,123 @@ class DegradationEvent(BaseModel):
     @classmethod
     def _timestamp_utc(cls, v: datetime) -> datetime:
         return _validate_utc(v, "timestamp")
+
+
+class WorkerResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: WorkerStatus
+    evidence_drafts: list[EvidenceDraft] = Field(default_factory=list)
+    raw_records: list[RawSourceRecord] = Field(default_factory=list)
+    degradation_events: list[DegradationEvent] = Field(default_factory=list)
+
+
+class ExecutionEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: str
+    stage: str
+    state: StageState
+    timestamp: datetime
+    message: str | None = None
+    details: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+
+    @field_validator("run_id")
+    @classmethod
+    def _run_id_format(cls, v: str) -> str:
+        if not _RUN_ID_RE.match(v):
+            raise ValueError("run_id must match format run_YYYYMMDD_HHMMSS_<suffix>")
+        return v
+
+    @field_validator("stage")
+    @classmethod
+    def _stage_nonblank(cls, v: str) -> str:
+        return _strip_non_empty(v, "stage")
+
+    @field_validator("message")
+    @classmethod
+    def _message_nonblank(cls, v: str | None) -> str | None:
+        return _strip_optional_non_empty(v, "message")
+
+    @field_validator("timestamp")
+    @classmethod
+    def _timestamp_utc(cls, v: datetime) -> datetime:
+        return _validate_utc(v, "timestamp")
+
+
+class RunConfigSnapshot(BaseModel):
+    """Sanitized configuration persisted in ``run_config.json``."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: str
+    run_mode: RunMode
+    analysis_as_of: datetime
+    aws_region: str
+    bedrock_primary_model_id: str
+    artifact_root: str
+    max_question_length: int
+    clock_tolerance_seconds: float
+    optional_key_presence: dict[str, bool]
+
+    @field_validator("run_id")
+    @classmethod
+    def _run_id_format(cls, v: str) -> str:
+        if not _RUN_ID_RE.match(v):
+            raise ValueError("run_id must match format run_YYYYMMDD_HHMMSS_<suffix>")
+        return v
+
+    @field_validator("analysis_as_of")
+    @classmethod
+    def _analysis_as_of_utc(cls, v: datetime) -> datetime:
+        return _validate_utc(v, "analysis_as_of")
+
+    @field_validator("aws_region", "bedrock_primary_model_id", "artifact_root")
+    @classmethod
+    def _required_text(cls, v: str) -> str:
+        return _strip_non_empty(v, "run config field")
+
+
+class RunSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    run_id: str
+    terminal_state: TerminalState
+    effective_run_mode: RunMode
+    artifact_paths: dict[str, str] = Field(default_factory=dict)
+    stage_statuses: dict[str, StageState] = Field(default_factory=dict)
+    degradation_notes: list[str] = Field(default_factory=list)
+    completed_at: datetime
+
+    @field_validator("run_id")
+    @classmethod
+    def _run_id_format(cls, v: str) -> str:
+        if not _RUN_ID_RE.match(v):
+            raise ValueError("run_id must match format run_YYYYMMDD_HHMMSS_<suffix>")
+        return v
+
+    @field_validator("artifact_paths")
+    @classmethod
+    def _artifact_paths_nonblank(cls, v: dict[str, str]) -> dict[str, str]:
+        return {
+            _strip_non_empty(name, "artifact name"): _strip_non_empty(path, "artifact path")
+            for name, path in v.items()
+        }
+
+    @field_validator("stage_statuses")
+    @classmethod
+    def _stage_names_nonblank(cls, v: dict[str, StageState]) -> dict[str, StageState]:
+        return {_strip_non_empty(name, "stage name"): state for name, state in v.items()}
+
+    @field_validator("degradation_notes")
+    @classmethod
+    def _notes_nonblank(cls, v: list[str]) -> list[str]:
+        return _validate_non_blank_list(v, "degradation_notes")
+
+    @field_validator("completed_at")
+    @classmethod
+    def _completed_at_utc(cls, v: datetime) -> datetime:
+        return _validate_utc(v, "completed_at")
 
 
 class EvidenceLedger(BaseModel):
