@@ -189,7 +189,79 @@
     - Create: `tests/contract/test_market_adapters.py`
   - [x] Write golden tests for return, realized volatility, maximum drawdown, volume change, rolling z-score and relative change using hand-computable fixture values.
   - [x] Implement UTC parsing and reject incomplete daily candles from historical calculations; represent the current candle separately as an intraday snapshot.
-  - [x] Implement Binance klines as the designated baseline live market sou…2061 tokens truncated… fake LLM; malformed output repairs once then falls back deterministically; prompt/schema versions are exposed for run configuration; Research Agent cannot escape the static tool plan; H3 performs no Bull/Bear/Judge call and remains outside two-day implementation.
+  - [x] Implement Binance klines as the designated baseline live market source and retain endpoint, pair, parameters, UTC range and `fetched_at` in source metadata; on baseline failure, emit an honest typed partial/degraded gap without switching to a second live provider.
+  - [x] Implement Market Worker without any LLM dependency and convert each metric into a high-reliability, reproducible `EvidenceItem`.
+  - [x] Add a failing cross-asset test that rejects direct base-volume comparison and permits quote volume, return, volatility, relative change or each asset's z-score.
+  - [x] Run `python -m pytest tests/unit/data tests/contract/test_market_adapters.py -q`.
+  - **Acceptance:** Golden values and UTC cutoffs pass; baseline market failure returns a typed partial/degraded gap without claiming a second live provider; CSV/live source cutover is explicitly represented with `fetched_at`; Market Worker has no import or call path to `LLMClient`. The generic `SourceAdapter` seam remains available for separately approved post-hackathon providers.
+  - **Commit:** `feat: add deterministic market evidence`
+
+- [ ] **5. Implement research adapters and Evidence Processor** — majority landed; canonical baseline acceptance remains
+  - **Owner:** P2
+  - **Wave / dependency:** Wave 3 / Tasks 1 and 4
+  - **Spec:** 7.5, 9.4-9.6, 10.1, 10.3
+  - **Files:**
+    - Create: `src/hoya_agent/adapters/cryptopanic.py`
+    - Create: `src/hoya_agent/adapters/rss.py`
+    - Create: `src/hoya_agent/adapters/official.py`
+    - Create: `src/hoya_agent/adapters/alternative_me.py`
+    - Create: `src/hoya_agent/evidence/__init__.py`
+    - Create: `src/hoya_agent/evidence/ledger.py`
+    - Create: `src/hoya_agent/evidence/policies.py`
+    - Create: `src/hoya_agent/evidence/processor.py`
+    - Create: `tests/fixtures/http/cryptopanic_posts.json`
+    - Create: `tests/fixtures/http/news_feed.xml`
+    - Create: `tests/fixtures/http/alternative_me.json`
+    - Create: `tests/contract/test_research_adapters.py`
+    - Create: `tests/unit/evidence/test_policies.py`
+    - Create: `tests/unit/evidence/test_processor.py`
+  - [ ] Write adapter contract tests for success, timeout, HTTP error, malformed payload and empty data using `httpx.MockTransport`; identify one configured allowlisted adapter as the designated Silver baseline research source.
+  - [ ] Treat every API, RSS and research payload as untrusted data. Test that embedded instructions or policy-like text are ignored as control input and, when retained, remain quoted source data only.
+  - [ ] Reject an unallowlisted URL, host, provider or operation before an external call; reject invalid `EvidenceDraft` schema input and verify that ingestion cannot mutate the static `ToolRegistry` allowlist.
+  - [ ] Implement 45-second per-call timeout and at most one deadline-bound retry; normalize missing or rejected sources into typed degradation/gap results rather than exceptions crossing the port.
+  - [ ] Run optional research or context adapters only after the baseline path is stable; failure of an optional adapter cannot fail Silver.
+  - [ ] Mark Fear & Greed as low-reliability, whole-market context and never as coin-specific Evidence.
+  - [ ] Write failing Evidence Processor tests for source identity, source/content reference, `fetched_at`, published/source time when available, cache/stale metadata, `high|medium|low` reliability, SHA-256 exact deduplication, registered-domain/original-publisher grouping and immutable run-level `analysis_as_of`.
+  - [ ] Test missing published/source time and stale/cache use as explicit limitation or degradation disclosures without fabricating timestamps or making Evidence appear fresher than its source.
+  - [ ] Test that `EvidenceItem` owns no stance and `ClaimEvidenceLink` accepts only `supports|opposes|neutral`; implement deterministic material-conflict detection only for qualifying links from distinct independence groups.
+  - [ ] Test official-mode cache metadata and prove that fixtures or recorded responses are rejected in official mode.
+  - [ ] Run `python -m pytest tests/contract/test_research_adapters.py tests/unit/evidence -q`.
+  - [x] **Additive (2026-08-01): deterministic fact-grounding** (`evidence/grounding.py`, no LLM/no network). Audits LLM-extracted facts by matching their hard atoms (percent/money/number/date) against `content_reference` to catch fabricated values; language-invariant (English source grounds a Chinese fact); emits verified/partial/unverified. Red lines: does not mutate static `reliability` and adds no `EvidenceItem`/`EvidenceDraft` field (routes into confidence caps + disclosure only). Golden tests in `tests/unit/evidence/test_grounding.py`. Pending: pipeline wiring, semantic check for purely-qualitative claims (reasoning layer, behind `LLMClient`), and `ConfidenceSignals` integration. See `docs/Gold-Plan.md` G1.
+  - **Acceptance:** The designated baseline research adapter can produce normalized, schema-valid Evidence; optional-source failure is non-blocking; duplicate syndication is not independent; missing or rejected sources produce explicit gaps without inventing facts. The existing multi-source fixture may exercise diversity counting but does not become a Silver Exit Gate.
+  - **Commit:** `feat: normalize research evidence ledger`
+
+- [x] **6. Implement bounded Planner, Research Agent and Arbiter**
+  - **Owner:** P3
+  - **Wave / dependency:** Wave 2 / Tasks 1 and 2
+  - **Spec:** 7.4-7.5, 9.2, 9.4, 9.7, 13, 14
+  - **Files:**
+    - Create: `src/hoya_agent/adapters/bedrock.py`
+    - Create: `src/hoya_agent/reasoning/__init__.py`
+    - Create: `src/hoya_agent/reasoning/planner.py`
+    - Create: `src/hoya_agent/reasoning/research_agent.py`
+    - Create: `src/hoya_agent/reasoning/arbiter.py`
+    - Create: `src/hoya_agent/reasoning/conflict_extension.py`
+    - Create: `prompts/planner-v1.md`
+    - Create: `prompts/research-extraction-v1.md`
+    - Create: `prompts/arbiter-v1.md`
+    - Create: `tests/fixtures/llm/planner_response.json`
+    - Create: `tests/fixtures/llm/arbiter_response.json`
+    - Create: `tests/contract/test_bedrock_client.py`
+    - Create: `tests/unit/reasoning/test_planner.py`
+    - Create: `tests/unit/reasoning/test_research_agent.py`
+    - Create: `tests/unit/reasoning/test_arbiter.py`
+    - Create: `tests/unit/reasoning/test_conflict_extension.py`
+  - [x] Write Planner tests for bounded research steps, time range, Evidence types and asset/question mismatch warning; Planner must not produce a market conclusion or select arbitrary providers, tools, hosts or URLs.
+  - [x] Implement a thin Bedrock Converse wrapper with the configured model IDs, operation-specific `max_tokens`, the current stage deadline and typed/schema-validated structured output.
+  - [x] Reject raw unvalidated LLM output before Renderer or artifact admission; allow at most one schema repair attempt within the same deadline, then emit the deterministic fallback signal.
+  - [x] Implement Research Agent as a bounded executor over the finite operations supplied by the static `ToolRegistry`; prohibit free loops, arbitrary URLs, allowlist mutation and facts without admitted Evidence IDs.
+  - [x] Preserve prompt-injection-like source text only as quoted Evidence data; it cannot alter policy, deadlines, token bounds, tools, providers or the artifact contract.
+  - [x] Write Arbiter tests for reliability/freshness ordering, truncation to configurable 20-30 Evidence items, one primary generation, one schema repair attempt and deterministic fallback.
+  - [x] Validate fact -> inference -> conclusion dependencies, `ClaimEvidenceLink` references and `supports|opposes|neutral` stance, confidence rubric, limitations, invalidation conditions and absence of Ledger-external facts.
+  - [x] Implement `ConflictExtension` with `DisabledConflictExtension` as the only Bronze, Silver and Gold implementation; it performs no network or LLM call, logs `enable_conditional_debate=true` as disabled/ignored and always routes to Arbiter.
+  - [x] Test that UI-facing status data labels H3 unimplemented and that no Bull/Bear/Judge prompt, task, test path or Feature Freeze exception exists.
+  - [x] Run `python -m pytest tests/contract/test_bedrock_client.py tests/unit/reasoning -q`.
+  - **Acceptance:** Arbiter emits a schema-valid `AnalysisResult` from a fake LLM; malformed output repairs once then falls back deterministically; prompt/schema versions are exposed for run configuration; Research Agent cannot escape the static tool plan; H3 performs no Bull/Bear/Judge call and remains outside two-day implementation.
   - **Commit:** `feat: add bounded bedrock reasoning`
 
 - [x] **7. Pass the Bronze Streamlit checkpoint, then build the container shell** — Bronze Exit passed + hardened container (2026-08-01). Filenames landed as `src/hoya_agent/ui/streamlit_app.py`, `tests/integration/test_streamlit_bronze.py` (the UI/application contract test) and `docker-compose.yml`.
@@ -356,4 +428,3 @@ git status --short
 ```
 
 Expected: tests and Ruff pass, Compose config is valid, and `git status` contains only intentionally staged submission changes.
-
