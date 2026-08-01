@@ -6,6 +6,7 @@ import asyncio
 from datetime import date, datetime, timezone
 
 import httpx
+from tests.fakes import FixedClock
 
 from hoya_agent.adapters.port_adapters import (
     BinanceMarketAdapter,
@@ -15,7 +16,6 @@ from hoya_agent.adapters.port_adapters import (
 from hoya_agent.clock import build_run_context
 from hoya_agent.data.types import MarketBar
 from hoya_agent.models import AnalysisRequest, Asset, RawSourceRecord, RunMode, SourceType
-from tests.fakes import FixedClock
 
 UTC = timezone.utc
 

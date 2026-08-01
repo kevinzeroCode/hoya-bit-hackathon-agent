@@ -22,10 +22,10 @@ from datetime import date, datetime, timezone
 
 from hoya_agent.data.indicators import realized_volatility, simple_return
 from hoya_agent.data.market_series import bars_asof, closes
+from hoya_agent.data.market_worker import WorkerResult
 from hoya_agent.data.types import MarketBar
 from hoya_agent.evidence.policies import SourceClass, reliability_for
 from hoya_agent.evidence.types import EvidenceDraft
-from hoya_agent.data.market_worker import WorkerResult
 
 UTC = timezone.utc
 

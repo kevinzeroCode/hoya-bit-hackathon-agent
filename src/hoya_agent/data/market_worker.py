@@ -92,8 +92,7 @@ def build_market_evidence(
                 fetched_at=fetched_at,
                 query_or_parameters=f"metric={metric_name}; window={window}; "
                 f"range={first_date.isoformat()}..{last_date.isoformat()} UTC daily close",
-                content_reference=f"{window}-bar {metric_name} over "
-                f"{first_date.isoformat()}..{last_date.isoformat()}",
+                content_reference=f"{window}-bar {metric_name} over {first_date.isoformat()}..{last_date.isoformat()}",
                 normalized_fact=fact,
                 reliability=reliability,
                 independence_group=independence_group,
@@ -106,25 +105,42 @@ def build_market_evidence(
     w = windows
     try:
         r = simple_return(c, w.return_window)
-        add("return_14d", r, w.return_window, f"{asset} 近 {w.return_window} 日報酬為 {_pct(r)}（截至 {last_date} UTC）")
+        add(
+            "return_14d", r, w.return_window, f"{asset} 近 {w.return_window} 日報酬為 {_pct(r)}（截至 {last_date} UTC）"
+        )
     except ValueError as e:
         degradation.append(f"return_{w.return_window}d unavailable: {e}")
 
     try:
         vol = realized_volatility(c, w.vol_window)
-        add("realized_vol_30d", vol, w.vol_window, f"{asset} 近 {w.vol_window} 日已實現波動（日）為 {vol:.4f}（截至 {last_date} UTC）")
+        add(
+            "realized_vol_30d",
+            vol,
+            w.vol_window,
+            f"{asset} 近 {w.vol_window} 日已實現波動（日）為 {vol:.4f}（截至 {last_date} UTC）",
+        )
     except ValueError as e:
         degradation.append(f"realized_vol_{w.vol_window}d unavailable: {e}")
 
     try:
         mdd = max_drawdown(c, w.drawdown_window)
-        add("max_drawdown_90d", mdd, w.drawdown_window, f"{asset} 近 {w.drawdown_window} 日最大回撤為 {_pct(mdd)}（截至 {last_date} UTC）")
+        add(
+            "max_drawdown_90d",
+            mdd,
+            w.drawdown_window,
+            f"{asset} 近 {w.drawdown_window} 日最大回撤為 {_pct(mdd)}（截至 {last_date} UTC）",
+        )
     except ValueError as e:
         degradation.append(f"max_drawdown_{w.drawdown_window}d unavailable: {e}")
 
     try:
         z = rolling_volume_zscore(v, w.volume_window)
-        add("volume_zscore_30d", z, w.volume_window, f"{asset} 最新成交量相對自身近 {w.volume_window} 日的 z-score 為 {z:.2f}")
+        add(
+            "volume_zscore_30d",
+            z,
+            w.volume_window,
+            f"{asset} 最新成交量相對自身近 {w.volume_window} 日的 z-score 為 {z:.2f}",
+        )
     except ValueError as e:
         degradation.append(f"volume_zscore_{w.volume_window}d unavailable: {e}")
 
