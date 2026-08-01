@@ -190,4 +190,3 @@ def test_rss_research_adapter_empty_feed_returns_empty_status():
     assert result.status == SourceStatus.empty
     assert result.data == []
     assert result.source_name == "CoinDesk"
-
