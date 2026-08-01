@@ -42,6 +42,7 @@ from hoya_agent.models import (
     Claim,
     ClaimEvidenceLink,
     ClaimType,
+    DataMode,
     DegradationEvent,
     EvidenceItem,
     EvidenceLedger,
@@ -51,6 +52,7 @@ from hoya_agent.models import (
     MarketContext,
     Reliability,
     RunContext,
+    RunMode,
     SourceType,
     Stance,
     TerminalState,
@@ -74,6 +76,7 @@ class PipelineOutcome:
     terminal_state: TerminalState = TerminalState.completed
     degradation_notes: list[str] = field(default_factory=list)
     stage_durations_ms: dict[str, int] = field(default_factory=dict)
+    effective_data_mode: DataMode | None = None
 
 
 @dataclass(frozen=True)
@@ -710,6 +713,9 @@ class OrganizerCsvPipeline:
             terminal_state=terminal_state,
             degradation_notes=notes,
             stage_durations_ms={},
+            effective_data_mode=(
+                DataMode.fixture if context.run_mode is RunMode.rehearsal else DataMode.live
+            ),
         )
 
     # -- internals ----------------------------------------------------------
