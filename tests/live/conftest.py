@@ -19,6 +19,9 @@ pytestmark = pytest.mark.live
 def pytest_collection_modifyitems(config, items) -> None:  # noqa: ARG001
     if RUN_LIVE:
         return
+    # This hook is session-wide, so only skip the live-marked tests — not the
+    # whole suite. (Previously it skipped every collected item.)
     skip = pytest.mark.skip(reason="live tests require RUN_LIVE_TESTS=1")
     for item in items:
-        item.add_marker(skip)
+        if "live" in item.keywords:
+            item.add_marker(skip)
