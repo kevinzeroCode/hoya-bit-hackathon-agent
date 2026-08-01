@@ -232,4 +232,3 @@ class RssResearchAdapter:
             latency_ms=latency,
             error_category=error_category,
         )
-
