@@ -19,16 +19,28 @@ another owner's verified work.
 ```text
 src/hoya_agent/adapters/bedrock.py
 src/hoya_agent/reasoning/
+src/hoya_agent/evidence/types.py
+src/hoya_agent/evidence/policies.py
+tests/unit/evidence/test_policies.py
 prompts/
 tests/contract/
 tests/unit/reasoning/
 ```
 
 If a change genuinely requires editing one of these, stop and report why instead
-of editing. The owner (P3) must agree first.
+of editing. The owner must agree first.
 
-Two files under `src/hoya_agent/` are intentionally empty package markers:
-`__init__.py` at the package root and under `adapters/`. Leave them as they are.
+**`src/hoya_agent/evidence/types.py` is deliberately redundant with `models.py`
+and must survive Task 1a untouched.** It is a provisional frozen-dataclass
+stand-in whose field names were chosen to match the contracts, so that the two
+downstream tasks could start moving modules in before `models.py` existed.
+Task 1a creates `models.py` alongside it and does **not** delete, merge or
+rewrite it — a separate later task performs that swap once both halves have
+landed. Deleting it now breaks the two branches currently importing
+`EvidenceDraft` from it.
+
+Package markers under `src/hoya_agent/` are intentionally empty: `__init__.py`
+at the package root and under `adapters/` and `evidence/`. Leave them as they are.
 
 ## Resolved specification ambiguities
 
