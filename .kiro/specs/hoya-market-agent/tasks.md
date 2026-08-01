@@ -292,7 +292,7 @@
   - **Acceptance:** Bronze passes when the completely offline Streamlit fixture path produces and downloads all four artifacts without network, Bedrock, AWS credentials or Docker acceptance. Container support starts the same Streamlit application, contains no secrets and does not redefine the Bronze gate.
   - **Commit:** `feat: add streamlit demo shell`
 
-- [ ] **8. Integrate the complete H2-Lite core and degradation paths** — offline core landed; live Silver remains
+- [x] **8. Integrate the complete H2-Lite core and degradation paths** — Silver Exit passed 2026-08-02
   - **Owner:** P1 integrates; P2/P3/P4 repair owned modules
   - **Wave / dependency:** Wave 3 / Tasks 3, 4, 5, 6 and 7
   - **Spec:** 8.2, 11, 12, 18.1-18.4
@@ -306,17 +306,17 @@
     - Create: `tests/integration/test_provenance.py`
     - Create: `tests/live/test_live_sources.py`
     - Create: `tests/live/test_bedrock_access.py`
-  - [ ] First add a failing end-to-end fixture test for Planner -> parallel Market/Research -> Evidence Processor -> Arbiter -> deterministic Renderer and keep Bronze green.
-  - [ ] Wire only typed same-process ports, including `SourceAdapter`, static `ToolRegistry`, `ProgressSink` and local `ArtifactStore`; preserve incremental artifacts and publish lifecycle progress after every stage.
-  - [ ] Add an opt-in Silver live acceptance test that uses Organizer CSV, the designated baseline live market source, the designated baseline research source and Bedrock, then requires a schema-valid `AnalysisResult`, deterministic rendering and all four artifacts.
-  - [ ] Add a separate Silver degradation test that forces Bedrock failure, verifies one repair attempt where applicable, uses deterministic fallback and labels the result honestly; fallback-only execution must not satisfy the live Silver gate.
-  - [ ] Add failure-injection tests for market timeout, research timeout, baseline-source failure, all external sources down, optional-provider failure, invalid Evidence admission, Arbiter invalid schema after repair and time-based optional-stage skipping.
-  - [ ] Verify optional-provider failure does not fail Silver when both baseline paths and the schema-valid Bedrock success gate pass.
-  - [ ] Add provenance tests requiring all report market numbers and conclusion links to resolve to Ledger Evidence and all inference/conclusion dependencies to resolve to fact.
-  - [ ] Add run-mode tests rejecting fixtures in `official`, allowing deterministic fixtures in `rehearsal`, visibly marking recorded runs in `demo`, and disclosing stale, missing, mock or degraded Evidence.
-  - [ ] Add artifact failure-injection tests: writable partial/degraded runs produce all four artifacts; failed writes disclose exact missing filenames in stdout and every remaining writable log/configuration artifact.
-  - [ ] Run `python -m pytest tests/unit tests/contract tests/integration -q` and `ruff check .`; run the opt-in live Silver tests separately with `python -m pytest tests/live/test_live_sources.py tests/live/test_bedrock_access.py -m live -q`.
-  - **Acceptance:** Bronze remains green. Silver passes only after one single-asset live run produces a schema-valid Bedrock result through both designated baseline paths and a separate deterministic fallback/degradation test passes. Optional-source failure is non-blocking, accepted claims remain traceable to Evidence, and artifact failures follow the approved disclosure contract.
+  - [x] First add a failing end-to-end fixture test for Planner -> parallel Market/Research -> Evidence Processor -> Arbiter -> deterministic Renderer and keep Bronze green.
+  - [x] Wire only typed same-process ports, including `SourceAdapter`, static `ToolRegistry`, `ProgressSink` and local `ArtifactStore`; preserve incremental artifacts and publish lifecycle progress after every stage.
+  - [x] Add an opt-in Silver live acceptance test that uses Organizer CSV, the designated baseline live market source, the designated baseline research source and Bedrock, then requires a schema-valid `AnalysisResult`, deterministic rendering and all four artifacts. (`tests/live/test_live_silver_pipeline.py`; `1 passed in 50.15s`.)
+  - [x] Add a separate Silver degradation test that forces Bedrock failure, verifies one repair attempt where applicable, uses deterministic fallback and labels the result honestly; fallback-only execution must not satisfy the live Silver gate.
+  - [x] Add failure-injection tests for market timeout, research timeout, baseline-source failure, all external sources down, optional-provider failure, invalid Evidence admission, Arbiter invalid schema after repair and time-based optional-stage skipping.
+  - [x] Verify optional-provider failure does not fail Silver when both baseline paths and the schema-valid Bedrock success gate pass.
+  - [x] Add provenance tests requiring all report market numbers and conclusion links to resolve to Ledger Evidence and all inference/conclusion dependencies to resolve to fact.
+  - [x] Add run-mode tests rejecting fixtures in `official`, allowing deterministic fixtures in `rehearsal`, visibly marking recorded runs in `demo`, and disclosing stale, missing, mock or degraded Evidence.
+  - [x] Add artifact failure-injection tests: writable partial/degraded runs produce all four artifacts; failed writes disclose exact missing filenames in stdout and every remaining writable log/configuration artifact.
+  - [x] Run `python -m pytest tests/unit tests/contract tests/integration -q` and `ruff check .`; run the opt-in component gates and then `python -m pytest tests/live/test_live_silver_pipeline.py -m live -vv -s`. (2026-08-02: non-live 1143 passed / 3 skipped on `main@21e6f14`; Ruff clean; both component live tests passed; integrated live test `1 passed in 50.15s`.)
+  - **Acceptance:** **Met 2026-08-02.** Bronze remains green. Silver passes only after one single-asset live run produces a schema-valid Bedrock result through both designated baseline paths and a separate deterministic fallback/degradation test passes. Optional-source failure is non-blocking, accepted claims remain traceable to Evidence, and artifact failures follow the approved disclosure contract.
   - **Commit:** `feat: integrate resilient h2 lite pipeline`
 
 - [ ] **9. Pass Gold local Exit with two separate single-asset runs**

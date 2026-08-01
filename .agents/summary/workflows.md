@@ -478,3 +478,26 @@ loses its high-first priority and the deterministic fallback emits a report with
 no evidence links — a silent loss of exactly the traceability the fallback exists to provide.
 The same reasoning applies to the output schema's `Literal` strings and
 `apply_confidence_caps()`'s string comparisons.
+
+## Run/Data-Mode Finalization
+
+The pipeline reports its actual `effective_data_mode` at completion. Finalization
+validates the complete `RunConfigSnapshot` again before rewriting
+`run_config.json`. Rehearsal may remain `fixture`; demo may degrade from requested
+`live` to `recorded_fallback`; official plus any non-live effective data mode is
+rejected by the canonical model validator instead of being silently copied into an
+artifact. Integration coverage lives in `tests/integration/test_run_modes.py`.
+
+## Research Extraction Provenance Bridge
+
+The baseline research adapter records the *provenance* an extracted fact needs —
+`original_publisher` and `original_page_fetched` — in `RawSourceRecord.metadata`
+before the LLM boundary. It does not record reliability or independence group:
+those are the Evidence Processor's to assign (see the S6 fifth-pass note above), so
+a producer can never state its own trustworthiness. The Research Agent returns only
+extracted fact fields plus `record_id`, as the frozen prompt requires.
+`research_extractor.complete_extracted_drafts()` then joins the fetched record back
+by `record_id`, derives the source class (and therefore reliability) and the
+independence group deterministically, and drops — with a disclosure — any fact that
+cannot be joined or validated. This keeps source policy deterministic while allowing
+the canonical extraction schema to enter the ledger.

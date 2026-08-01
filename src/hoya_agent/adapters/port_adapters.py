@@ -288,7 +288,12 @@ class RssResearchAdapter:
                 lookback_days=lookback,
             )
             records.extend(
-                _to_raw_record(d, operation=operation) for d in result.drafts
+                # A first-party outlet feed carries the publisher's own item, so the
+                # extraction path must derive the same `ORIGINAL_NEWS_PAGE` class that
+                # `rss.py` assigns directly — otherwise one CoinDesk item is `medium`
+                # via the deterministic path and `low` via extraction.
+                _to_raw_record(d, operation=operation, original_page_fetched=True)
+                for d in result.drafts
             )
             degradation_notes.extend(result.degradation)
 

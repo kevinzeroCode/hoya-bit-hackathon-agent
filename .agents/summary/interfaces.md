@@ -971,3 +971,13 @@ All runs produce exactly these 4 files:
 ## 2026-08-01 interface update
 
 Application/artifact consumers now use canonical `ExecutionEvent`, `RunConfigSnapshot`, `RunSummary`, `RunContext`, `Clock`, and `ProgressSink`. Pipeline outcomes live in `orchestration.pipeline`; provisional seams are deleted. See `s8-s9-s9b.md`.
+
+## S8 Effective Data Mode Handoff
+
+`PipelineOutcome.effective_data_mode: DataMode | None` carries the data origin that
+actually completed the run. `ApplicationService` uses the requested mode when the
+field is `None`, otherwise persists this effective value to both
+`run_config.json` and `RunSummary`. The final snapshot is rebuilt with
+`RunConfigSnapshot.model_validate`; `model_copy(update=...)` is prohibited here
+because it skips validation and could allow an official run to claim fixture or
+recorded data.

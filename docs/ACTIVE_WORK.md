@@ -2,7 +2,7 @@
 
 > **開工前先讀。** 這份文件只記當前事實與路徑 ownership；歷史狀態請看 Git。
 >
-> 最後更新：2026-08-01，基準 `main@d7245e4`（PR #18 合併後）。
+> 最後更新：2026-08-02，完整 Silver live pipeline gate 開發基準 `main@21e6f14`。
 
 ## Authoritative status
 
@@ -16,7 +16,7 @@
 | S5 | ✅ | deterministic market evidence 完成 |
 | S6 | 🟡 | 四項功能缺口＋型別統一完成（2026-08-01；第二輪四項、第五輪型別）：material conflict 由 `evidence/ledger.build_conflict_indicators` + `pipeline.finalize_analysis` 落盤並降信心；多事實抽取進 `src/`；CryptoPanic／Fear & Greed／official 有 port 包裝；組裝端宣告 baseline／optional／反方訊號清單；**單次 deadline-bound retry**；**單一共用 `httpx.AsyncClient`**；**`evidence/types.py` 已刪除**——`evidence/drafts.py::PendingEvidence` 為唯一 draft 型別，reliability／group／hash／id 全由 processor 指派；非 canonical 的 `evidence/evidence_json.py` 一併刪除。**仍缺**：mock-transport 測試位置（在 `tests/unit/data_evidence/` 而非凍結的 `tests/contract/`）、`p2-etl-mvp/` 退場 |
 | S7 | ✅ | bounded reasoning 完成並凍結 |
-| S8 | 🟡 | 離線 H2-Lite/fallback 完成；**推理接線已補完**（2026-08-01 第三輪：`reasoning/arbiter_output.py` 的 `ArbiterOutput` + `project_to_analysis_result()` + `ledger_view()`，未改任何凍結檔，21 新測試）。**Move 2 已補研究來源的單次 retry 與 live 腳手架**（`fetch_with_single_retry`、`tests/live/`、`scripts/live_silver_run.py`；真實 provider 實跑 8 passed／4 skipped、無 schema 漂移）。⛔ 只剩 live Bedrock 呼叫，卡在本機無 AWS 憑證 |
+| S8 | ✅ | 離線 H2-Lite/fallback 完成；**推理接線已補完**（2026-08-01 第三輪：`reasoning/arbiter_output.py` 的 `ArbiterOutput` + `project_to_analysis_result()` + `ledger_view()`，未改任何凍結檔，21 新測試）。**Move 2 已補研究來源的單次 retry 與 live 腳手架**（`fetch_with_single_retry`、`tests/live/`、`scripts/live_silver_run.py`；真實 provider 實跑 8 passed／4 skipped、無 schema 漂移）。**完整單次 ApplicationService live gate 通過**（1 passed in 50.15s）；Silver Exit 完成 |
 | S9 | ✅（離線） | Trust/Regime/Invalidation 完成 |
 | S9B | ✅（離線） | one-run dual-asset comparison 完成 |
 | S10 | 🔴 | Gold local Exit 未開始 |
@@ -29,14 +29,17 @@
 - `_provisional_seams.py` 與 `test_s1_seam_bridge.py` 已刪除。
 - 新增 `orchestration/{deadline,pipeline,run_state}.py`、`evidence/trust.py` 與雙幣報告路徑。
 - PR #18 的離線 S8/S9/S9B acceptance smoke、compileall、變更 whitespace check 通過。
-- GitHub Actions/status checks 尚未配置；live Silver 仍不得宣稱通過。
+- GitHub Actions/status checks 尚未配置；S8 以 D 槽 credentialed manual live gate 驗收通過。
+- 2026-08-02：非 live `1143 passed, 3 skipped`、Ruff clean；新增 deterministic research
+  provenance bridge，避免把 reliability／independence policy 交給 LLM。
+- 完整 live gate：`tests/live/test_live_silver_pipeline.py` → `1 passed in 50.15s`；S8 關閉。
 - **完整 pytest／Ruff 已於 `b84622c` 實跑**（Claude Code，2026-08-01，Python 3.12.13，
   `uv pip install -e ".[dev]"` 後的乾淨 venv，含 streamlit 1.60.0）：
   `pytest tests -q` → **598 passed，零失敗**；`ruff check .` → **All checks passed**。
 - **Ruff 基線 87 → 0**：PR #16 清一批，`9537d3e` 清掉剩餘 84 個，
   `37b1379` 引進的 2 個 `I001` 也已修掉。`Implementation-Plan.md` §3.3 的
   「`ruff check .` 乾淨」這條 DoD **現已達成**。
-- `tests/acceptance/`、`tests/live/` 尚不存在。
+- `tests/acceptance/` 尚不存在；PR #25 新增 `tests/live/` 的 opt-in source/Bedrock gate。
 
 ## Completed and frozen
 

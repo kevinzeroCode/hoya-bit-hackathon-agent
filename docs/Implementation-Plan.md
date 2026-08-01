@@ -40,7 +40,7 @@
 Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC2。
 **每個檔的細節請看檔案地圖，本文不重列。**
 
-> ⚠️ **狀態掃描時間：2026-08-01（PR #18 合併後），基準 commit `d7245e4`。**
+> ⚠️ **狀態掃描時間：2026-08-01，基準 commit `3158031`（加計 PR #25）。**
 > 本快照以實際 `main` 檔案、已執行驗收與外部 gate 為準；較舊章節若衝突，以本節為準。
 
 ### 1.1 現況快照（authoritative）
@@ -55,14 +55,14 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S5** 市場證據 | ✅ | Organizer CSV、Binance、deterministic indicators 與 market evidence 已整合 |
 | **S6** 研究與 Evidence | 🟡 | 四項功能缺口＋型別統一已完成（material conflict 落盤、多事實抽取、port 包裝、optional／反方訊號清單、單次 retry、共用 `AsyncClient`、`evidence/types.py` 已刪除、reliability 改由 processor 指派）；僅剩 contract 測試位置與 `p2-etl-mvp/` 退場 |
 | **S7** bounded reasoning | ✅ | Planner、Research Agent、Arbiter 與 Bedrock boundary 已完成並凍結 |
-| **S8** H2-Lite Silver | 🟡 | 離線 orchestration/fallback/artifacts 通過，**推理接線已補完**（`ArbiterOutput` + 投影，2026-08-01 第三輪）；只剩一次真實 Bedrock Converse 結構化輸出的 live Silver gate |
+| **S8** H2-Lite Silver | ✅ | 離線 orchestration/fallback/artifacts 通過，**推理接線已補完**（`ArbiterOutput` + 投影，2026-08-01 第三輪）；完整單幣 live pipeline 已通過：Organizer＋Binance、baseline RSS、Bedrock extraction／Arbiter 與四項 artifacts 同 run 驗收完成 |
 | **S9** 創意層 | ✅（離線） | Trust Scorecard、regime/unavailable、Evidence-backed invalidation 與 renderer 已通過離線 smoke |
 | **S9B** 雙幣比較 | ✅（離線） | 單一 run/cutoff/ledger、UTC 對齊、balanced Arbiter projection、比較 Claim 與第 12 段已通過 |
 | **S10** Gold local Exit | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 尚缺 |
 | **S11** 部署與彩排 | 🔴 | CI、ECR/EC2、live smoke、rollback 與 15 分鐘 judged-flow rehearsal 尚缺 |
 
 **目前完成分層：**嚴格完成 S1/S2/S3/S4/S5/S7；離線功能完成 S9/S9B；
-部分完成 S0/S6/S8；未完成 S10/S11。
+部分完成 S0/S6；S8 Silver Exit 已完成；未完成 S10/S11。
 
 **尚未通過的 repository-wide gate：** GitHub Actions/status checks 尚未配置。
 非 live 測試套與 Ruff **已在 2026-08-01（S4 第二輪）實跑通過**：
@@ -926,7 +926,7 @@ H3 不做任何 Bull/Bear/Judge 呼叫。
 
 ### S8 — H2-Lite 整合與降級路徑 ★ **Silver Exit**
 
-> **現況：🟡 離線核心與推理接線完成；只剩「真的打一次 Bedrock」。**
+> **現況：✅ Silver Exit 已於 2026-08-02 實跑通過。**（以下保留通往該結果的工程紀錄）
 > PR #18 已接通 canonical seams、deadline-aware H2-Lite、降級與 artifacts；
 > `scripts/verify_s8_s9_s9b.py` 離線通過。仍需一次 schema-valid live Bedrock run
 > 同時走 designated baseline market/research，以及獨立 deterministic fallback acceptance。
@@ -1003,18 +1003,28 @@ H3 不做任何 Bull/Bear/Judge 呼叫。
 > `python scripts/live_silver_run.py --mode fallback` → `run_20260801_160034_s0034`，
 > degraded、3.3 秒、**四項 artifacts 齊全**、5 筆市場證據。
 >
-> **⛔ 仍卡住的（環境，不是程式）：** 本機 `boto3` 回 `NoCredentialsError`、
-> 未設 `BEDROCK_PRIMARY_MODEL_ID`、AWS CLI 與 Docker 皆未安裝，
-> 因此 **live Bedrock 呼叫至今仍是 0 次**，Silver 尚未通過。有憑證的機器上兩行即可補完
-> （見 `docs/rehearsals/live-source-check.md` 的指令）。
-> **另一個要記下的環境偏離：** 本機 shell 是 **Python 3.13.11**，而專案鎖 3.12、image 用
+> **✅ 2026-08-02：先前卡住的環境阻塞已解除，Silver Exit 通過。**
+> 上述「本機無 AWS 憑證、live Bedrock 呼叫 0 次」的狀態已在 D 槽 credentialed
+> 環境補完。PR #25 補上 run/data-mode 傳遞與最終
+> `RunConfigSnapshot` 重新驗證，並新增 run-mode、provenance、research timeout、
+> invalid Evidence、Arbiter failure，以及兩個 opt-in live gate。
+> 2026-08-02 已在 Python 3.12.10、`main@21e6f14` 實跑：完整非 live suite
+> `1143 passed, 3 skipped`，`ruff check . --exclude .venv312` 為
+> `All checks passed!`；另有 Organizer／Binance／baseline RSS component live
+> test `1 passed`，Bedrock structured-output component live test `1 passed`。
+> PR #26 新增 `test_live_silver_pipeline.py`，把兩條 baseline、Research Agent、
+> Arbiter、Renderer 與四項 artifacts 放進同一次 `ApplicationService` run。
+> D 槽 credentialed 環境實跑結果：`1 passed in 50.15s`；輸出為 schema-valid
+> Bedrock result，且 `run_config.json`、`execution_log.jsonl`、`evidence.json`
+> 與 `final_report.md` 四項 artifacts 全數存在。
+> **要記下的環境偏離：** 本機 shell 是 **Python 3.13.11**，而專案鎖 3.12、image 用
 > `python:3.12-slim`；測試在兩者都綠，但計時與行為結論應在 3.12 上做。
 
 **目標**：把六個 stage 接成一條真的會跑的 pipeline，並讓每一種失敗都有被測過的降級路徑。
 
 **元件與職責**：修改 `application.py`、`orchestration/pipeline.py`、`reporting/artifacts.py`；
 新增 `tests/integration/test_{h2_lite_pipeline,degradation,run_modes,provenance}.py`、
-`tests/live/test_{live_sources,bedrock_access}.py`。
+`tests/live/test_{live_sources,bedrock_access,live_silver_pipeline}.py`。
 
 **本階段處理的契約詞彙**：全部——本階段是第一次讓 [Features.md §5](Features.md) 的每一張表同時生效。
 
@@ -1038,13 +1048,20 @@ python -m pytest tests/unit tests/contract tests/integration -q
 ruff check .
 # 另外手動跑（opt-in）：
 python -m pytest tests/live/test_live_sources.py tests/live/test_bedrock_access.py -m live -q
+python -m pytest tests/live/test_live_silver_pipeline.py -m live -vv -s
 ```
+- 2026-08-02 traps：自訂 venv 名稱 `.venv312` 不在 Ruff 預設排除範圍，需顯式
+  `--exclude .venv312`；component source／Bedrock tests 分開通過仍不等於同一次完整
+  Silver run；沙盒 pytest 須指定可寫的 `--basetemp`，否則 Windows temp ACL 會產生
+  setup errors（非產品測試失敗）。
 - 人工：live Silver 的部分見 [§3.2 的 S11 清單](#32-只能由人驗證的部分人工檢查清單)。
 
 **退出條件（★ Silver Exit）**
 Bronze 仍綠；一次單幣 live run 經兩條 baseline 路徑產出 schema-valid Bedrock 結果；
 **另有**一次 deterministic fallback/降級測試通過；optional 來源失敗非阻塞；
 所有被接受的 claim 仍可回溯到 Evidence；artifact 失敗遵守揭露契約。
+
+**2026-08-02 結果：上述退出條件全部滿足，S8／Silver Exit = ✅。
 
 **明確不做**：R16（S9）、雙資產驗收（S10）、部署（S11）。
 

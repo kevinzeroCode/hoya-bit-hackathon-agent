@@ -241,7 +241,11 @@ async def test_baseline_research_source_produces_schema_valid_evidence() -> None
     for item in news:
         assert item.source_name == "CoinDesk"
         assert item.independence_group == "coindesk.com"
-        assert item.reliability is Reliability.low  # feed item, original page not fetched
+        # A named outlet's own feed item is that outlet's original reporting
+        # (design §262: 具名新聞媒體原始報導 = medium; 聚合轉載 = low). The
+        # deterministic path in `rss.py` classes it the same way, so both routes
+        # into the ledger must agree.
+        assert item.reliability is Reliability.medium
         assert item.content_hash and item.query_or_parameters and item.content_reference
 
 

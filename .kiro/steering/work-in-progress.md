@@ -4,20 +4,23 @@ inclusion: always
 
 # Work-in-Progress Guards
 
-Current coordination state for `main@d7245e4` after PR #18. Design authority remains
+Current coordination state for `main@21e6f14` with S8 completion on PR #26. Design authority remains
 in the other steering files; human-readable detail is in `docs/ACTIVE_WORK.md`.
 
 ## Status
 
-- Complete: S1, S2, S3, S4, S5, S7.
+- Complete: S1, S2, S3, S4, S5, S7, S8.
 - Offline-complete: S9 and S9B.
-- Partial: S0, S6 and S8.
+- Partial: S0 and S6.
 - Not complete: S10 and S11.
-- Never describe offline S8/S9/S9B smoke as live Silver, Gold or deployment success.
+- S8 Silver is backed by the 2026-08-02 integrated live result (`1 passed in 50.15s`); do not
+  extend that claim to Gold or deployment, and never describe offline S9/S9B smoke as live
+  Gold or deployment success.
 - The non-live pytest suite and `ruff check .` were verified on 2026-08-01 (S6 fifth pass):
   1215 passed / 0 failed (15 subtests), Ruff clean, `scripts/verify_s8_s9_s9b.py` PASS,
-  `tests/live` 12 skipped by default. A real provider run (`RUN_LIVE_TESTS=1`) gave
+  `tests/live` skipped by default. A real provider run (`RUN_LIVE_TESTS=1`) gave
   8 passed / 4 skipped with no schema drift — see `docs/rehearsals/live-source-check.md`.
+  Latest S8 branch evidence is 1143 passed / 3 skipped, Ruff clean.
   GitHub CI/status checks are still not configured.
 
 ## Frozen paths
@@ -88,8 +91,9 @@ The complete Evidence Ledger remains the artifact of record and must not be trun
    (`tests/unit/data_evidence/test_official_mode_sources.py`, which scans production code for
    fixture imports and recorded-response loaders). Live provider verification ran for real:
    8 passed / 4 skipped, no schema drift — `docs/rehearsals/live-source-check.md`.
-4. S8 one schema-valid live Bedrock run through baseline market/research plus an independent
-   fallback run. **The schema blocker recorded earlier is resolved (2026-08-01, third pass):**
+4. S8 **closed 2026-08-02**: one schema-valid live Bedrock run through baseline market/research
+   plus an independent fallback run.
+   **The schema blocker recorded earlier is resolved (2026-08-01, third pass):**
    `reasoning/arbiter_output.py` (new file, no frozen file modified) defines `ArbiterOutput` —
    `AnalysisResult` minus the frozen request context, with nullable time ranges, which is
    exactly the shape the frozen `_fallback()` produces — plus `project_to_analysis_result()`
@@ -99,17 +103,17 @@ The complete Evidence Ledger remains the artifact of record and must not be trun
    plain strings because `apply_confidence_caps()` compares with `str()`; the Arbiter must
    receive `ledger_view()` items or `_reliability_rank()` sees `"Reliability.high"` and the
    fallback emits zero claims; `_fallback()` renders assets as `"Asset.BTC"`.
-   What remains is only the live call: one real Bedrock Converse structured output through
-   `adapters/bedrock.py` (still zero to date) across both baseline paths. The scaffold is in
-   place — `tests/live/` (guarded by the `live` marker **and** `RUN_LIVE_TESTS=1`; 12 skipped
-   by default) and `scripts/live_silver_run.py --mode live|fallback`. The fallback half ran
-   offline on 2026-08-01: `run_20260801_160034_s0034`, degraded, four artifacts present.
-   Live Bedrock is blocked by environment only — this machine has no AWS credentials and no
-   `BEDROCK_PRIMARY_MODEL_ID`. Commands to finish it are in
-   `docs/rehearsals/live-source-check.md`.
+   The scaffold is in place — `tests/live/` (guarded by the `live` marker **and**
+   `RUN_LIVE_TESTS=1`, skipped by default) and `scripts/live_silver_run.py --mode live|fallback`.
+   The fallback half ran offline on 2026-08-01: `run_20260801_160034_s0034`, degraded, four
+   artifacts present. The live half was the environment blocker (no AWS credentials on this
+   machine) and was completed on 2026-08-02 in the credentialed environment:
+   `tests/live/test_live_silver_pipeline.py` → `1 passed in 50.15s`, schema-valid Bedrock
+   result with all four artifacts present.
 5. S10 two separate single-asset Gold runs and deadline/artifact acceptance.
 6. S11 CI, ECR/EC2, rollback and one timed judged-flow rehearsal.
 7. Remove repository-wide Ruff debt and run the complete non-live suite.
+8. Configure GitHub CI/status checks and preserve the verified non-live/Ruff baseline.
 
 ## Hard guards
 

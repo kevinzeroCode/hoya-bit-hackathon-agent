@@ -591,3 +591,20 @@ layer infers them — the UI reads a state orchestration already recorded.
 ## 2026-08-01 component update
 
 `DeadlineAwarePipeline` owns Plan → Market/Research fork-join → Process → Arbiter ordering. `build_trust_scorecards` is a pure Evidence component; the renderer adds Trust/Regime and a dual-only comparison projection. See `s8-s9-s9b.md`.
+
+## S8 Silver gate additions
+
+- `PipelineOutcome` now carries optional `effective_data_mode`.
+- `ApplicationService` revalidates the final run configuration before the last
+  atomic rewrite, so mode honesty validators execute on pipeline-derived values.
+- `tests/integration/test_run_modes.py` and `test_provenance.py` cover artifact
+  labels and claim-to-ledger resolution.
+- `tests/live/test_live_sources.py` and `test_bedrock_access.py` are opt-in
+  network/AWS gates and skip unless `RUN_LIVE_TESTS=1`.
+- `tests/live/test_live_silver_pipeline.py` is the final opt-in gate: one
+  `ApplicationService` run consumes the Organizer/Binance cutover and CoinDesk
+  RSS, performs Bedrock research extraction and Arbiter reasoning, then verifies
+  market/news Evidence plus all four artifacts.
+- `RssResearchAdapter` preserves deterministic reliability and independence
+  metadata on each `RawSourceRecord`. Orchestration joins that metadata back to
+  the extraction result by `record_id`; the LLM never assigns source trust.

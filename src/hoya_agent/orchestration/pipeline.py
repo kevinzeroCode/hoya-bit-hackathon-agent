@@ -44,6 +44,7 @@ from hoya_agent.models import (
     Claim,
     ClaimEvidenceLink,
     ClaimType,
+    DataMode,
     DegradationEvent,
     EvidenceItem,
     EvidenceLedger,
@@ -53,6 +54,7 @@ from hoya_agent.models import (
     MarketContext,
     Reliability,
     RunContext,
+    RunMode,
     Stance,
     TerminalState,
     TimeRange,
@@ -82,6 +84,7 @@ class PipelineOutcome:
     terminal_state: TerminalState = TerminalState.completed
     degradation_notes: list[str] = field(default_factory=list)
     stage_durations_ms: dict[str, int] = field(default_factory=dict)
+    effective_data_mode: DataMode | None = None
 
 
 @dataclass(frozen=True)
@@ -566,10 +569,27 @@ class OrganizerCsvPipeline:
         data_dir: Path | None = None,
         load_bars: BarLoader | None = None,
         analysis_date: date | None = None,
+        extra_drafts: Callable[[], tuple[list[PendingEvidence], list[str]]] | None = None,
+        market_source_name: str | None = None,
+        market_independence_group: str | None = None,
+        market_source_url: str | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._load_bars = load_bars
         self._analysis_date = analysis_date
+        # Injected callable for additional deterministic sources (e.g. live Fear &
+        # Greed). It owns any HTTP so this module keeps its no-httpx boundary.
+        self._extra_drafts = extra_drafts
+        # Provenance for the market series. Defaults (None) keep the organizer CSV
+        # labels; a live loader (e.g. Binance) must pass its own so evidence is
+        # never misattributed to the organizer benchmark.
+        self._market_source: dict[str, str] = {}
+        if market_source_name is not None:
+            self._market_source["source_name"] = market_source_name
+        if market_independence_group is not None:
+            self._market_source["independence_group"] = market_independence_group
+        if market_source_url is not None:
+            self._market_source["source_url"] = market_source_url
         self.last_metric_index: dict[str, MetricValue] = {}
 
     async def execute(self, context: RunContext, emit: EventEmitter) -> PipelineOutcome:
@@ -589,6 +609,7 @@ class OrganizerCsvPipeline:
                     asset.value,
                     bars,
                     analysis_as_of=as_of,
+                    **self._market_source,
                 )
                 drafts.extend(regime.drafts)
                 degradation.extend(regime.degradation)
@@ -611,6 +632,7 @@ class OrganizerCsvPipeline:
                     bars_by_asset[left],
                     bars_by_asset[right],
                     analysis_as_of=as_of,
+                    **self._market_source,
                 )
                 drafts.extend(comparison.drafts)
                 degradation.extend(comparison.degradation)
@@ -638,6 +660,25 @@ class OrganizerCsvPipeline:
                         message=message,
                     )
                 )
+
+        # Additional deterministic sources (e.g. live sentiment). The injected
+        # callable owns its HTTP; failures degrade, never raise.
+        if self._extra_drafts is not None:
+            try:
+                extra, extra_degradation = self._extra_drafts()
+            except Exception as exc:  # noqa: BLE001 - any source failure is a degradation, not a crash
+                extra, extra_degradation = [], [f"額外來源取得失敗（{type(exc).__name__}）"]
+            drafts.extend(extra)
+            degradation.extend(extra_degradation)
+            emit(
+                self._stage_event(
+                    context,
+                    stage=STAGE_RESEARCH,
+                    status="ok" if extra else "degraded",
+                    output_count=len(extra),
+                    message=f"extra deterministic evidence: {len(extra)}",
+                )
+            )
 
         # Fact-grounding disclosure: surface any LLM-extracted fact whose numbers
         # or dates are absent from its source (contract-safe — notes only).
@@ -680,6 +721,9 @@ class OrganizerCsvPipeline:
             terminal_state=terminal_state,
             degradation_notes=notes,
             stage_durations_ms={},
+            effective_data_mode=(
+                DataMode.fixture if context.run_mode is RunMode.rehearsal else DataMode.live
+            ),
         )
 
     # -- internals ----------------------------------------------------------
@@ -696,7 +740,7 @@ class OrganizerCsvPipeline:
             )
             return "failed", [], None
 
-        worker = build_market_evidence(asset.value, bars, analysis_as_of=as_of)
+        worker = build_market_evidence(asset.value, bars, analysis_as_of=as_of, **self._market_source)
         degradation.extend(f"{asset.value}: {message}" for message in worker.degradation)
         return worker.status, list(worker.drafts), bars
 

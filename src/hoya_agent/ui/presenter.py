@@ -38,6 +38,32 @@ def terminal_badge(state: Any) -> tuple[str, str]:
     return TERMINAL_STYLE.get(key, (key, "•"))
 
 
+def trust_funnel(evidence_ledger: dict[str, Any]) -> dict[str, Any]:
+    """Distil an evidence.json ledger into the trust funnel + reliability mix.
+
+    Pure and framework-free; computed from the run's own `evidence.json` artifact
+    (no schema or pipeline change). Shows how many scattered items collapse into
+    how few independent voices — the visible core of "多源資訊的信任提煉".
+    """
+    items = evidence_ledger.get("items", []) or []
+    source_types = {i.get("source_type") for i in items if i.get("source_type")}
+    groups = {i.get("independence_group") for i in items if i.get("independence_group")}
+    mix = {"high": 0, "medium": 0, "low": 0}
+    for i in items:
+        rel = i.get("reliability")
+        if rel in mix:
+            mix[rel] += 1
+    conflicts = len(evidence_ledger.get("conflict_indicators", []) or [])
+    return {
+        "evidence_count": len(items),          # ledger-admitted (post-dedup) items
+        "source_type_count": len(source_types),
+        "source_types": sorted(t for t in source_types if t),
+        "independence_group_count": len(groups),
+        "reliability_mix": mix,
+        "conflict_count": conflicts,
+    }
+
+
 def summary_view(summary: Any) -> dict[str, Any]:
     """Map a RunSummary (provisional or canonical) into a plain view dict for the UI."""
     mode_label, mode_icon = run_mode_badge(summary.run_mode)

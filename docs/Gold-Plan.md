@@ -25,7 +25,7 @@
 |---|---|---|---|---|
 | **G1** | **事實接地驗證(fact-grounding)** | 證據(+reasoning 語意層) | 🟢 確定性核心 + pipeline 揭露 + confidence gate(opt-in)已完成;語意複核待做 | 抽出事實的數值/日期能比對原文;捏造值被標 partial、揭露於 degradation,且不計入 confidence 佐證 |
 | **G2** | **跨源三角驗證** | 證據(純 P2) | 🟢 已完成(`evidence/triangulation.py` + 測) | 價格異動日 ↔ 當天具名新聞/情緒對齊,產出 `TriangulatedEvent`(跨來源類型 strength) |
-| **G3** | **信任漏斗 + TrustScorecard 上 UI** | 證據算/UI 顯示 | 🔴 未開始 | UI 首屏可見「N 筆→去重→獨立群→佐證→矛盾」漏斗 + 每 claim 的 5 維分數 |
+| **G3** | **信任漏斗上 UI** | 證據算/UI 顯示 | 🟢 漏斗已完成(`presenter.trust_funnel` + Streamlit,從 evidence.json 算,無契約變更);TrustScorecard 逐 claim 呈現待 Silver(需 claims) | UI 可見證據數/來源類型/獨立群/矛盾/可信度組成 + 獨立性比例 |
 | **G4** | **agent 判斷可視化** | reasoning | 🔴 未開始 | Planner 依題型明顯換來源策略;execution_log 呈現查核/降級決策 |
 | **S8** | **live Silver 端到端跑通一次** | 全隊 | 🔴 gate 未過 | 真 Bedrock + baseline 來源,15 分內產四 artifact(拆最大未爆彈) |
 | **S10** | **Gold local Exit** | 全隊 | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance、run-log |
