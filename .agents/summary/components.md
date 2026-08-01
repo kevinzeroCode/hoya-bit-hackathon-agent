@@ -6,54 +6,79 @@
 graph TB
     subgraph Core["Core Services"]
         App["ApplicationService<br/>application.py"]
+        Composition["Composition Root<br/>composition.py"]
         Models["Domain Models<br/>models.py"]
-        Seams["Provisional Seams<br/>_provisional_seams.py"]
         Config["Settings<br/>config.py"]
         ClockMod["SystemClock<br/>clock.py"]
         Ports["Ports<br/>ports.py"]
     end
 
     subgraph Adapters["Adapters (src/hoya_agent/adapters/)"]
-        Bedrock["bedrock.py<br/>BedrockLLMClient"]
+        Bedrock["bedrock.py (FROZEN)<br/>BedrockLLMClient"]
         BinanceA["binance.py<br/>fetch_binance_daily"]
         CryptoA["cryptopanic.py<br/>fetch_cryptopanic_news"]
         OrgCSV["organizer_csv.py<br/>load_organizer_csv"]
         AltMe["alternative_me.py<br/>fetch_fear_greed"]
         RSSA["rss.py<br/>fetch_rss_news"]
-        Assets["_assets.py<br/>mentions()"]
+        Official["official.py<br/>fetch_official_announcements"]
+        LiveSources["live_sources.py<br/>binance_bar_loader, fear_greed_drafts"]
+        Assets["_assets.py<br/>asset metadata"]
+        Errors["_errors.py<br/>classify_error"]
         PortAdapters["port_adapters.py<br/>CsvMarketAdapter, BinanceMarketAdapter,<br/>RssResearchAdapter, CryptoPanicResearchAdapter,<br/>FearGreedResearchAdapter, OfficialAnnouncementsResearchAdapter"]
     end
 
     subgraph DataLayer["Data Layer (src/hoya_agent/data/)"]
+        DTypes["types.py<br/>MarketBar"]
         Indicators["indicators.py<br/>return, vol, drawdown, z-score"]
         MWorker["market_worker.py<br/>build_market_evidence"]
         MSeries["market_series.py<br/>bars_asof, merge_with_cutover"]
         Regime["regime.py<br/>classify_regime"]
         PriceAn["price_analysis.py<br/>anomaly, attribution, comparison"]
+        TextClean["text_clean.py<br/>clean_text"]
     end
 
     subgraph EvidenceLayer["Evidence Layer (src/hoya_agent/evidence/)"]
+        Drafts["drafts.py<br/>PendingEvidence"]
         Processor["processor.py<br/>build_ledger"]
-        Policies["policies.py<br/>reliability_for, max_confidence"]
-        ETypes["types.py<br/>EvidenceDraft, EvidenceLedger"]
-        Proc["processor.py<br/>build_ledger"]
+        Policies["policies.py (FROZEN)<br/>reliability_for, max_confidence"]
+        Ledger["ledger.py<br/>conflicts, confidence signals"]
+        Grounding["grounding.py<br/>fact grounding"]
+        Trust["trust.py<br/>Trust Scorecards"]
+        Triangulation["triangulation.py<br/>G2 (not wired into run)"]
     end
 
-    subgraph ReasoningLayer["Reasoning Layer (src/hoya_agent/reasoning/)"]
+    subgraph ReasoningLayer["Reasoning Layer (src/hoya_agent/reasoning/ — FROZEN)"]
         Planner["planner.py<br/>Planner"]
         ResAgent["research_agent.py<br/>ResearchAgent"]
+        ResExtr["research_extractor.py<br/>complete_extracted_drafts"]
         Arbiter["arbiter.py<br/>Arbiter"]
+        ArbOut["arbiter_output.py<br/>ArbiterOutput, projection"]
+        Schemas["schemas.py<br/>ArbiterGeneration, PlanGeneration"]
+        Mapping["mapping.py<br/>build_analysis_result"]
         PromptLib["prompt_library.py<br/>load_prompt"]
         Conflict["conflict_extension.py<br/>DisabledConflictExtension"]
     end
 
     subgraph ReportingLayer["Reporting Layer (src/hoya_agent/reporting/)"]
         Renderer["renderer.py<br/>render()"]
+        AdviceLint["advice_lint.py<br/>prohibited-language lint"]
         ArtStore["artifacts.py<br/>LocalArtifactStore"]
     end
 
     subgraph Orchestration["Orchestration (src/hoya_agent/orchestration/)"]
-        Pipeline["pipeline.py<br/>OrganizerCsvPipeline"]
+        Pipeline["pipeline.py<br/>DeadlineAwarePipeline, OrganizerCsvPipeline"]
+        Deadline["deadline.py<br/>DeadlineManager, SKIP_ORDER"]
+        RunState["run_state.py<br/>RunStateMachine"]
+    end
+
+    subgraph UI["UI (src/hoya_agent/ui/)"]
+        Streamlit["streamlit_app.py<br/>Bronze UI"]
+        Presenter["presenter.py<br/>summary_view, trust_funnel"]
+    end
+
+    subgraph ParallelTools["Parallel tool packages (NOT in agent pipeline)"]
+        Calc["src/calc/<br/>indicators, percentile, cross_asset, analogs"]
+        Skills["src/skills/<br/>A1..A9 skills, report, lint, html_report"]
     end
 
     %% Dependency arrows
@@ -61,13 +86,24 @@ graph TB
     App --> ClockMod
     App --> Ports
     App --> Pipeline
+    App --> ArtStore
+    Composition --> Bedrock
+    Composition --> LiveSources
+    Composition --> Pipeline
+    Composition --> Mapping
+    Streamlit --> App
+    Streamlit --> Composition
+    Streamlit --> LiveSources
+    Streamlit --> Presenter
     Pipeline --> MWorker
     Pipeline --> Processor
+    Pipeline --> ArbOut
     PortAdapters --> OrgCSV
     PortAdapters --> BinanceA
     PortAdapters --> RSSA
     Ports --> Models
     Config --> Models
+    Skills --> Calc
 ```
 
 ## Component Details
@@ -481,8 +517,10 @@ no file I/O.
 
 **Responsibility:** Stage order for the H2-Lite run. Hosts `DeadlineAwarePipeline`
 (plan → market/research fork-join → ledger → Arbiter) and `OrganizerCsvPipeline`
-(the offline organizer-CSV-only market branch). Bridges provisional
-pending evidence to the canonical ledger through `evidence/processor.py`.
+(the offline organizer-CSV-only market branch, also reused as the live market
+branch via injected `load_bars`/`extra_drafts` callables). Pending evidence is
+the canonical `PendingEvidence` from `evidence/drafts.py`, merged into the
+ledger through `evidence/processor.py`.
 
 **Key behaviors:**
 - `DeadlineAwarePipeline.execute()`: builds `DeadlineManager.for_run()` and a
@@ -587,6 +625,199 @@ layer infers them — the UI reads a state orchestration already recorded.
 **Responsibility:** H3 conditional-debate seam. MVP implementation is a **deterministic pass-through** — always routes to Arbiter, always reports disabled.
 
 **Status:** Stub only. No debate participants, no LLM calls. Exists to satisfy the interface contract for future H3 work.
+
+---
+
+### Composition Root (`composition.py`)
+
+**Responsibility:** The ONE module allowed to import concrete providers
+(Bedrock, live sources) and hand them to orchestration. Orchestration,
+evidence and UI stay provider-free by construction; everything is injected so
+tests pass a fake LLM and never touch the network.
+
+**Key behaviors:**
+- `build_bedrock_llm(...)` → `BedrockLLMClient` from `BedrockSettings`; `client=None`
+  uses the standard AWS credential chain (EC2 IAM role / local env) — no key in code
+- `MappingArbiter` dataclass: adapts the frozen S7 `Arbiter` (lax
+  `ArbiterGeneration` output) to the pipeline's strict `AnalysisResult` contract.
+  Runs the inner Arbiter, then calls `reasoning.mapping.build_analysis_result`;
+  returns `None` on any mapping/validation failure so the run degrades to the
+  deterministic insufficient-data report — never a crash
+- `build_live_pipeline(...)` → `DeadlineAwarePipeline` with a live
+  `OrganizerCsvPipeline` market branch (`binance_bar_loader` + `fear_greed_drafts`)
+  and a `MappingArbiter` whose output is capped to 3000 tokens to fit the 45 s
+  single-call limit. Planner/Research (news extraction) are deliberately left off
+  the first live cut — they are the fragile multi-stage layer
+
+**Cannot:** Be imported by orchestration/evidence/UI; hold credentials in code;
+make the run crash on a malformed model answer.
+
+---
+
+### Live Sources (`adapters/live_sources.py`)
+
+**Responsibility:** Real-time market + sentiment data path, no LLM, no key.
+Builds the plain synchronous callables the deterministic pipeline injects
+(`load_bars` and `extra_drafts`), so all HTTP stays in the adapter layer and
+orchestration's no-`httpx` boundary holds.
+
+**Key behaviors:**
+- `binance_bar_loader(analysis_as_of, *, limit=1000, timeout=45.0)` → sync
+  `BarLoader(asset) -> bars`. Bridges the async Binance fetcher through a
+  one-shot worker-thread loop (a fresh `asyncio.run` cannot nest in the running
+  pipeline loop). Raises `ValueError` on empty bars so the pipeline degrades
+  that asset rather than emitting a misleading empty series
+- `fear_greed_drafts(analysis_as_of, *, timeout=45.0)` → sync
+  `() -> (drafts, degradation)`. Whole-market Fear & Greed as one low-reliability
+  `social` draft on its own independence group — adds a genuinely different
+  source *type* to the ledger with no LLM call
+
+**Cannot:** Call an LLM; require credentials; be imported by orchestration directly.
+
+---
+
+### Text Cleaning (`data/text_clean.py`)
+
+**Responsibility:** Deterministic news-body cleaning before the LLM sees text.
+Strips HTML tags, unescapes entities, collapses whitespace. No LLM, no network.
+
+**Cannot:** Invent content; call out.
+
+---
+
+### Data Types (`data/types.py`)
+
+**Responsibility:** The `MarketBar` frozen dataclass (one completed UTC daily
+OHLCV bar): `date, open, high, low, close, volume`. A local P2 prototype type
+kept for the data/Evidence layers; field names mirror the canonical contract.
+
+---
+
+### Reasoning Mapping (`reasoning/mapping.py`, FROZEN)
+
+**Responsibility:** Map the Arbiter's lax provider output
+(`ArbiterGeneration`) onto the strict, frozen `models.AnalysisResult`. Injects
+run identity from the request and converts lax shapes into canonical claims/links;
+`AnalysisResult`'s own validators then enforce the contract.
+
+**Key behaviors:**
+- `build_analysis_result(generation, *, request, ledger)` → `AnalysisResult`
+  (raises on invalid output, so callers can surface the reason)
+- `to_analysis_result(...)` → `AnalysisResult | None` — fail-safe wrapper that
+  returns `None` on any `ValidationError`/`ValueError`/`TypeError` so a malformed
+  model answer degrades to the deterministic fallback
+- Claim `time_range` is clamped to never extend past `analysis_as_of`
+  (research tool, not forecaster); empty claim `assets` default to the run's assets
+
+**Cannot:** Widen the frozen cutoff; call an LLM; write files.
+
+---
+
+### Reasoning Schemas (`reasoning/schemas.py`, FROZEN)
+
+**Responsibility:** Canonical lax LLM I/O schemas for the bounded reasoning
+stages — the *provider output* shapes the Planner/Research Agent/Arbiter ask the
+model to return. Deliberately lax (no `run_id`, no strict claim-graph invariants)
+because a model must be free to produce a shape that is then validated and mapped
+onto the strict `AnalysisResult`. All models `extra="forbid"`.
+
+**Schemas:** `GenClaim`, `GenLink`, `GenInvalidation`, `ArbiterGeneration`;
+`GenStep`, `PlanGeneration`; `GenDraft`, `GenSkipped`, `DraftBatch`.
+
+---
+
+### Bronze UI (`ui/streamlit_app.py`)
+
+**Responsibility:** Streamlit judge-facing UI. Three run modes — live official
+(Binance + Fear & Greed; Arbiter reasons when Bedrock is configured, else
+deterministic), offline rehearsal, offline demo — each producing the four fixed
+artifacts. Business logic lives in `application.py` / `presenter.py`; this file
+is only glue.
+
+**Key behaviors:**
+- Live `st.status` panel streams pipeline `ExecutionEvent`s in real time
+  (`_StreamlitProgress`); one submit == one `ApplicationService` run (guarded
+  against duplicate submits)
+- Trust funnel (G3): `presenter.trust_funnel` distils `evidence.json` into
+  evidence count, source-type count, independence-group count, reliability mix
+  and conflict count — "多源資訊的信任提煉" made visible
+- Editorial theme mirroring the P4 report prototype (serif display, mono
+  eyebrows, distillation-green accent), no webfont CDN (offline/Docker-safe)
+- Self-bootstraps `src` onto `sys.path` so a judge can `streamlit run` the file
+  with no editable install or PYTHONPATH
+- Rendered report passes the prohibited-investment-advice lint
+  (`reporting.advice_lint`); H3 multi-agent debate is explicitly marked未實作
+
+**Cannot:** Hold business logic; store AWS credentials; bypass the
+`ApplicationService` (it always owns artifact writes).
+
+---
+
+### Presenter (`ui/presenter.py`)
+
+**Responsibility:** Pure, framework-free `RunSummary` → view-model mappings
+(no Streamlit import) so the UI logic is unit-testable and the "business logic
+in a callback" gate stays satisfied.
+
+**Key behaviors:**
+- `RUN_MODE_STYLE` / `TERMINAL_STYLE`: official/rehearsal/demo and
+  completed/degraded/failed/cancelled each map to a distinct visual token
+- `run_mode_badge`, `terminal_badge`, `summary_view(summary)` → plain dict
+- `trust_funnel(evidence_ledger)` → funnel + reliability mix, computed purely
+  from the run's own `evidence.json` artifact (no schema or pipeline change)
+
+**Cannot:** Import Streamlit; perform I/O; depend on provisional seams.
+
+---
+
+### Calc Library (`src/calc/`) — parallel tool package, NOT in the agent pipeline
+
+**Responsibility:** Deterministic pandas-based calculation library underlying
+the `skills` package. No LLM, no network, no `hoya_agent` imports.
+
+**Modules:**
+- `indicators.py` — returns (simple/log/multi-horizon), realized volatility,
+  volatility percentile, true range/ATR, drawdown series & max drawdown,
+  return distribution, moving averages & distance, rolling range & range
+  position, all-time-high stats, volume mean ratio/percentile, price-volume
+  cross, return z-score & anomaly detection, volatility compression
+- `percentile.py` — `expanding_percentile`
+- `cross_asset.py` — `align`, `rolling_correlation`, `rolling_beta`,
+  `relative_strength_ratio`/`_percentile`, `relative_return`, `dispersion`
+- `analogs.py` — `conditional_base_rate`, episode counting, base-rate strength,
+  volatility-compression studies (`EpisodeCount`, `BaseRate`, `AnalogStudy`)
+- `data_quality.py` — `check_ohlc_integrity` → `IntegrityReport`
+
+---
+
+### Skills Framework (`src/skills/`) — parallel tool package, NOT in the agent pipeline
+
+**Responsibility:** Deterministic analysis skills that turn prepared OHLCV data
+into one `SkillResult` each: structured findings, provenance (`EvidenceRef`),
+what could not be determined, and a ready-to-render Traditional Chinese section.
+No skill calls a model; every number originates in a `calc` calculation.
+
+**Contract (`base.py`):**
+- A skill **never raises** — missing/insufficient data is an outcome
+  (`status = OK | DEGRADED | UNAVAILABLE`), not an exception
+- A skill **never invents a number** — where a figure cannot be computed the
+  field is absent and a limitation says so
+- `MarketBundle` (asset frame + peer frames + benchmark) is the prepared input;
+  `SkillResult` carries `findings`, `evidence_refs`, `limitations`,
+  `section_markdown` (with derived `section_html`)
+
+**Skills:** `a1_regime` (market-state label), `a2_position` (price position vs
+history/MA), `a3_risk` (drawdown/volatility risk), `a4_participation` (volume
+participation), `a5_attribution` (cross-asset attribution), `a7_analogs`
+(conditional base-rate analogs), `a9_verification` (data verification).
+
+**Assembly:** `dataset.load_bundle` (file I/O lives here, not in skills),
+`report.build_report` / `run_skills` / `render_report` (`AnalysisReport`,
+`SKILL_ORDER`), `lint.assert_no_advice` / `find_prohibited_terms`
+(`ProhibitedAdviceError`), `html_report.render_report_html` /
+`render_section_html` / `markdown_subset_to_html`.
+
+---
 
 ## 2026-08-01 component update
 

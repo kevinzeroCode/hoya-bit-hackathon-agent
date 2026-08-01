@@ -40,40 +40,37 @@
 Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC2。
 **每個檔的細節請看檔案地圖，本文不重列。**
 
-> ⚠️ **狀態掃描時間：2026-08-01，基準 commit `3158031`（加計 PR #25）。**
+> ⚠️ **狀態掃描時間：2026-08-02，基準 commit `6f914dc`（含 live composition root、UI、mapping）。**
 > 本快照以實際 `main` 檔案、已執行驗收與外部 gate 為準；較舊章節若衝突，以本節為準。
 
 ### 1.1 現況快照（authoritative）
 
 | 階段 | 狀態 | 驗證後結論 |
 |---|---|---|
-| **S0** preflight | 🟡 | 曾以 Haiku 4.5 / `invoke_model` 成功抽取，但正式 Converse 結構化證據與規定位置的 rehearsal 紀錄仍缺 |
-| **S1** 契約與接縫 | ✅ | canonical models/config/clock/ports/fakes 已落地；runtime provisional seam 已退場 |
-| **S2** 垂直切片 | ✅ | fixture application、四項 artifacts、繁中 deterministic renderer 已落地 |
-| **S3** Streamlit Bronze | ✅ | canonical `ui/`＋`streamlit_app.py`、`reporting/advice_lint.py`（已接進 renderer）、Dockerfile/compose 已落地；離線 Bronze Exit 通過、§3.2 人工清單以瀏覽器實測完成、593 tests 綠、ruff 乾淨 |
-| **S4** deadline 編排 | ✅ | per-stage 預算、finalize 保留區、stage 狀態機、`WorkerStatus` 映射、cancel-then-await fork-join、取消落盤與固定跳過順序（H3 → optional context → 反方訊號二次搜尋）全部落地並驗收 |
+| **S0** preflight | ✅ | 外部模型已成功呼叫（Haiku 4.5 @ `us-west-2`，`invoke_model`）；designated baseline research source 已指定（第一手 RSS ＋ Google News） |
+| **S1** 契約與接縫 | ✅ | canonical models/config/clock/ports/fakes 已落地；`_provisional_seams.py` 已退役 |
+| **S2** 垂直切片 | ✅ | fixture application、四項 artifacts、繁中 deterministic renderer 已落地；canonical seam swap 完成 |
+| **S3** Streamlit Bronze | ✅ | canonical `ui/{presenter,streamlit_app}.py`、`reporting/advice_lint.py`（接進 renderer）、`Dockerfile`/`compose.yaml` 已落地；離線 Bronze Exit 通過、§3.2 人工清單以瀏覽器實測完成 |
+| **S4** deadline 編排 | ✅ | per-stage 預算、finalize 保留區、stage 狀態機、`WorkerStatus` 映射、cancel-then-await fork-join、取消落盤與固定跳過順序全部落地並驗收 |
 | **S5** 市場證據 | ✅ | Organizer CSV、Binance、deterministic indicators 與 market evidence 已整合 |
-| **S6** 研究與 Evidence | 🟡 | 四項功能缺口＋型別統一已完成（material conflict 落盤、多事實抽取、port 包裝、optional／反方訊號清單、單次 retry、共用 `AsyncClient`、`evidence/types.py` 已刪除、reliability 改由 processor 指派）；僅剩 contract 測試位置與 `p2-etl-mvp/` 退場 |
-| **S7** bounded reasoning | ✅ | Planner、Research Agent、Arbiter 與 Bedrock boundary 已完成並凍結 |
-| **S8** H2-Lite Silver | ✅ | 離線 orchestration/fallback/artifacts 通過，**推理接線已補完**（`ArbiterOutput` + 投影，2026-08-01 第三輪）；完整單幣 live pipeline 已通過：Organizer＋Binance、baseline RSS、Bedrock extraction／Arbiter 與四項 artifacts 同 run 驗收完成 |
+| **S6** 研究與 Evidence | ✅ | material conflict 落盤、多事實抽取、port 包裝、optional／反方訊號清單、單次 retry、共用 `AsyncClient`、`evidence/types.py` 已刪除、reliability 改由 processor 指派、fact-grounding（G1）接進 pipeline |
+| **S7** bounded reasoning | ✅ | Planner、Research Agent、Arbiter 與 Bedrock boundary 已完成並凍結；`reasoning/{mapping,schemas}.py` 新增（未改凍結檔） |
+| **S8** H2-Lite Silver | ✅ | **Silver live Exit 已過（2026-08-02）**：`tests/live/test_live_silver_pipeline.py` → 1 passed in 50.15s，schema-valid Bedrock 結構化輸出 ＋ 四項 artifacts。live composition root `composition.py` ＋ `adapters/live_sources.py` 已落地 |
 | **S9** 創意層 | ✅（離線） | Trust Scorecard、regime/unavailable、Evidence-backed invalidation 與 renderer 已通過離線 smoke |
 | **S9B** 雙幣比較 | ✅（離線） | 單一 run/cutoff/ledger、UTC 對齊、balanced Arbiter projection、比較 Claim 與第 12 段已通過 |
 | **S10** Gold local Exit | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 尚缺 |
 | **S11** 部署與彩排 | 🔴 | CI、ECR/EC2、live smoke、rollback 與 15 分鐘 judged-flow rehearsal 尚缺 |
 
-**目前完成分層：**嚴格完成 S1/S2/S3/S4/S5/S7；離線功能完成 S9/S9B；
-部分完成 S0/S6；S8 Silver Exit 已完成；未完成 S10/S11。
+**目前完成分層：**嚴格完成 S0/S1/S2/S3/S4/S5/S6/S7；離線功能完成 S9/S9B；
+**S8 Silver Exit 已完成（2026-08-02）**；未完成 S10/S11。
 
-**尚未通過的 repository-wide gate：** GitHub Actions/status checks 尚未配置。
-非 live 測試套與 Ruff **已在 2026-08-01（S4 第二輪）實跑通過**：
-`python -m pytest tests/unit tests/contract tests/integration -q` → 1100 passed / 0 failed；
-`ruff check .` → All checks passed（先前紀錄的 87 個 Ruff errors 已不存在）。
-即使如此，仍不得把離線 smoke 說成 Silver、Gold 或部署完成——那三項要的是 live 與計時證據。
+**Repository-wide gate 實跑（2026-08-02, commit `6f914dc`, Python 3.12）：**
+`python -m pytest tests/unit tests/contract tests/integration -q` → **1235 passed, 0 failed**；
+`ruff check .` → **All checks passed!**。GitHub Actions/status checks 尚未配置。
+即使如此，仍不得把離線 smoke 說成 Gold 或部署完成——那兩項要的是 live 計時與部署證據。
 
-**下一條關鍵路徑：** S3 Bronze ✅ → S4 ✅ → S6 四項功能缺口 ✅（2026-08-01 第二輪：
-material conflict 落盤、多事實抽取、研究 adapter port 包裝、組裝端宣告 optional／反方訊號清單）→
-S8 推理接線 ✅（第三輪：`ArbiterOutput` + 投影 + 字串化 ledger 視圖）→
-**S8 live Silver（只剩一次真實 Bedrock 結構化輸出）** → S10 Gold local Exit → S11 部署與計時彩排。
+**下一條關鍵路徑：** S3 Bronze ✅ → S4 ✅ → S6 ✅ → S8 推理接線 ✅ →
+**S8 live Silver ✅（2026-08-02）** → S10 Gold local Exit → S11 部署與計時彩排。
 
 ---
 
@@ -1334,10 +1331,33 @@ H3 三處都標示未實作；secret scan 通過。
 其人工檢查清單在本文 [§3.2](#32-只能由人驗證的部分人工檢查清單)。
 接著要看的是 `docs/ACTIVE_WORK.md`（誰正在做什麼）與 `.kiro/specs/hoya-market-agent/tasks.md`（規範性任務）。
 
-## 2026-08-01 S8/S9/S9B implementation checkpoint
+## 2026-08-02 S8/S9/S9B + live composition root implementation checkpoint
 
-- S8: core orchestration, 720-second hard stop, fork-join, progress, artifacts and deterministic degradation implemented; live Silver gate pending.
-- S9: deterministic Trust Scorecard, canonical regime/unavailable, Evidence-backed invalidation and rendering implemented offline.
-- S9B: single run/cutoff/ledger, aligned UTC comparison Evidence, balanced Arbiter projection, comparative Claim and dual-only section 12 implemented offline.
+- S8: **Silver live Exit passed 2026-08-02** — `tests/live/test_live_silver_pipeline.py` →
+  1 passed in 50.15s, schema-valid Bedrock structured output ＋ four artifacts. The live
+  composition root is `src/hoya_agent/composition.py::build_live_pipeline()` (Binance ＋ Fear &
+  Greed → `MappingArbiter` over凍結 Arbiter via `reasoning/mapping.py` + `reasoning/schemas.py`).
+  `adapters/live_sources.py` bridges async fetchers into the deterministic pipeline's sync hooks.
+  Arbiter output capped to 3000 tokens (45s call limit); claim `time_range` clamped to cutoff;
+  empty claim `assets` default to run's assets; any mapping failure → deterministic fallback.
+- S9: deterministic Trust Scorecard, canonical regime/unavailable, Evidence-backed invalidation
+  and rendering implemented offline.
+- S9B: single run/cutoff/ledger, aligned UTC comparison Evidence, balanced Arbiter projection,
+  comparative Claim and dual-only section 12 implemented offline.
+- UI: Streamlit Bronze (`ui/{presenter,streamlit_app}.py`) with live progress, trust funnel (G3),
+  enforced `reporting/advice_lint.py`, self-bootstrap onto `sys.path`.
+- Evidence: fact-grounding (G1, `evidence/grounding.py`) wired into pipeline/confidence;
+  triangulation (G2, `evidence/triangulation.py`) exists but is **not wired into the run**.
+- Parallel tool packages `src/calc/` and `src/skills/` tracked on `main`; not part of the agent
+  pipeline.
 
-Verification evidence and remaining gates are recorded in [S8-S9-S9B implementation](S8-S9-S9B-implementation.md). Full pytest/Ruff was not claimed because the current offline package cache lacks those tools.
+**Real run results (2026-08-02, commit `6f914dc`, Python 3.12, this update):**
+`python -m pytest tests/unit tests/contract tests/integration -q` → **1235 passed, 0 failed**
+(75 warnings, 18.39s); `ruff check .` → **All checks passed!**.
+Traps observed this pass: none new — prior traps (retired `claude-3-5-haiku-20241022`,
+`us.` inference-profile prefix, markdown-fenced model output) remain documented in S0 above.
+Note: `tests/unit/skills/` raises a NumPy `Timedelta` `DeprecationWarning` from
+`src/skills/a9_verification.py:72` (non-fatal, in a parallel tool package, not the agent pipeline).
+
+Verification evidence and remaining gates are recorded in [S8-S9-S9B implementation](S8-S9-S9B-implementation.md).
+Remaining: S10 Gold local Exit and S11 deploy/timed rehearsal.

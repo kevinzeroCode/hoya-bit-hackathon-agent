@@ -44,11 +44,11 @@ graph TD
 
 | Package | Version Range | Purpose | Used In |
 |---|---|---|---|
-| `pydantic` | `>=2.0,<3.0` | Domain model validation with `extra="forbid"`, frozen models, field validators | `models.py`, `config.py`, `_provisional_seams.py`, all shared contracts |
-| `httpx` | `>=0.27,<1.0` | Async HTTP client for all external API calls | `adapters/binance.py`, `adapters/cryptopanic.py`, `adapters/rss.py`, `adapters/alternative_me.py`, `adapters/port_adapters.py` |
-| `pandas` | `>=2.2,<3.0` | DataFrame operations for deterministic market indicators | `data/indicators.py`, `data/price_analysis.py`, `data/regime.py` |
-| `boto3` | `>=1.34,<2.0` | AWS SDK for Bedrock Runtime Converse API | `adapters/bedrock.py` |
-| `streamlit` | `>=1.36,<2.0` | Web UI framework (single-process with application) | `streamlit_app.py` (not yet implemented) |
+| `pydantic` | `>=2.0,<3.0` | Domain model validation with `extra="forbid"`, frozen models, field validators | `models.py`, `config.py`, `reasoning/schemas.py`, all shared contracts |
+| `httpx` | `>=0.27,<1.0` | Async HTTP client for all external API calls | `adapters/binance.py`, `adapters/cryptopanic.py`, `adapters/rss.py`, `adapters/alternative_me.py`, `adapters/official.py`, `adapters/live_sources.py`, `adapters/port_adapters.py`, `application.py` |
+| `pandas` | `>=2.2,<3.0` | DataFrame operations for deterministic market indicators | `data/indicators.py`, `data/price_analysis.py`, `data/regime.py`, `calc/indicators.py`, `calc/cross_asset.py` |
+| `boto3` | `>=1.34,<2.0` | AWS SDK for Bedrock Runtime Converse API | `adapters/bedrock.py`, `composition.py` (via `BedrockLLMClient`) |
+| `streamlit` | `>=1.36,<2.0` | Web UI framework (single-process with application) | `ui/streamlit_app.py` (Bronze UI, offline-only) |
 
 ## Core Infrastructure Modules
 
@@ -97,7 +97,7 @@ Tests inject `FixedClock` (from `tests/fakes.py`) to eliminate real sleeps and w
 
 ### Provider Adapters (`adapters/`)
 
-All external I/O is flat — one file per provider:
+All external I/O is flat — one file per provider (11 files, excl. `__init__.py`):
 
 | Adapter File | Provider | Auth | Reliability |
 |---|---|---|---|
@@ -106,7 +106,11 @@ All external I/O is flat — one file per provider:
 | `cryptopanic.py` | CryptoPanic news aggregation | API token (optional) | `low` |
 | `alternative_me.py` | Fear & Greed Index | None | `low` |
 | `rss.py` | First-party news outlet RSS | None | `medium` |
+| `official.py` | Official project announcement feeds | None | `high` (best-effort) |
+| `live_sources.py` | Live Binance + Fear & Greed factories (Silver pipeline) | None | `high` / `low` |
 | `bedrock.py` | AWS Bedrock Converse API | Instance role | N/A (not evidence) |
+| `_assets.py` | Asset symbol utilities | — | — |
+| `_errors.py` | Normalized timeout/http_error/malformed/rejected categories | — | — |
 
 ### `port_adapters.py` — Async Port Wrappers
 
@@ -117,6 +121,9 @@ Bridges P2's synchronous fetchers to the async `ports.py` Protocol interfaces us
 | `CsvMarketAdapter` | `MarketDataAdapter` | `organizer_csv.load_organizer_csv` (sync file read via `asyncio.to_thread`) |
 | `BinanceMarketAdapter` | `MarketDataAdapter` | `binance.fetch_binance_daily` (sync httpx via `asyncio.to_thread`) |
 | `RssResearchAdapter` | `ResearchSourceAdapter` | `rss.fetch_rss_news` (sync httpx via `asyncio.to_thread`) → maps `EvidenceDraft` to `RawSourceRecord` |
+| `CryptoPanicResearchAdapter` | `ResearchSourceAdapter` | `cryptopanic.fetch_cryptopanic_news` |
+| `FearGreedResearchAdapter` | `ResearchSourceAdapter` | `alternative_me.fetch_fear_greed` (market-wide, `asset=None`) |
+| `OfficialAnnouncementsResearchAdapter` | `ResearchSourceAdapter` | `official.fetch_official_announcements` (best-effort) |
 
 Pattern: each wrapper calls `asyncio.to_thread(sync_function, ...)` so the underlying synchronous `httpx.Client` or file I/O does not block the orchestrator's event loop.
 
@@ -174,6 +181,14 @@ Pattern: each wrapper calls `asyncio.to_thread(sync_function, ...)` so the under
 - **Data:** News articles with publication timestamps
 - **Reliability:** `medium` (original publishers with URL and timestamp)
 - **Used by:** Research Agent (via `RssResearchAdapter`)
+
+### Official Project Announcement Feeds
+
+- **Sources:** Project-specific announcement feeds (`adapters/official.py::OFFICIAL_FEEDS`)
+- **Auth:** None
+- **Data:** Official project announcements (best-effort fetch)
+- **Reliability:** `high` when present (original publisher), best-effort delivery
+- **Used by:** Research Agent (via `OfficialAnnouncementsResearchAdapter`)
 
 ## Standard Library Usage
 
@@ -259,6 +274,7 @@ These are transitive dependencies that come with the declared packages:
 | `LLM_CALL_TIMEOUT_SECONDS` | No | Per-call LLM timeout (default 45, hard max 45) | `Settings.from_env()` |
 | `ALLOW_RECORDED_DEMO_FALLBACK` | No | Enable demo mode recorded bundles | `Settings.from_env()` |
 | `LOG_LEVEL` | No | Logging verbosity (default INFO) | `Settings.from_env()` |
+| `RUN_LIVE_TESTS` | No (test only) | Gate for `tests/live/` network/Bedrock tests (set `=1`) | `tests/live/conftest.py` (`os.getenv`) |
 
 **Security rules:**
 - `.env` is local-only, excluded from Git

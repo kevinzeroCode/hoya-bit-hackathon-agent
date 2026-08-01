@@ -1,8 +1,8 @@
 # HOYA Market Agent System Design
 
 > Status: approved H2-Lite MVP target；原始碼樹已落地（gate `fc517e7`），實作進行中  
-> Last updated: 2026-08-01（CoinGecko fallback 敘述更正為凍結契約版本；新增 Agent 架構圖連結）  
-> Detailed sources: [approved product spec](superpowers/specs/2026-07-17-hoya-bit-hackathon-agent-design.md), [Kiro requirements](../.kiro/specs/hoya-market-agent/requirements.md), [Kiro technical design](../.kiro/specs/hoya-market-agent/design.md)
+> Last updated: 2026-08-02（新增 live composition root、`reasoning/mapping`+`schemas`、UI trust funnel、calc/skills 平行工具；Silver live Exit 已過）  
+> Detailed sources: [approved product spec](superpowers/specs/2026-07-17-hoya-bit-hackathon-agent-design.md), [Kiro requirements](../.kiro/specs/hoya-market-agent/requirements.md), [Kiro technical design](../.kiro/specs/hoya-market-agent/design.md), [EC2 deployment guide](deploy-ec2.md)
 
 ## 1. Problem Statement
 
@@ -201,15 +201,16 @@ flowchart LR
 
 | Component | Responsibility | Must not do |
 |---|---|---|
-| Streamlit UI | 收集輸入、呈現 stage 狀態、報告與下載 | 直接呼叫 concrete adapter 或重寫分析邏輯 |
-| ApplicationService | 唯一 application entry point、run 生命週期、並發拒絕 | 內嵌 provider-specific payload |
-| Orchestrator | `asyncio` fork/join、deadlines、取消、部分成功 | 自由循環或無界 retry |
+| Streamlit UI | 收集輸入、呈現 stage 狀態、報告與下載、trust funnel（G3） | 直接呼叫 concrete LLM/Bedrock adapter 或重寫分析邏輯 |
+| ApplicationService | 唯一 application entry point、run 生命週期、並發拒絕、offline/research pipeline 組裝 | 內嵌 provider-specific payload |
+| `composition.py`（live composition root） | 組裝 live pipeline：Binance ＋ Fear & Greed → `MappingArbiter`（凍結 Arbiter ＋ `reasoning/mapping`） | 取代 `ApplicationService`；只能由需要 live Bedrock 路徑的呼叫端使用 |
+| Orchestrator | `asyncio` fork/join、deadlines、取消、部分成功、dual-asset projection、`finalize_analysis`（conflicts→caps→scorecards） | 自由循環或無界 retry |
 | Planner | 將題目轉成固定 schema 的 ResearchPlan | 抓資料、產生結論 |
 | Market Worker | CSV/live market 載入、UTC cutoff、指標與跨幣防呆 | 呼叫 LLM、把 base volume 直接跨幣比較 |
-| Research Agent | 有界查詢與結構化取證 | 把搜尋摘要當事實、捏造缺失來源 |
-| Evidence Processor | schema validation、去重、可靠度、衝突、ledger | 改寫原始市場數值 |
-| Arbiter | 依 ledger 組成 facts/inferences/conclusions 與 confidence | 產生無 Evidence 支撐的結論或買賣建議 |
-| Renderer | deterministic Markdown、citation、safety lint、fallback | 再次呼叫 LLM |
+| Research Agent | 有界查詢與結構化取證（`reasoning/research_extractor` deterministic 補完） | 把搜尋摘要當事實、捏造缺失來源 |
+| Evidence Processor | schema validation、去重、可靠度、衝突、ledger、**fact-grounding（G1）** | 改寫原始市場數值 |
+| Arbiter | 依 ledger 組成 facts/inferences/conclusions 與 confidence；輸出經 `reasoning/mapping` 投影為嚴格 `AnalysisResult` | 產生無 Evidence 支撐的結論或買賣建議 |
+| Renderer | deterministic Markdown、citation、safety lint、fallback、Trust/Regime/invalidation 與雙幣第 12 段 | 再次呼叫 LLM |
 
 ## 9. Key Execution Sequence
 
@@ -376,6 +377,29 @@ CI 不依賴 live API。提交前另執行 formatting/lint、dependency review�
 ## 2026-08-01 implementation update
 
 The local implementation now follows the six-stage H2-Lite path with a 720-second analysis hard stop, Market/Research fork-join, deterministic Trust/Regime, and one-run dual-asset comparison. The full ledger remains the artifact of record; only the Arbiter projection is quota-balanced. Live Silver acceptance remains pending. See [implementation note](S8-S9-S9B-implementation.md).
+
+## 2026-08-02 live composition root + UI + mapping update
+
+- **Live data path landed.** `src/hoya_agent/composition.py::build_live_pipeline()` is the live
+  composition root (alongside `ApplicationService`): real-time Binance daily klines + Alternative.me
+  Fear & Greed (both key-less) feed the deterministic pipeline, then a `MappingArbiter` runs the
+  frozen `Arbiter` over the live evidence and projects its lax `ArbiterGeneration`
+  (`reasoning/schemas.py`) onto the strict `AnalysisResult` via `reasoning/mapping.py`. Arbiter
+  output is capped to 3000 tokens to finish inside the 45s single-call limit; claim `time_range` is
+  clamped to the cutoff; empty claim `assets` default to the run's assets. Any mapping/validation
+  failure degrades to the deterministic insufficient-data report (never a crash).
+- **`adapters/live_sources.py`** bridges the async `httpx` fetchers into the sync `load_bars` /
+  `extra_drafts` hooks the deterministic pipeline injects, so `orchestration/` stays `httpx`-free.
+- **Streamlit Bronze UI** (`ui/{presenter,streamlit_app}.py`) ships live progress streaming,
+  trust funnel (G3), editorial theme, enforced `reporting/advice_lint.py`, and self-bootstrap onto
+  `sys.path` (judge can `streamlit run` with no editable install).
+- **Evidence:** deterministic fact-grounding (G1, `evidence/grounding.py`) is wired into the
+  pipeline/confidence path; cross-source triangulation helpers (G2, `evidence/triangulation.py`)
+  exist but are **not wired into the run**.
+- **Parallel tool packages** `src/calc/` and `src/skills/` are tracked on `main` as independent
+  price-analysis scripts; they are not imported by the agent pipeline.
+- **Silver live Exit passed** 2026-08-02 (`tests/live/test_live_silver_pipeline.py` → 1 passed in
+  50.15s). See [EC2 deployment guide](deploy-ec2.md) for Docker → ECR → EC2.
 
 ## S8 data-mode finalization
 

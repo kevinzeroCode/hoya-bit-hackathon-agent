@@ -226,7 +226,7 @@ UI widget / session state / 檔案下載（Streamlit）、原子 rename（`os.re
 - 只暴露 demo 需要的那個 Streamlit port；掛一個持久化的本機 artifact volume（🚫 不寫進 image layer）。
 - push immutable tag 到 ECR，EC2 用 `docker compose` 拉**確切測過的那個 tag**。
 
-> ✅ **目前的實況**（2026-08-01, commit `f7536fb`）：`pyproject.toml` **已存在**，使用標準 `src/` layout。
+> ✅ **目前的實況**（2026-08-02, commit `6f914dc`）：`pyproject.toml` **已存在**，使用標準 `src/` layout。
 > 安裝與測試：
 > ```bash
 > python -m pip install -e ".[dev]"
@@ -235,6 +235,14 @@ UI widget / session state / 檔案下載（Streamlit）、原子 rename（`os.re
 > 版本範圍：`pydantic>=2.0,<3.0`、`httpx>=0.27,<1.0`、`pandas>=2.2,<3.0`、`boto3>=1.34,<2.0`、
 > `streamlit>=1.36,<2.0`；dev extras：`pytest>=8.0,<9.0`、`pytest-asyncio>=0.23,<1.0`、
 > `pytest-cov>=5.0,<6.0`、`ruff>=0.4,<1.0`。
+> **離線實跑（2026-08-02）：** `pytest tests/unit tests/contract tests/integration -q` →
+> **1235 passed, 0 failed**；`ruff check .` → **All checks passed!**。
+> **平行工具套**：`src/calc/`（indicators/percentile/cross_asset/analogs/data_quality）與
+> `src/skills/`（base/dataset/a1–a9/report/lint/html_report）已納入 `main` 追蹤，是獨立的價格分析
+> 腳本與技能模組，**非 agent pipeline 的一部分**（`hoya_agent/` 不 import 它們）；各自有
+> `tests/unit/calc`、`tests/unit/skills`。
+> **部署**：單一 non-root Docker image → ECR（immutable tag）→ 單台 EC2 → `docker compose`；
+> 詳見 [`docs/deploy-ec2.md`](deploy-ec2.md)（IAM instance role、零金鑰、Bedrock 權限、rollback）。
 
 ---
 
@@ -359,25 +367,24 @@ python -m pytest tests/unit tests/contract tests/integration -q
 **它一次證明了：** 契約可用 · 組裝根成立 · artifact 寫入契約成立 · 缺檔揭露契約成立 ·
 繁中 11 段模板成立 · 禁語 lint 成立 · UI↔application 邊界成立 · `rehearsal` 標示誠實。
 
-> ✅ **狀態（2026-08-01, commit `f7536fb`）：切片 A（S2 fixture vertical slice）已 COMPLETE 並合併至 `main`。**
+> ✅ **狀態（2026-08-02, commit `6f914dc`）：切片 A（S2 fixture vertical slice）已 COMPLETE 並合併至 `main`。**
 > `application.py`、`reporting/artifacts.py`、`reporting/renderer.py`、fixture pair 與離線四 artifact
-> integration test 已驗證通過（422 passed / 6 skipped, `ruff check .` clean on Python 3.12.13）。
-> 剩餘的 provisional seam 收斂（`_provisional_seams.py` 退役）屬 Task 1b 後的 swap 工作。
+> integration test 已驗證通過（1235 passed / 0 failed, `ruff check .` clean on Python 3.12）。
+> `_provisional_seams.py` 已退役；canonical `models.py`/`ports.py` 是唯一 runtime 契約；
+> live composition root 已落地為 `composition.py` + `adapters/live_sources.py`。
 
 ### 風險 B — Converse 結構化輸出路徑未驗證，且帳號被 AWS 擋住
 
-> 🟡 **已部分降級（2026-08-01）**：Bedrock **已經成功呼叫過**——P2 在 `us-west-2` 以
-> `us.anthropic.claude-haiku-4-5-20251001-v1:0` 驗證通過，憑證、region、模型存取權皆 PASS
-> （紀錄見 `p2-etl-mvp/docs/service-access-check.md`）。
+> 🟢 **已降級（2026-08-02）：** Bedrock **已成功呼叫過**——P2 在 `us-west-2` 以
+> `us.anthropic.claude-haiku-4-5-20251001-v1:0` 驗證通過，且 **Silver live Exit 已過**：
+> `tests/live/test_live_silver_pipeline.py` 經 `composition.build_live_pipeline()` +
+> `BedrockLLMClient` 完成「Organizer／Binance baseline market ＋ baseline RSS research ＋
+> Bedrock extraction／Arbiter ＋ 四項 artifacts」的單次 live run（1 passed in 50.15s，
+> schema-valid Bedrock 結構化輸出）。憑證、region、模型存取權皆 PASS。
 >
-> **剩下兩個缺口：**
->
-> 1. **AWS 帳號未提交 Anthropic use case details 表單**，目前每次呼叫穩定回
->    `ResourceNotFoundException`。主控台操作，不是程式問題，但沒做完什麼都驗不了。
->    不擋離線的 Bronze／Silver，但 Gold 與現場 demo 全靠它。
-> 2. **走的不是同一條路**——P2 用 `invoke_model`，`adapters/bedrock.py` 用 `converse` +
->    forced `toolConfig`。契約測試全綠但**全是對著 stub 測的**，而 stub 不做 botocore 的
->    參數驗證，所以強制工具呼叫的結構化輸出還沒真的跑過一次。
+> **環境偏離已記錄：** 本機 shell 可能是 Python 3.13，專案鎖 3.12、image 用 `python:3.12-slim`；
+> 計時與行為結論應在 3.12 上做。自訂 venv 名稱（如 `.venv312`）不在 Ruff 預設排除範圍，
+> 需顯式 `--exclude`。
 
 **切片 B：一次真實的 Bedrock Converse 呼叫**
 1. 確認 region 與 `BEDROCK_PRIMARY_MODEL_ID` 已開通。

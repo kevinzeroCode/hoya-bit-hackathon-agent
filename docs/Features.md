@@ -448,6 +448,18 @@ per-coin 分支邏輯（`if asset == "BTC"`）、跨幣直接比較 base-asset v
 **下一步 →** [Tech-Stack-Plan.md](Tech-Stack-Plan.md)：消費本文的 §7 外部相依面來決定 port 層的厚度，
 並消費 §1–§4 的能力面來挑一個「降低風險而非追求功能數」的第一個里程碑。
 
-## 2026-08-01 capability status addendum
+## 2026-08-02 capability status addendum
 
-S9 trust distillation/regime/invalidation and S9B one-run dual-asset comparison are implemented offline. S8 orchestration and deterministic degradation are implemented, but Silver success is not claimed until a schema-valid live Bedrock run traverses both designated baseline paths. See [implementation note](S8-S9-S9B-implementation.md).
+S9 trust distillation/regime/invalidation and S9B one-run dual-asset comparison are implemented
+offline. S8 orchestration and deterministic degradation are implemented, and **Silver live Exit
+passed 2026-08-02** — a schema-valid live Bedrock run (`tests/live/test_live_silver_pipeline.py`,
+1 passed in 50.15s) traversed the designated baseline market (Organizer CSV ＋ live Binance) and
+baseline research (RSS) paths end-to-end through `composition.build_live_pipeline()`. Live data
+(Binance ＋ Fear & Greed, key-less) and the Streamlit Bronze UI with trust funnel (G3) and
+enforced advice lint are landed. Deterministic fact-grounding (G1, `evidence/grounding.py`) is
+wired into the pipeline/confidence path; cross-source triangulation helpers (G2,
+`evidence/triangulation.py`) exist but are **not wired into the run**. `_provisional_seams.py` is
+retired; canonical `models.py`/`ports.py` is the sole runtime contract. `src/calc/` and
+`src/skills/` are tracked parallel tool packages (price-analysis scripts), not part of the agent
+pipeline. Still pending: S10 Gold local Exit (two independent single-asset runs ＋ fake-clock
+budget acceptance) and S11 deploy/timed rehearsal. See [implementation note](S8-S9-S9B-implementation.md).

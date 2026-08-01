@@ -7,14 +7,16 @@ HOYA Market Agent implements an **H2-Lite bounded workflow** — a single-pass, 
 ```mermaid
 flowchart TB
     subgraph Entry["Entry Layer"]
-        UI["Streamlit UI<br/>(not yet implemented)"]
+        UI["Streamlit UI<br/>streamlit_app.py + presenter.py"]
         App["ApplicationService<br/>run identity, cutoff, artifacts"]
+        Comp["composition.py<br/>composition root (live / Bedrock wiring)"]
     end
 
-    subgraph Reasoning["Reasoning Layer (LLM-bounded)"]
+    subgraph Reasoning["Reasoning Layer (LLM-bounded, FROZEN)"]
         Planner["Planner<br/>1 LLM call → execution plan"]
         Research["ResearchAgent<br/>1 LLM call → news extraction"]
-        Arbiter["Arbiter<br/>1 LLM call → claims + result"]
+        Arbiter["Arbiter → ArbiterOutput<br/>1 LLM call, then project_to_analysis_result"]
+        Mapping["mapping.py<br/>ArbiterGeneration → AnalysisResult (live cut)"]
     end
 
     subgraph Data["Data Layer (deterministic)"]
@@ -24,36 +26,57 @@ flowchart TB
     end
 
     subgraph Evidence["Evidence Layer (deterministic)"]
-        Proc["Evidence Processor<br/>dedup, rank, assign IDs"]
-        Policies["Policies<br/>reliability, independence, confidence caps"]
+        Proc["Evidence Processor<br/>dedup, rank, assign ev_NNN"]
+        Policies["Policies (FROZEN)<br/>reliability, independence, caps"]
+        Ground["grounding.py<br/>G1 fact-grounding disclosure"]
+        Trust["trust.py<br/>conclusion-only Trust Scorecards"]
+        Triang["triangulation.py<br/>G2 helpers, not wired into run"]
     end
 
     subgraph Adapters["Adapter Layer (I/O boundary)"]
         CSV["Organizer CSV"]
-        Binance["Binance API"]
-        CP["CryptoPanic"]
-        RSS["RSS Feeds"]
-        FG["Alternative.me F&G"]
-        Bedrock["AWS Bedrock"]
+        Binance["Binance API (live)"]
+        FG["Alternative.me F&G (live, no key)"]
+        CP["CryptoPanic (low reliability)"]
+        RSS["RSS / Official feeds"]
+        Bedrock["AWS Bedrock (FROZEN)"]
+        Live["live_sources.py<br/>Binance + F&G sync callables"]
         PortAdapters["port_adapters.py<br/>port-conforming wrappers"]
     end
 
+    subgraph SkillsPkg["Skills / Calc (NEW, deterministic, parallel to pipeline)"]
+        Skills["src/skills/<br/>A1..A9 SkillResults → report"]
+        Calc["src/calc/<br/>indicators, percentile, analogs"]
+        Analyze["scripts/analyze.py<br/>CLI entry (dev/inspection only)"]
+    end
+
     subgraph Output["Output Layer (deterministic)"]
-        Renderer["Renderer<br/>11-section report"]
-        Artifacts["ArtifactStore<br/>atomic writes"]
+        Renderer["Renderer<br/>11 sections + dual section 12"]
+        Lint["advice_lint.py<br/>prohibited-language lint (runs last)"]
+        Artifacts["ArtifactStore<br/>atomic tmp+fsync+replace"]
     end
 
     UI --> App
+    App --> Comp
+    Comp --> Bedrock
+    Comp --> Live
     App --> Planner
     Planner --> MW
     Planner --> Research
     MW --> Proc
     Research --> Proc
     Proc --> Arbiter
-    Arbiter --> Renderer
-    Renderer --> Artifacts
+    Arbiter --> Mapping
+    Mapping --> Renderer
+    Renderer --> Lint
+    Lint --> Artifacts
+    Ground --> Proc
+    Trust --> Arbiter
+    Policies --> Proc
 
     CSV --> PortAdapters
+    Live --> Binance
+    Live --> FG
     Binance --> PortAdapters
     RSS --> PortAdapters
     PortAdapters --> MW
@@ -66,7 +89,9 @@ flowchart TB
 
     Regime --> MW
     PriceAn --> MW
-    Policies --> Proc
+    Calc --> Skills
+    Skills --> Analyze
+    Triang -. "not wired into run" .-> Proc
 ```
 
 ## Architectural Style
@@ -88,50 +113,65 @@ flowchart LR
 - `ports.py` imports `models` only — defines Protocol boundaries consumed by adapters and orchestration
 - `clock.py` imports `models` and `ports` — implements `Clock` protocol and `build_run_context()`
 - `config.py` may import `models`, never adapters or UI — single environment parsing boundary
+- `composition.py` is the ONE module allowed to import concrete adapters (Bedrock, live_sources) and hand them to orchestration — orchestration/, evidence/ and ui/ stay provider-free by construction
 - Adapters own all network I/O; no `httpx`/`boto3` imports elsewhere
-- `port_adapters.py` wraps P2's sync fetchers to satisfy the async Protocol boundaries from `ports.py`
+- `port_adapters.py` wraps the sync fetchers to satisfy the async Protocol boundaries from `ports.py`
+- `live_sources.py` builds the plain sync `load_bars`/`extra_drafts` callables the deterministic pipeline injects (Binance + Fear & Greed); all HTTP stays in the adapter layer
 - Data, evidence, and reporting modules are deterministic (no LLM, no network)
 - Only `reasoning/` modules consume the `LLMClient` protocol
-- UI imports only `ApplicationService` and `presenter` — never adapters or pipeline stages
+- UI imports only `ApplicationService`, `presenter`, `composition`, and `live_sources` — never adapters or pipeline stages directly
+- `src/calc/` and `src/skills/` are a deterministic, parallel analysis surface (no LLM, no network) consumed by `scripts/analyze.py`; they do not import `hoya_agent` and are not wired into the `DeadlineAwarePipeline`
 
-**Provisional seams note:** `_provisional_seams.py` is still present on `main` (not yet deleted). It was created before Task 1b landed and contains stand-in types (`ExecutionEvent`, `RunConfigSnapshot`, `RunSummary`, `RunContext`, `Clock`, `ProgressSink`, `TerminalState`, `AnalysisPipeline`, `PipelineOutcome`). The real implementations now coexist in `models.py`, `ports.py`, and `clock.py`. The swap procedure (deleting `_provisional_seams.py` and updating its importers) is tracked but not yet executed.
+**Provisional seams status:** `_provisional_seams.py` is RETIRED (deleted from `main`). `application.py`, `reporting/artifacts.py`, and orchestration all consume the canonical seams in `models.py`, `ports.py`, and `clock.py`. There is no parallel provisional contract.
 
 ## H2-Lite Pipeline Flow
 
-The core execution is a fixed 6-stage pipeline:
+The core execution is a fixed 6-stage pipeline. `DeadlineAwarePipeline` owns the
+stage order; `OrganizerCsvPipeline` is the deterministic offline `market_pipeline`
+injected into it. Reasoning consumes an `ArbiterOutput` (no frozen request context)
+which `project_to_analysis_result` stamps back onto `AnalysisResult`; the live cut
+wraps the Arbiter in `MappingArbiter` (`composition.py`) which maps a lax
+`ArbiterGeneration` onto the strict result and returns `None` on any failure.
 
 ```mermaid
 sequenceDiagram
     participant App as ApplicationService
+    participant Pipe as DeadlineAwarePipeline
     participant Plan as Planner
     participant MW as Market Worker
     participant RA as Research Agent
     participant EP as Evidence Processor
     participant Arb as Arbiter
+    participant Fin as finalize_analysis
     participant Ren as Renderer
 
     App->>App: Freeze cutoff, mint run_id
     App->>App: Write initial run_config.json
-    App->>Plan: question + assets + available_ops
-    Plan-->>App: Execution plan (or default)
-    
-    par Parallel Evidence Gathering
-        App->>MW: OHLCV bars → deterministic metrics
-        App->>RA: Plan steps → adapter calls → LLM extraction
+    App->>Pipe: execute(context, emit)
+    Pipe->>Plan: question + assets + available_ops
+    Plan-->>Pipe: Execution plan (or default)
+    Pipe->>Pipe: _apply_skip_order(plan) — trim optional work
+
+    par Parallel Evidence Gathering (fork-join, cancel-then-await)
+        Pipe->>MW: OHLCV bars → deterministic metrics
+        Pipe->>RA: Plan steps → adapter calls → LLM extraction
     end
 
     MW-->>EP: EvidenceDrafts (market)
-    RA-->>EP: EvidenceDrafts (news/social)
+    RA-->>EP: complete_extracted_drafts → EvidenceDrafts (news)
     EP->>EP: Dedup, rank, assign ev_NNN IDs
-    App->>App: Write evidence.json (traceability)
-    
-    EP-->>Arb: ≤30 ranked evidence items
-    Arb->>Arb: Generate claims (fact→inference→conclusion)
-    Arb->>Arb: Structural validation + confidence caps
-    Arb-->>Ren: AnalysisResult
-    
-    Ren->>Ren: Build 11 sections (Traditional Chinese)
-    Ren->>Ren: Run prohibited-language lint
+    Pipe->>Pipe: Write evidence.json (traceability)
+
+    EP-->>Arb: select_balanced_evidence ≤30 + ledger_view
+    Arb->>Arb: 1 LLM call → ArbiterOutput
+    Arb->>Arb: project_to_analysis_result (stamp frozen context)
+    Pipe->>Fin: conflicts → confidence caps → Trust Scorecards
+    Fin-->>Pipe: AnalysisResult (+ conflict_indicators on ledger)
+    Pipe-->>App: PipelineOutcome
+
+    App->>Ren: render(result, ledger, lint=advice_violations)
+    Ren->>Ren: Build 11 sections (+ dual section 12)
+    Ren->>Ren: Run prohibited-language lint (runs last)
     App->>App: Write final_report.md
     App->>App: Finalize run_config.json + checksums
 ```
@@ -160,9 +200,11 @@ gantt
 
 **Timeout discipline:**
 - Each external call: max 45s, at most 1 retry within stage deadline
+- Schema repair: 1 attempt, sharing the original stage deadline
 - Skip order on time pressure: H3 → optional context adapters → counter-signal search
-- After 720s: cancel all non-essential external calls
-- After 780s: all 4 artifacts must be on disk
+- After 720s (analysis hard stop): cancel all non-essential external/LLM calls
+- After 780s (artifact deadline): all 4 artifacts must be on disk
+- Finalize reserve: `max(20%, min(60 s, half the run))` of the request deadline
 
 ## Error Handling Philosophy
 
@@ -195,18 +237,24 @@ flowchart TD
 | Module | Owns | Must NOT Do |
 |---|---|---|
 | `models.py` | Shared Pydantic contracts | Import any project module |
-| `ports.py` | Protocol boundaries (Clock, LLMClient, MarketDataAdapter, ResearchSourceAdapter, ProgressSink) | Import adapters, UI, or orchestration; contain concrete I/O |
+| `ports.py` | Protocol boundaries (Clock, LLMClient, MarketDataAdapter, ResearchSourceAdapter, ProgressSink, ArtifactStore, PersistencePort, ToolRegistry) | Import adapters, UI, or orchestration; contain concrete I/O |
 | `config.py` | Environment parsing, typed `Settings`, sanitized `RunConfigSnapshot` emission | Import adapters or UI |
 | `clock.py` | UTC/monotonic injection via `SystemClock`, `build_run_context()` | Network I/O, import adapters |
+| `composition.py` | Composition root — wires Bedrock + live_sources into `DeadlineAwarePipeline` / `MappingArbiter` | Be imported by adapters, evidence, or UI business logic |
 | `adapters/` | All network I/O (one file per provider) | Business logic, reliability assignment |
-| `adapters/port_adapters.py` | Port-conforming async wrappers over sync P2 fetchers | Own business logic; wrapped sources are CSV, Binance, RSS in MVP |
+| `adapters/port_adapters.py` | Port-conforming async wrappers over sync fetchers | Own business logic; wrapped sources are CSV, Binance, RSS, CryptoPanic, F&G, official |
+| `adapters/live_sources.py` | Sync `load_bars` (Binance) + `extra_drafts` (F&G) callables for the deterministic pipeline | Be imported by orchestration/evidence directly (only `composition`/`ui` glue may) |
+| `adapters/bedrock.py` (FROZEN) | Bedrock Converse structured output + repair/fallback path | Be modified without owner agreement |
 | `data/` | Deterministic calculations | LLM calls, network I/O |
-| `evidence/` | Dedup, ranking, policy enforcement | LLM calls, network I/O |
-| `reasoning/` | LLM interaction, plan validation | Write artifacts, assign reliability |
-| `reporting/` | Deterministic rendering, atomic writes | LLM calls, invent new facts |
-| `orchestration/` | Stage coordination, deadline management | Compute indicators, render reports |
-| `application.py` | Composition, run identity, artifact ordering | Provider parsing, UI rendering |
-| `_provisional_seams.py` | Legacy stand-in types (pre-Task 1b) — pending deletion | Be imported by new code; real types live in models/ports/clock |
+| `evidence/` | Dedup, ranking, policy enforcement, grounding (G1), trust scorecards | LLM calls, network I/O |
+| `evidence/triangulation.py` | Cross-source triangulation helpers (G2) | Be wired into the run (currently not — review_notes) |
+| `reasoning/` (FROZEN) | LLM interaction, plan validation, ArbiterOutput boundary, mapping | Write artifacts, assign reliability |
+| `reporting/` | Deterministic rendering (11 + dual section 12), advice lint, atomic writes | LLM calls, invent new facts |
+| `orchestration/` | Stage coordination, deadline management, fork-join, `finalize_analysis` | Compute indicators, render reports |
+| `application.py` | Composition wiring (`build_research_*`), run identity, artifact ordering | Provider parsing, UI rendering |
+| `ui/` | Streamlit glue + framework-free presenter view models | Business logic (lives in `application.py`/`presenter.py`), adapter imports |
+| `src/calc/`, `src/skills/` | Deterministic OHLCV analysis skills (A1..A9) and report assembly | LLM, network, or importing `hoya_agent` |
+| `scripts/analyze.py` | Dev/inspection CLI over `src/skills/` | Implement the run-artifact contract (deliberately weak) |
 
 ## Deployment Architecture
 
@@ -216,14 +264,16 @@ flowchart LR
         subgraph Docker["Docker Container"]
             ST["Streamlit :8501"]
             APP["ApplicationService"]
-            Pipeline["H2-Lite Pipeline"]
+            Comp["composition.py"]
+            Pipeline["DeadlineAwarePipeline"]
         end
         Vol["Local Volume<br/>/artifacts"]
     end
     
     Bedrock["Amazon Bedrock"] <--> Docker
-    Binance["Binance API"] <--> Docker
-    News["CryptoPanic / RSS"] <--> Docker
+    Binance["Binance API (no key)"] <--> Docker
+    FG["Alternative.me F&G (no key)"] <--> Docker
+    News["CryptoPanic / RSS / Official"] <--> Docker
     ECR["Amazon ECR"] -->|"Pull image"| Docker
     Docker --> Vol
 ```
@@ -234,6 +284,21 @@ flowchart LR
 - Artifacts written to mounted local volume
 - EC2 instance role for Bedrock permissions (no stored credentials)
 - Non-root Docker image with pinned dependencies
+- Deployment flow: Docker build → ECR (immutable tag) → EC2 `docker compose pull` / `up`
+  (see `docs/deploy-ec2.md`, `docs/Tech-Stack-Plan.md`)
+
+## Run Modes and Data-Mode Honesty
+
+| Run mode | Requested data mode | May degrade to | Honesty rule |
+|---|---|---|---|
+| `official` | `live` | — | `official` + any non-live effective data mode is rejected by the `RunConfigSnapshot` validator (models.py) |
+| `rehearsal` | `fixture` | — | May replay a fixed cutoff; reports its real `effective_data_mode` at completion |
+| `demo` | `live` | `recorded_fallback` | Finalization re-validates the merged snapshot; `ALLOW_RECORDED_DEMO_FALLBACK` gates the fallback |
+
+`build_request()` freezes `analysis_as_of` to the injected clock for `official`
+and refuses a caller-supplied value. The pipeline reports its actual
+`effective_data_mode` at completion and the application re-validates the full
+`RunConfigSnapshot` before the final `run_config.json` rewrite.
 
 ## Frozen Paths (Do Not Modify)
 
@@ -247,6 +312,25 @@ These paths are completed and covered by tests. Changes require owner agreement:
 - `tests/contract/`
 - `tests/unit/reasoning/`
 
-## 2026-08-01 architecture update
+## 2026-08-01 architecture update (S8 third pass)
 
-The implementation remains a typed same-process H2-Lite system. Orchestration balances only the Arbiter projection while retaining the complete ledger artifact; frozen reasoning paths remain untouched. See `s8-s9-s9b.md`.
+The implementation remains a typed same-process H2-Lite system. `_provisional_seams.py`
+is retired; `application.py`, `reporting/artifacts.py`, and orchestration consume the
+canonical seams in `models.py` / `ports.py` / `clock.py`. The composition root
+(`composition.py`) is the single module allowed to import concrete adapters
+(`bedrock`, `live_sources`) and hand them to the pipeline. Orchestration balances
+the Arbiter projection while retaining the complete ledger artifact; frozen
+reasoning paths remain untouched. See `s8-s9-s9b.md`.
+
+New deterministic surfaces sit parallel to the pipeline: `src/calc/` (indicators,
+percentile, analogs, cross-asset, data quality) and `src/skills/` (A1..A9 analysis
+skills → `AnalysisReport`), driven by `scripts/analyze.py` as a dev/inspection CLI.
+These do not participate in the `DeadlineAwarePipeline` and do not import
+`hoya_agent`; they are a separate, fully deterministic report path over the
+organizer dataset.
+
+The Bronze UI (`src/hoya_agent/ui/streamlit_app.py` + `presenter.py`) offers three
+modes — live `official` (real Binance + Fear & Greed, Arbiter when Bedrock is
+configured via env/EC2 IAM role), offline `rehearsal` and offline `demo` over the
+organizer CSV. Pipeline `ExecutionEvent`s stream live into an `st.status` panel;
+the presenter derives a trust funnel (G3) from the run's own `evidence.json`.

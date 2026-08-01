@@ -19,15 +19,17 @@ src/hoya_agent/
 ├── clock.py               # SystemClock + build_run_context (official cutoff freeze)
 ├── ports.py               # All Protocol interfaces + StaticToolRegistry
 ├── application.py         # Entry point: run identity, artifact ordering, terminal state
-├── _provisional_seams.py  # Temp runtime types (coexists with ports.py/clock.py until swap)
+├── composition.py         # Composition root: wires Bedrock + live sources into DeadlineAwarePipeline
 ├── adapters/              # All external I/O (flat, one file per provider)
-│   ├── bedrock.py         # AWS Bedrock Converse — structured output via tool use
+│   ├── bedrock.py         # AWS Bedrock Converse — structured output via tool use (FROZEN)
 │   ├── binance.py         # Daily UTC klines → MarketBar
 │   ├── cryptopanic.py     # News aggregation (low reliability)
 │   ├── organizer_csv.py   # Competition OHLCV benchmark data
 │   ├── alternative_me.py  # Fear & Greed (low, market-wide, asset=None)
 │   ├── rss.py             # Original publisher feeds (medium reliability)
 │   ├── official.py        # Official project announcement feeds (best-effort, high)
+│   ├── live_sources.py    # Real-time Binance + Fear & Greed sync callables (no key, no LLM)
+│   ├── _assets.py         # Asset metadata/helpers
 │   ├── _errors.py         # Normalized timeout/http_error/malformed/rejected categories
 │   └── port_adapters.py   # Port-conforming async wrappers (CSV, Binance, RSS,
 │                          # CryptoPanic, Fear & Greed, official)
@@ -36,7 +38,9 @@ src/hoya_agent/
 │   ├── market_worker.py   # OHLCV bars → high-reliability EvidenceDrafts
 │   ├── market_series.py   # bars_asof, merge_with_cutover (CSV/live cutover)
 │   ├── regime.py          # Market state classification (first-match rule)
-│   └── price_analysis.py  # Cross-asset: anomaly, attribution, comparison
+│   ├── price_analysis.py  # Cross-asset: anomaly, attribution, comparison
+│   ├── text_clean.py      # HTML/whitespace cleaning for news bodies before LLM
+│   └── types.py           # MarketBar frozen dataclass
 ├── evidence/              # Ledger assembly — no LLM, no network
 │   ├── drafts.py          # PendingEvidence: canonical draft + provenance (source_class, publisher, metric)
 │   ├── processor.py       # Sole assigner: reliability, independence group, SHA-256 hash, ev_NNN ids
@@ -44,27 +48,38 @@ src/hoya_agent/
 │   ├── grounding.py       # Fact grounding: extracted numbers must appear in the source
 │   ├── trust.py           # Deterministic conclusion-only Trust Scorecards
 │   ├── triangulation.py   # Cross-source agreement helpers (not wired into the run)
-│   └── policies.py        # Static reliability, independence group, confidence caps
+│   └── policies.py        # Static reliability, independence group, confidence caps (FROZEN)
 ├── reasoning/             # FROZEN — LLM interaction (exactly 1 call per stage)
 │   ├── planner.py         # Bounded plan generation (max 8 steps, allowlist only)
 │   ├── research_agent.py  # Adapter execution + 1 LLM extraction call
 │   ├── research_extractor.py  # Extraction schema + deterministic draft completion (added, not frozen-modified)
 │   ├── arbiter.py         # Claims (fact→inference→conclusion) + structural validation
 │   ├── arbiter_output.py  # ArbiterOutput LLM-boundary schema + projection + string ledger view (added)
+│   ├── schemas.py         # Lax provider-output schemas (ArbiterGeneration, PlanGeneration, DraftBatch)
+│   ├── mapping.py         # Map ArbiterGeneration → strict AnalysisResult (fail-safe to None)
 │   ├── prompt_library.py  # Versioned prompt loading (only version IDs reach logs)
 │   └── conflict_extension.py  # H3 stub — always disabled, routes to Arbiter
 ├── reporting/             # Deterministic output — no LLM
 │   ├── renderer.py        # 11-section zh-Hant report (+ dual-only section 12)
 │   ├── advice_lint.py     # Prohibited prescriptive-language lint (runs last)
 │   └── artifacts.py       # Atomic writes (tmp+fsync+replace) for 4 fixed files
+├── ui/                    # Streamlit Bronze UI (live progress, trust funnel G3, editorial theme)
+│   ├── streamlit_app.py   # Judge-facing glue (offline rehearsal/demo + live official)
+│   └── presenter.py       # Pure RunSummary → view-model mappings (no Streamlit import)
 └── orchestration/
     ├── pipeline.py        # Deadline-aware H2-Lite + cancel-then-await fork-join + dual-asset
     │                      # projection + finalize_analysis (conflicts → caps → scorecards)
     ├── deadline.py        # Stage budget milestones, proportional scaling, finalize reserve
     └── run_state.py       # Stage lifecycle, WorkerStatus mapping, terminal-state derivation
+
+src/calc/                  # Parallel tool package (NOT in agent pipeline) — pandas calculations
+src/skills/                # Parallel tool package (NOT in agent pipeline) — A1..A9 analysis skills
 prompts/                   # planner-v1.md, research-extraction-v1.md, arbiter-v1.md
-tests/                     # unit/ contract/ integration/ acceptance/ live/ fixtures/
+tests/                     # unit/ contract/ integration/ live/ fixtures/ (acceptance/ not yet created)
 ```
+
+> `_provisional_seams.py` is retired (deleted); application, artifacts, and
+> orchestration use canonical `models.py`/`ports.py` via `composition.py`.
 
 ## Pipeline Architecture
 

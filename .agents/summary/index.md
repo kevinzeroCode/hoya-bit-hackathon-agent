@@ -25,14 +25,15 @@ This index is designed as the **primary context file** for AI assistants working
 **Purpose:** Project identity, technology choices, layout, and key design decisions at a glance.
 
 **Contains:**
-- Project name, language, architecture style, current status
+- Project name, language, architecture style, current status (Streamlit Bronze UI + live Silver pipeline shipped; H3 still disabled)
 - Full technology stack table
 - Supported assets (BTC/ETH/SOL/BNB/XRP)
 - Competition constraints (900s deadline, 4 artifacts)
 - Run modes (official/rehearsal/demo)
-- Directory structure overview
-- Key metrics (file counts, model counts, adapter counts)
+- Directory structure overview (incl. `src/calc/`, `src/skills/`, `src/hoya_agent/ui/`, `composition.py`)
+- Key metrics (75 `src/` .py files, 43 models/enums in `models.py`, 11 adapter files, ~87 test files)
 - 7 core design decisions with rationale
+- Live Silver pipeline & UI notes (composition root, live_sources, reasoning mapping, Bronze UI)
 
 **Use when:** You need a quick orientation, want to know what technologies are in play, or need to understand the project layout.
 
@@ -115,8 +116,8 @@ This index is designed as the **primary context file** for AI assistants working
 
 **Contains:**
 - Model hierarchy class diagram (showing relationships)
-- Enumeration table (12 enums with all values: Asset, RunMode, SourceType, Reliability, Stance, ClaimType, TrustLevel, RegimeLabel, InvalidationOperator, WorkerStatus, StageState, TerminalState)
-- 40 model/class definitions total across:
+- Enumeration table (13 enums with all values: Asset, RunMode, DataMode, SourceType, Reliability, Stance, ClaimType, TrustLevel, RegimeLabel, InvalidationOperator, WorkerStatus, StageState, TerminalState)
+- 43 model/class definitions total across:
   - Core request/evidence/claim models (AnalysisRequest, EvidenceItem, EvidenceDraft, EvidenceLedger, Claim, ClaimEvidenceLink, AnalysisResult)
   - Research planning models (ResearchStep, ResearchPlan)
   - Creativity layer models (MarketRegime, TrustScorecard, InvalidationCondition, plus 5 dimension sub-models)
@@ -154,15 +155,17 @@ This index is designed as the **primary context file** for AI assistants working
 
 **Contains:**
 - Dependency graph (Mermaid showing package → service connections)
-- Production dependency table (5 packages with versions and usage locations)
-- Development dependency table (4 packages)
-- External service contracts (Bedrock, Binance, CryptoPanic, Alternative.me, RSS)
+- Production dependency table (5 packages: pydantic, httpx, pandas, boto3, streamlit)
+- Development dependency table (4 packages: pytest, pytest-asyncio, pytest-cov, ruff)
+- External service contracts (Bedrock, Binance, CryptoPanic, Alternative.me, RSS, official feeds)
+- Core infrastructure modules (`config.py`, `ports.py`, `clock.py`)
+- Adapter layer (`adapters/` flat provider files + `port_adapters.py` async wrappers + `live_sources.py`)
 - Standard library usage table
 - Explicit exclusions (what's NOT allowed: LangGraph, FastAPI, etc.)
 - Version pinning strategy
 - Transitive dependency notes
 - Data dependencies (competition dataset, prompt files)
-- Environment variable reference (including new vars: HTTP_CONNECT_TIMEOUT_SECONDS, HTTP_READ_TIMEOUT_SECONDS, MAX_EVIDENCE_FOR_ARBITER, LLM_CALL_TIMEOUT_SECONDS, ALLOW_RECORDED_DEMO_FALLBACK, LOG_LEVEL)
+- Environment variable reference (required: AWS_REGION, BEDROCK_PRIMARY_MODEL_ID, ARTIFACT_ROOT; optional: BEDROCK_FALLBACK_MODEL_ID, CRYPTOPANIC_API_TOKEN, HOYA_DATA_DIR, HTTP_CONNECT_TIMEOUT_SECONDS, HTTP_READ_TIMEOUT_SECONDS, MAX_EVIDENCE_FOR_ARBITER, LLM_CALL_TIMEOUT_SECONDS, ALLOW_RECORDED_DEMO_FALLBACK, LOG_LEVEL; test-only: RUN_LIVE_TESTS)
 
 **Use when:** You need to add a dependency, configure an external service, check what env vars are available, or understand what's explicitly excluded.
 
@@ -235,3 +238,12 @@ Here are examples of how to use this documentation effectively:
 ## 2026-08-01 integration update
 
 See `s8-s9-s9b.md` for the canonical seam swap, deadline-aware H2-Lite orchestration, deterministic trust/regime layer, dual-asset comparison, and remaining live Silver gate.
+
+## Post-S8 additions
+
+- **Composition root** (`composition.py`) replaces the retired `_provisional_seams.py`; `build_live_pipeline(...)` wires Bedrock + live Binance/Fear&Greed sources.
+- **New top-level packages:** `src/calc/` (deterministic calc library) and `src/skills/` (analysis skills a1–a9 + report/lint/html_report).
+- **New `src/hoya_agent/ui/`** package: Streamlit Bronze UI (`streamlit_app.py`) + framework-free `presenter.py`.
+- **New modules:** `adapters/live_sources.py`, `adapters/official.py`, `adapters/_errors.py`, `data/text_clean.py`, `data/types.py`, `reasoning/mapping.py`, `reasoning/schemas.py` (FROZEN package — documented only).
+- **Live data path:** real-time Binance + Fear & Greed (no key), Bedrock Arbiter over live evidence via `MappingArbiter`.
+- **Deployment:** Docker → ECR → single EC2 (IAM instance role) documented in `docs/deploy-ec2.md`.

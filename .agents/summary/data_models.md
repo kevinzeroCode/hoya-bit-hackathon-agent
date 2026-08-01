@@ -199,12 +199,13 @@ classDiagram
     RunContext ..> AnalysisResult : "run identity"
 ```
 
-## Enumerations (13 total)
+## Enumerations (15 in `models.py`)
 
 | Enum | Values | Usage |
 |---|---|---|
 | `Asset` | `BTC`, `ETH`, `SOL`, `BNB`, `XRP` | Supported crypto assets |
 | `RunMode` | `official`, `rehearsal`, `demo` | Execution mode |
+| `DataMode` | `live`, `fixture`, `recorded_fallback` | Where a run's evidence actually came from (§14); `requested_for(run_mode)` → `fixture` for rehearsal, else `live`; only `demo` may degrade to `recorded_fallback` |
 | `SourceType` | `official`, `market`, `news`, `onchain`, `social`, `macro` | Evidence source classification |
 | `Reliability` | `high`, `medium`, `low` | Static source reliability + confidence level |
 | `Stance` | `supports`, `opposes`, `neutral` | Claim-evidence link direction |
@@ -215,12 +216,16 @@ classDiagram
 | `WorkerStatus` | `completed`, `partial`, `failed` | Worker execution outcome |
 | `StageState` | `pending`, `running`, `completed`, `degraded`, `failed`, `cancelled` | Pipeline stage lifecycle |
 | `TerminalState` | `completed`, `degraded`, `failed`, `cancelled` | Final run outcome |
+| `SourceStatus` | `ok`, `empty`, `timeout`, `http_error`, `malformed`, `rejected` | Normalized adapter outcome (§8.7); `empty` is a disclosed gap, not an error |
 
-All enums are `str`-backed for direct JSON serialization.
+Enums in `models.py` are `str`-backed for direct JSON serialization. Additional
+enums outside `models.py`: `Stage`/`OptionalWork` (`orchestration/deadline.py`),
+`SourceClass`/`GroundingStatus` (`evidence/`), plus the parallel-tool
+`OK`/`DEGRADED`/`UNAVAILABLE` status constants in `src/skills/base.py`.
 
 
 
-## Core Models (40 classes in `src/hoya_agent/models.py`)
+## Core Models (44 classes in `src/hoya_agent/models.py`)
 
 ### AnalysisRequest
 
@@ -426,47 +431,64 @@ The top-level output from the Arbiter. Frozen, with extensive aggregate validato
 
 ### ExecutionEvent
 
-One line of `execution_log.jsonl`. Frozen after creation.
+One line of `execution_log.jsonl`. Frozen after creation. (`extra="forbid"`.)
 
 **Fields:**
-- `run_id`: format `run_YYYYMMDD_HHMMSS_<suffix>`
-- `stage`: non-blank stage name
-- `state`: `StageState` enum (`pending` | `running` | `completed` | `degraded` | `failed` | `cancelled`)
+- `schema_version`: default `"1.0"`
 - `timestamp`: required UTC datetime
-- `message`: optional non-blank string
-- `details`: `dict[str, str | int | float | bool | None]` (default empty, for structured metadata)
+- `run_id`: format `run_YYYYMMDD_HHMMSS_<suffix>`
+- `run_mode`: `RunMode`
+- `stage`: non-blank stage name
+- `event_type`: non-blank
+- `status`: non-blank string (worker/state status)
+- `duration_ms`, `provider_or_model`, `error_category`: optional
+- `parameters`: `dict[str, str]` (no prompts/credentials)
+- `attempt`: int, default 1
+- `input_count`, `output_count`: optional ints
+- `message`: default `""`
 
 ---
 
 ### RunConfigSnapshot
 
-Sanitized configuration persisted in `run_config.json`. Frozen after creation.
+Sanitized configuration persisted in `run_config.json`. Frozen after creation. (`extra="forbid"`.)
 
 **Fields:**
-- `run_id`: format `run_YYYYMMDD_HHMMSS_<suffix>`
-- `run_mode`: `RunMode` enum
+- `schema_version` (`"1.0"`), `prompt_version`, `policy_version`
+- `run_id` (`run_YYYYMMDD_HHMMSS_<suffix>`)
+- `requested_run_mode`, `effective_run_mode`: `RunMode`
+- `requested_data_mode`, `effective_data_mode`: `DataMode` (§14 — official cannot lie; only `demo` may report `recorded_fallback`)
+- `sanitized_request`: `dict[str, object]`
 - `analysis_as_of`: UTC datetime
-- `aws_region`: non-blank AWS region string
-- `bedrock_primary_model_id`: non-blank model identifier
-- `artifact_root`: non-blank path to artifact output directory
-- `max_question_length`: integer (configured question length cap)
-- `clock_tolerance_seconds`: float (fetched-vs-published slack tolerance)
-- `optional_key_presence`: `dict[str, bool]` (records whether optional keys like `CRYPTOPANIC_API_TOKEN` are configured, never values)
+- `deadline_seconds`: int
+- `stage_durations_ms`: `dict[str, int]`
+- `configured_sources`: `list[str]`
+- `optional_keys_present`: `dict[str, bool]` (key presence, never values)
+- `used_recorded_fallback`, `used_cached_evidence`, `has_stale_evidence`: bool
+- `terminal_status`: `str | None`
+- `artifact_checksums`: `dict[str, str]`
+- `missing_artifacts`: `list[str]`
+- `artifact_write_failures`: `list[dict[str, str]]`
 
 ---
 
 ### RunSummary
 
-Final run outcome summary. Frozen after creation.
+Final run outcome summary. Frozen after creation. (`extra="forbid"`.)
 
 **Fields:**
-- `run_id`: format `run_YYYYMMDD_HHMMSS_<suffix>`
-- `terminal_state`: `TerminalState` enum (`completed` | `degraded` | `failed` | `cancelled`)
-- `effective_run_mode`: `RunMode` enum
-- `artifact_paths`: `dict[str, str]` mapping artifact names to paths (non-blank keys/values)
-- `stage_statuses`: `dict[str, StageState]` mapping stage names to final states (non-blank keys)
-- `degradation_notes`: list of non-blank strings
-- `completed_at`: required UTC datetime
+- `run_id` (`run_YYYYMMDD_HHMMSS_<suffix>`)
+- `run_mode`, `effective_data_mode` (`DataMode`)
+- `terminal_state`: `TerminalState`
+- `stage_statuses`: `dict[str, str]`
+- `artifact_dir`: non-blank path
+- `artifact_paths`: `dict[str, str]` (non-blank keys/values)
+- `missing_artifacts`: `list[str]`
+- `evidence_item_count`: int (default 0)
+- `confidence`: `Reliability`
+- `insufficient_data`: bool
+- `degradation_notes`: `list[str]`
+- `report_markdown`: `str | None`
 
 
 
@@ -636,17 +658,43 @@ class MarketWindows:
 
 ---
 
-## Provisional Seams (`_provisional_seams.py`)
+## Adapter Envelope (`models.py`)
 
-The following types exist as temporary runtime stand-ins from Task 2. They coexist with the canonical models until the swap task merges them:
+### SourceResult[DataT]
 
-- `ExecutionEvent` (provisional) — wider log-format shape with `schema_version`, `event_type`, `duration_ms`, `provider_or_model`, `parameters`, `attempt`, `input_count`, `output_count`, `error_category`
-- `RunConfigSnapshot` (provisional) — wider config shape with `schema_version`, `prompt_versions`, `policy_versions`, `configured_sources`, `terminal_state`, `stage_durations_ms`, `artifact_checksums`, `failures`
-- `RunSummary` (provisional dataclass) — `run_id`, `terminal_state`, `run_mode`, `artifact_paths`
-- `RunContext` (provisional dataclass) — `run_id`, `run_mode`, `question`, `assets`, `analysis_as_of`, `deadline_seconds`
-- `PipelineOutcome` — `ledger`, `result`, `terminal_state`, `degradation_notes`, `stage_durations_ms`
+Typed envelope returned by every adapter (§8.7). Generic over `DataT`.
+`extra="forbid"`, `arbitrary_types_allowed=True`.
 
-The canonical Pydantic models in `models.py` (documented above) take precedence. The provisional seams will be removed once the swap task lands.
+**Fields:**
+- `source_name`: str
+- `source_url`: `str | None`
+- `status`: `SourceStatus` (`ok` | `empty` | `timeout` | `http_error` | `malformed` | `rejected`)
+- `data`: `DataT`
+- `fetched_at`: datetime (UTC)
+- `published_at`: `datetime | None`
+- `query_or_parameters`: `str | None` (reproducibility params — no secrets/auth headers)
+- `content_reference`: `str | None`
+- `is_cached`: bool (default false); `cache_time`: `datetime | None`
+- `is_stale`: bool (default false)
+- `latency_ms`: `float | None`
+- `error_category`: `str | None` (normalized from `adapters/_errors.py`)
+
+---
+
+## Reasoning LLM-Boundary Schemas (NOT canonical `models.py`)
+
+These lax Pydantic shapes are the *provider output* the reasoning stages ask the
+model to return. They live outside `models.py` and are mapped deterministically
+onto the strict, frozen `AnalysisResult`. All `extra="forbid"`.
+
+- `reasoning/arbiter_output.py` — `ArbiterOutput` (= `AnalysisResult` minus frozen
+  request context, with `Literal`-string boundary values) plus `EvidenceView` /
+  `LedgerView` (string-valued ledger view) and `project_to_analysis_result()`.
+  See `interfaces.md`.
+- `reasoning/schemas.py` — `ArbiterGeneration`, `GenClaim`, `GenLink`,
+  `GenInvalidation`, `PlanGeneration`, `GenStep`, `DraftBatch`, `GenDraft`,
+  `GenSkipped`. The live composition root uses `ArbiterGeneration` as the
+  Arbiter's `result_schema`; `reasoning/mapping.py` maps it onto `AnalysisResult`.
 
 ---
 
@@ -654,13 +702,19 @@ The canonical Pydantic models in `models.py` (documented above) take precedence.
 
 | Category | Count | Classes |
 |---|---|---|
-| Enums | 13 | Asset, RunMode, SourceType, Reliability, Stance, ClaimType, TrustLevel, RegimeLabel, InvalidationOperator, WorkerStatus, StageState, TerminalState (+ 1 helper: `_ZERO_OFFSET`) |
+| Enums | 15 | Asset, RunMode, DataMode, SourceType, Reliability, Stance, ClaimType, TrustLevel, RegimeLabel, InvalidationOperator, WorkerStatus, StageState, TerminalState, SourceStatus (+ helper `_ZERO_OFFSET`) |
 | Core domain models | 11 | AnalysisRequest, RunContext, ResearchStep, ResearchPlan, EvidenceItem, EvidenceDraft, RawSourceRecord, WorkerResult, Claim, ClaimEvidenceLink, AnalysisResult |
+| Adapter envelope | 1 | SourceResult (generic) |
 | Ledger/artifact models | 4 | EvidenceLedger, ConflictIndicator, DegradationEvent, EvidenceListRow |
 | Runtime models | 3 | ExecutionEvent, RunConfigSnapshot, RunSummary |
 | Creativity layer | 9 | MarketRegime, TrustScorecard, SourceIndependenceDimension, SourceDiversityDimension, ReliabilityMix, ConsistencyDimension, FreshnessDimension, InvalidationCondition, MarketContext |
 | Supporting | 1 | TimeRange |
-| **Total** | **40** | (excluding helper function `project_evidence_list`) |
+| **Total** | **44** | in `models.py` (excluding helper `project_evidence_list`) |
+
+Plus the reasoning LLM-boundary schemas in `reasoning/arbiter_output.py` and
+`reasoning/schemas.py` (not part of the canonical 44), and the parallel-tool
+dataclasses in `src/calc/` and `src/skills/base.py` (`MarketBar`, `SkillResult`,
+`MarketBundle`, `EvidenceRef`, etc.).
 
 ## 2026-08-01 model update
 

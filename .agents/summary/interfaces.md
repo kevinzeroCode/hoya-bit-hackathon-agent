@@ -968,6 +968,238 @@ All runs produce exactly these 4 files:
 | `evidence.json` | JSON | After Evidence Processor completes |
 | `final_report.md` | Markdown (zh-Hant) | Last (after renderer completes) |
 
+## Composition, Live Sources & UI Interfaces
+
+### Composition Root (`src/hoya_agent/composition.py`)
+
+```python
+def build_bedrock_llm(
+    *, region: str, primary_model_id: str, fallback_model_id: str | None = None,
+    call_timeout_seconds: float = 45.0, client: Any = None,
+) -> BedrockLLMClient: ...
+
+@dataclass
+class MappingArbiter:
+    """Adapts the frozen Arbiter (lax ArbiterGeneration) to the pipeline's strict
+    AnalysisResult contract. Returns None on any mapping/validation failure so the
+    run degrades to the deterministic insufficient-data report."""
+    inner: Arbiter
+    @property
+    def settings(self) -> Any: ...
+    async def run(self, *, request: Any, ledger: Any, indicators: Any = (),
+                  deadline: float, degradation_notes: Any = ()
+    ) -> tuple[Any, list[str]]: ...
+
+def build_live_pipeline(
+    *, clock: Clock, llm: Any, analysis_as_of: datetime,
+    per_stage_timeout_seconds: float = 45.0, kline_limit: int = 1000,
+    arbiter_max_tokens: int = 3000,
+) -> DeadlineAwarePipeline: ...
+```
+
+**Contract:** `build_live_pipeline` wires a live `OrganizerCsvPipeline` market
+branch (`binance_bar_loader` + `fear_greed_drafts`) and a `MappingArbiter`
+capped to 3000 tokens to fit the 45 s single-call limit. Planner/Research are
+off the first live cut. This is the only module that may import `BedrockLLMClient`
+and `live_sources`.
+
+---
+
+### Live Sources (`src/hoya_agent/adapters/live_sources.py`)
+
+```python
+def binance_bar_loader(
+    analysis_as_of: datetime, *, limit: int = 1000, timeout: float = 45.0,
+) -> Callable[[str], Sequence[MarketBar]]:
+    """Sync BarLoader backed by live Binance daily klines. Raises ValueError on empty bars."""
+
+def fear_greed_drafts(
+    analysis_as_of: datetime, *, timeout: float = 45.0,
+) -> Callable[[], tuple[list[PendingEvidence], list[str]]]:
+    """Sync () -> (drafts, degradation) for the whole-market Fear & Greed index."""
+```
+
+**Contract:** Both bridge an async `httpx` fetcher through a one-shot worker-thread
+loop (a fresh `asyncio.run` cannot nest in the running pipeline loop). No
+credentials required. Orchestration receives only callables, so its no-`httpx`
+boundary holds.
+
+---
+
+### Reasoning Mapping (`src/hoya_agent/reasoning/mapping.py`, FROZEN)
+
+```python
+def build_analysis_result(
+    generation: ArbiterGeneration, *, request: Any, ledger: Any
+) -> AnalysisResult: ...
+    # Raises on invalid output (callers that want the reason catch it).
+
+def to_analysis_result(
+    generation: ArbiterGeneration, *, request: Any, ledger: Any
+) -> AnalysisResult | None: ...
+    # Fail-safe wrapper: None on ValidationError/ValueError/TypeError.
+```
+
+**Rules:** Claim `time_range` is clamped to never extend past `analysis_as_of`;
+empty claim `assets` default to the run's assets.
+
+---
+
+### Reasoning Schemas (`src/hoya_agent/reasoning/schemas.py`, FROZEN)
+
+```python
+# All models: model_config = ConfigDict(extra="forbid")
+class GenClaim(BaseModel): ...           # claim_id, claim_type, assets, time_range, ...
+class GenLink(BaseModel): ...            # claim_id, evidence_id, stance, reason
+class GenInvalidation(BaseModel): ...    # text, metric, operator, threshold, basis_evidence_id
+class ArbiterGeneration(BaseModel): ...  # Arbiter provider output -> mapped onto AnalysisResult
+class GenStep(BaseModel): ...            # step_id, tool_operation, rationale
+class PlanGeneration(BaseModel): ...     # Planner provider output
+class GenDraft(BaseModel): ...           # record_id, asset, normalized_fact, content_reference
+class GenSkipped(BaseModel): ...         # record_id, reason
+class DraftBatch(BaseModel): ...         # Research Agent provider output (drafts + skipped)
+```
+
+---
+
+### Data Cleaning & Types
+
+```python
+# data/text_clean.py
+def clean_text(raw: str | None) -> str: ...   # strip HTML, unescape, collapse whitespace
+
+# data/types.py
+@dataclass(frozen=True)
+class MarketBar:
+    date: date; open: float; high: float; low: float; close: float; volume: float
+```
+
+---
+
+### UI (`src/hoya_agent/ui/`)
+
+```python
+# presenter.py — pure, framework-free (no Streamlit import)
+RUN_MODE_STYLE: dict[str, tuple[str, str]]   # official/rehearsal/demo -> (label, icon)
+TERMINAL_STYLE: dict[str, tuple[str, str]]   # completed/degraded/failed/cancelled
+def run_mode_badge(run_mode: Any) -> tuple[str, str]: ...
+def terminal_badge(state: Any) -> tuple[str, str]: ...
+def trust_funnel(evidence_ledger: dict[str, Any]) -> dict[str, Any]: ...
+    # evidence_count, source_type_count/source_types, independence_group_count,
+    # reliability_mix {high,medium,low}, conflict_count
+def summary_view(summary: Any) -> dict[str, Any]: ...
+
+# streamlit_app.py — glue only; entry point: streamlit run src/hoya_agent/ui/streamlit_app.py
+def main() -> None: ...
+def _run_offline(assets, question, run_mode, progress=None) -> object: ...
+def _run_live(assets, question, progress=None) -> object: ...
+def _live_pipeline(now) -> tuple[AnalysisPipeline, bool]: ...  # Bedrock when configured
+class _StreamlitProgress: ...   # ProgressSink that streams events into st.status
+```
+
+---
+
+## Parallel Tool Package Interfaces (NOT in the agent pipeline)
+
+### Calc (`src/calc/`)
+
+```python
+# indicators.py
+def simple_returns(close, horizon=1) -> pd.Series
+def log_returns(close, horizon=1) -> pd.Series
+def multi_horizon_returns(...) -> pd.DataFrame
+def realized_volatility(...) -> float
+def volatility_percentile(...) -> pd.Series
+def true_range(high, low, close) -> pd.Series
+def atr(high, low, close, window=14) -> pd.Series
+def drawdown_series(close) -> pd.Series
+def max_drawdown(close) -> float
+def return_distribution(close) -> tuple[float, float]
+def moving_average(close, window) -> pd.Series
+def distance_from_ma(close, window) -> pd.Series
+def rolling_range(high, low, window=252) -> tuple[pd.Series, pd.Series]
+def range_position(...) -> pd.Series
+@dataclass class AllTimeHighStats: ...
+def all_time_high_stats(close, high) -> AllTimeHighStats
+def volume_mean_ratio(volume, short=30, long=365) -> pd.Series
+def volume_mean_percentile(volume, window=30) -> pd.Series
+@dataclass class PriceVolumeCross: ...
+def price_volume_cross(close, volume, window=30) -> PriceVolumeCross
+def return_zscore(close) -> pd.Series
+def zscore_anomalies(close, threshold=3.0) -> pd.DataFrame
+@dataclass class CompressionState: ...
+def volatility_compression(...) -> CompressionState
+def recent_extremes(...) -> ...
+
+# percentile.py
+def expanding_percentile(series, min_periods=1) -> pd.Series
+
+# cross_asset.py
+def align(a, b) -> tuple[pd.Series, pd.Series]
+def rolling_correlation(...)
+def rolling_beta(...)
+def relative_strength_ratio(asset_close, benchmark_close) -> pd.Series
+def relative_strength_percentile(...)
+def relative_return(...)
+def dispersion(closes, horizon=30) -> float
+
+# analogs.py
+@dataclass class EpisodeCount: ...
+@dataclass class BaseRate: ...
+@dataclass class AnalogStudy: ...
+def count_episodes(condition, horizon) -> EpisodeCount
+def strength_level(rate, episodes) -> str
+def conditional_base_rate(...)
+def low_volatility_condition(...)
+def volatility_compression_study(...)
+
+# data_quality.py
+@dataclass class IntegrityReport: ...
+def check_ohlc_integrity(df, gap_threshold=0.001) -> IntegrityReport
+```
+
+### Skills (`src/skills/`)
+
+```python
+# base.py — the skill contract
+OK, DEGRADED, UNAVAILABLE = "ok", "degraded", "unavailable"
+@dataclass(frozen=True) class EvidenceRef: ...   # ref_id, metric, value, computed_by, ...
+@dataclass(frozen=True) class SkillResult: ...   # skill_id, asset, status, findings, evidence_refs, limitations, section_markdown
+@dataclass(frozen=True) class MarketBundle: ...  # asset, frame, peers, benchmark
+def unavailable(skill_id, skill_name, bundle, reason) -> SkillResult
+def fmt_pct / fmt_num / fmt_ratio / bullet / render_section(...)
+
+# dataset.py
+class DatasetError(RuntimeError): ...
+@dataclass class LoadReport: ...
+def load_bundle(directory: Path, asset: str, *, as_of: date | None = None, peers: Sequence[str] = ()) -> tuple[MarketBundle, LoadReport]
+
+# skills — each: def run(bundle: MarketBundle) -> SkillResult  (a7_analogs adds mode="expanding"; a9_verification adds optional args)
+# a1_regime.assign_label(return_window, vol_percentile) -> str ; a1_regime.run(bundle)
+
+# report.py
+SKILL_ORDER: tuple[str, ...]
+@dataclass class AnalysisReport: ...
+def run_skills(bundle, skill_ids=SKILL_ORDER) -> tuple[SkillResult, ...]
+def render_report(bundle, results) -> str
+def build_report(bundle, skill_ids=SKILL_ORDER) -> AnalysisReport
+
+# lint.py
+class ProhibitedAdviceError(AssertionError): ...
+def find_prohibited_terms(text: str) -> list[str]
+def assert_no_advice(text: str) -> str
+
+# html_report.py
+def markdown_subset_to_html(markdown) -> str
+def render_section_html(result) -> str
+def render_report_html(bundle, results) -> str
+```
+
+**Skill contract rules:** a skill never raises (missing data is an outcome);
+a skill never invents a number (absent fields + a limitation instead).
+
+---
+
 ## 2026-08-01 interface update
 
 Application/artifact consumers now use canonical `ExecutionEvent`, `RunConfigSnapshot`, `RunSummary`, `RunContext`, `Clock`, and `ProgressSink`. Pipeline outcomes live in `orchestration.pipeline`; provisional seams are deleted. See `s8-s9-s9b.md`.

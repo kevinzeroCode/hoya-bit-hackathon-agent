@@ -10,7 +10,7 @@
 
 > ⚠️ **這份文件會最快腐爛。** 它記的是**現況**。檔案落地、改責任、被合併時，
 > 請當作那個檔的 definition-of-done 的一部分來更新它的 row。
-> **狀態掃描時間：2026-08-01，commit `f7536fb`（`main`）。**
+> **狀態掃描時間：2026-08-02，commit `6f914dc`（`main`）。**
 
 ## 1. Context
 
@@ -76,9 +76,11 @@
 | ○ | **計畫中**，尚未寫；括號內為 ④ 的 stage 編號 |
 | ⛔ | **明確不做 / 已裁決移除**——保留 row 當麵包屑，讓追舊參照的人不撲空 |
 
-> **現況一句話：** `main` 上核心契約（`models.py` 40 類）、runtime seams（`config/clock/ports`）、
-> S2 vertical slice（`application/renderer/artifacts`）、data/evidence 全層、orchestration 首段、
-> 及完整推理層均已落地。422 passed / 6 skipped，Python 3.12.13 離線實跑，ruff clean。
+> **現況一句話：** `main` 上核心契約（`models.py` 40 類）、canonical runtime seams（`config/clock/ports`）、
+> S2 vertical slice（`application/renderer/artifacts`）、data/evidence 全層、deadline-aware orchestration、
+> 完整推理層、live composition root（`composition.py` + `adapters/live_sources.py`）與 Streamlit Bronze UI
+> 均已落地；`_provisional_seams.py` 已退役。1235 passed / 0 failed（Python 3.12 離線實跑 2026-08-02），ruff clean。
+> `src/calc/` 與 `src/skills/` 已納入 `main` 追蹤（獨立分析腳本與技能，非 agent pipeline 的一部分）。
 
 ---
 
@@ -93,8 +95,8 @@
 | `config.py` | ✅ | 環境變數解析一次 → typed `Settings`（155 行）；sanitized snapshot（optional key 只記布林值）；鎖定名稱 `BEDROCK_PRIMARY_MODEL_ID`/`BEDROCK_FALLBACK_MODEL_ID`/`CRYPTOPANIC_API_TOKEN` | `models.py`；被 `application.py`、adapter factory 讀 |
 | `clock.py` | ✅ | 可注入的 UTC 與 `time.monotonic()` 入口（41 行）；`SystemClock` + `build_run_context` | `ports.Clock`；被 `orchestration/deadline.py`、`application.py` 用 |
 | `ports.py` | ✅ | Protocol 邊界（137 行）：`Clock`、`LLMClient`、`SourceAdapter`、`MarketDataAdapter`、`ResearchSourceAdapter`、`ProgressSink`、`ArtifactStore`、`ToolRegistry`（`StaticToolRegistry`）、未來 persistence port | `models.py` 的型別；被 `adapters/*` 實作、被核心模組消費 |
-| `application.py` | ✅ | **組裝根**：驗證 request、凍結 `analysis_as_of`、造 `run_id`、建 run 目錄、寫首份 `run_config.json`、組裝具體相依、叫 pipeline、回 `RunSummary`。**取消處理**：接到 `CancelledError` 後以現有狀態把四項 artifacts 標 `cancelled` 落盤，**再 re-raise**；該 finalize 路徑刻意全程無 await。**研究組裝（2026-08-01）**：`build_research_tool_registry()`（static registry，handler 解開 `SourceResult` → `list[RawSourceRecord]`，失敗拋 `SourceUnavailable`）、`build_research_pipeline()`、`ALLOWED_RESEARCH_HOSTS`（**呼叫前**就拒絕非 allowlist host）、`BASELINE_RESEARCH_OPERATIONS`／`OPTIONAL_CONTEXT_OPERATIONS`／`COUNTER_SIGNAL_OPERATIONS`（S4 跳過順序的來源清單就在這裡宣告）、`DeterministicPlanner`（無 LLM 時走預設計畫並揭露） | `config.Settings`、`clock`、`orchestration/pipeline.py`、`reporting/artifacts.py`、所有 `adapters/*`（唯一處）、`reasoning/{planner,research_agent,research_extractor}` |
-| `_provisional_seams.py` | ✅⚠️ | **臨時 runtime seams**（179 行）：`ExecutionEvent`、`RunConfigSnapshot`、`RunSummary`、`RunContext`、`Clock`、`ProgressSink`、`TerminalState`、`AnalysisPipeline`、`PipelineOutcome`。欄位名與 `evidence-contracts.md` §13/§14 一致。**Task 1b 的正式 seams 落地後由 swap 程序刪除** | 被 `application.py`、`reporting/artifacts.py` 消費；與 `ports.py`/`clock.py` 並存直到 swap |
+| `application.py` | ✅ | **`ApplicationService` 入口**：驗證 request、凍結 `analysis_as_of`、造 `run_id`、建 run 目錄、寫首份 `run_config.json`、組裝 offline/research pipeline、叫 pipeline、回 `RunSummary`。**取消處理**：接到 `CancelledError` 後以現有狀態把四項 artifacts 標 `cancelled` 落盤，**再 re-raise**；該 finalize 路徑刻意全程無 await。**研究組裝（2026-08-01）**：`build_research_tool_registry()`（static registry，handler 解開 `SourceResult` → `list[RawSourceRecord]`，失敗拋 `SourceUnavailable`）、`build_research_pipeline()`、`ALLOWED_RESEARCH_HOSTS`（**呼叫前**就拒絕非 allowlist host）、`BASELINE_RESEARCH_OPERATIONS`／`OPTIONAL_CONTEXT_OPERATIONS`／`COUNTER_SIGNAL_OPERATIONS`（S4 跳過順序的來源清單就在這裡宣告）、`DeterministicPlanner`（無 LLM 時走預設計畫並揭露） | `config.Settings`、`clock`、`orchestration/pipeline.py`、`reporting/artifacts.py`、所有 `adapters/*`（唯一處）、`reasoning/{planner,research_agent,research_extractor}` |
+| `composition.py` | ✅ | **Live pipeline composition root（2026-08-02 新增，取代已退役的 `_provisional_seams.py`）**：唯一可組裝 live concrete adapter 進 runnable pipeline 的另一處。`build_bedrock_llm()`、`build_live_pipeline()`（Binance daily klines ＋ Fear & Greed `extra_drafts` → `MappingArbiter`(包凍結 `Arbiter` + `reasoning/mapping.build_analysis_result`））。Planner/Research 在首波 live cut 關閉（fragile multi-stage layer，待 Arbiter 路徑證實後再加）。Arbiter 輸出 capped `max_tokens=3000` 以在 45s 單次呼叫限內完成 | `adapters/bedrock.py`、`adapters/live_sources.py`、`orchestration/pipeline.py`、`reasoning/{arbiter,mapping,schemas}`、`ports.Clock` |
 
 ### 4.2 `orchestration/` — 順序、時間、狀態
 
@@ -134,6 +136,7 @@
 | `adapters/_errors.py` | ✅ | 正規化錯誤詞彙（2026-08-01 新增）：`classify_error()` → `timeout\|http_error\|malformed\|rejected`、`category_note()` 在 degradation note 後附 `[category=…]`、`category_of()` 在 port 邊界讀回。存在理由：adapter 不得跨 port 拋例外，但 note 本身無法讓 `SourceResult.status` 分辨 timeout 與 500 | 只依 `httpx`／標準庫；被四個研究 adapter 與 `port_adapters.py` 使用 |
 | `adapters/_assets.py` | ✅ | 資產符號 ↔ provider 代碼對照（供 rss/cryptopanic 用） | 只被研究類 adapter 使用 |
 | `adapters/official.py` | ✅ | 依資產查 checked-in 官方 blog/RSS allowlist（`OFFICIAL_FEEDS`，五幣皆有）；**best-effort**，無設定 feed → 揭露缺口而非錯誤；原始發布者 → `high` | `httpx`、`_assets.py`、`_errors.py`、`policies.py`；經 `OfficialAnnouncementsResearchAdapter` 進 pipeline |
+| `adapters/live_sources.py` | ✅ | **Live source composition（2026-08-02 新增）**：把 async Binance／Fear & Greed fetcher 橋成 deterministic pipeline 注入的**同步** callable（`binance_bar_loader` → `load_bars(asset)`、`fear_greed_drafts` → `() -> (drafts, degradation)`）。用 worker thread 跑獨立 event loop（`asyncio.run` 不能 nest）。兩個來源皆免 key；Bedrock 是另一層。所有 `httpx` 止步於此，`orchestration/` 收到的只是 callable | `httpx`、`adapters/{binance,alternative_me}.py`、`data/types.py`、`evidence/drafts.py`；被 `composition.build_live_pipeline()` 與 `ui/streamlit_app.py` 消費 |
 | `adapters/okx.py` | ⛔ | P2 寫的第二個交易所 adapter | **不在 canonical tree，且與「單一 baseline live market source」的核准決定衝突。已裁決不搬入 MVP。** |
 | `adapters/coingecko.py` | ⛔ | CoinGecko live adapter | **steering 已定為 post-hackathon Future Work，MVP 不實作。🚫 不要從 P2 分支拉這個檔。** |
 
@@ -163,7 +166,9 @@
 | `reasoning/llm_client.py` | ⛔ | P2 的第二套 LLM Protocol（只有 `complete()`） | **已裁決刪除**——LLM 邊界統一用 `adapters/bedrock.py`。⚠️ 其 docstring 教人用不存在的 `AnthropicBedrockMantle`（正確名是 `AnthropicBedrock`），照抄會爆 |
 | `reasoning/gpt_client.py`、`run_gpt_extract.py` | ⛔ | P2 的 OpenAI 路徑 | **已裁決刪除**——規格是 Bedrock-only |
 | `reasoning/arbiter_output.py` | ✅ | **LLM 邊界 schema 與投影（2026-08-01 新增檔，未改凍結檔）。** `ArbiterOutput`／`ArbiterClaim`／`ArbiterLink`／`ArbiterMarketContext`／`ArbiterInvalidationCondition` ＝ `AnalysisResult` 減去凍結請求脈絡，時間範圍可為 null（凍結 `_fallback()` 就是這個形狀）；**全部用 `Literal` 字串而非列舉**——凍結的 `apply_confidence_caps()` 以 `str()` 比對，列舉會讓每次信心下修都弄壞 payload 並靜默退回 fallback。`ledger_view()`／`EvidenceView` 提供字串化 ledger 視圖（同 `ReasoningRequest` 慣例）；否則 `_reliability_rank()` 讀到 `"Reliability.high"`，`select_evidence()` 失去 high 優先序、`_fallback()` 挑不到任何 fact。`project_to_analysis_result()` 蓋回凍結脈絡、映射列舉、以證據窗口補時間範圍並收斂超出 cutoff 的範圍，並回傳需揭露的 notes | `models.py`（只讀）、`reasoning/arbiter.py`（只被呼叫）；由 `orchestration/pipeline.py::_run_arbiter()` 與 `application.build_research_pipeline()` 使用 |
-| `reasoning/research_extractor.py` | ✅ | **2026-08-01 已搬進 `src/`（新增檔，未修改任何凍結檔）。** 提供 `ResearchAgent` 一直以注入方式索取、但 `src/` 從來沒有人提供的兩半：① `ResearchExtraction`／`ExtractedFact`（structured-output schema，`extra="forbid"`；一篇文章可回多筆 fact＋`relevant` 判定，這就是多事實抽取與 relevance filtering）；② `complete_extracted_drafts()` deterministic 補完——reliability 走靜態表（feed item 未取原頁 → `low`）、`independence_group` 走 `policies`、時間戳取自 record、引用不存在 record 的 fact 直接丟棄並揭露、每篇上限 3 筆、`content_reference` 為 ≤400 字的有界引述以供 grounding 比對。已完整的 draft（market worker／adapter 產出）原樣通過 | `evidence/policies.py`、`evidence/types.py`、`data/text_clean.py`、`models.Asset`；由 `orchestration/pipeline.py` 在 Evidence stage 呼叫；schema 由組裝端注入 `ResearchAgent` |
+| `reasoning/research_extractor.py` | ✅ | **2026-08-01 已搬進 `src/`（新增檔，未修改任何凍結檔）。** 提供 `ResearchAgent` 一直以注入方式索取、但 `src/` 從來沒有人提供的兩半：① `ResearchExtraction`／`ExtractedFact`（structured-output schema，`extra="forbid"`；一篇文章可回多筆 fact＋`relevant` 判定，這就是多事實抽取與 relevance filtering）；② `complete_extracted_drafts()` deterministic 補完——reliability 走靜態表（feed item 未取原頁 → `low`）、`independence_group` 走 `policies`、時間戳取自 record、引用不存在 record 的 fact 直接丟棄並揭露、每篇上限 3 筆、`content_reference` 為 ≤400 字的有界引述以供 grounding 比對。已完整的 draft（market worker／adapter 產出）原樣通過 | `evidence/policies.py`、`evidence/drafts.py`、`data/text_clean.py`、`models.Asset`；由 `orchestration/pipeline.py` 在 Evidence stage 呼叫；schema 由組裝端注入 `ResearchAgent` |
+| `reasoning/schemas.py` | ✅ | **Canonical LLM I/O schemas（2026-08-02 新增檔，未改凍結檔）。** Planner／Research／Arbiter 透過 `converse_structured(schema=…)` 要求 Claude 回傳的 **lax provider-output** 形狀：`ArbiterGeneration`／`GenClaim`／`GenLink`／`GenInvalidation`、`PlanGeneration`／`GenStep`、`DraftBatch`／`GenDraft`／`GenSkipped`。刻意寬鬆（無 `run_id`、無嚴格 claim-graph 不變量）——模型自由產出後由 `mapping.py` 投影到嚴格凍結 `models.AnalysisResult`。全 `extra="forbid"` | `pydantic`、`models.*`（只參考形狀）；被 `reasoning/mapping.py` 與組裝端（`composition.py`／`application.build_research_pipeline()`）注入凍結 reasoner |
+| `reasoning/mapping.py` | ✅ | **Lax → strict 投影（2026-08-02 新增檔，未改凍結檔）。** `build_analysis_result(generation, request, ledger)`：把 `ArbiterGeneration` 蓋上凍結請求脈絡（`run_id`／`question`／`assets`／`analysis_as_of`）、`str` → canonical 列舉、claim 缺 `assets` 預設為 run 的 assets、`time_range` 夾到 cutoff（不得超過 `analysis_as_of`）、缺失起訖以證據窗口／14 日 lookback 補齊。任何 `ValidationError`／`ValueError`／`TypeError` → 回 `None`（caller 走 deterministic insufficient-data fallback，永不崩 run）。`to_analysis_result()` 為吞錯版本 | `models.*`、`reasoning/schemas.py`；被 `composition.MappingArbiter` 與 `reasoning/arbiter_output.project_to_analysis_result()` 並存使用 |
 | Bull / Bear / Judge | ⛔ | H3 的辯論角色 | **從未建立，MVP 也不得建立。** H3 只存在 `conflict_extension.py` 一個停用實作 |
 
 ### 4.7 `reporting/` — deterministic 交付層（🚫 永不呼叫 LLM）
@@ -179,9 +184,9 @@
 
 | 檔案 | 狀態 | 職責 | 互動對象 |
 |---|---|---|---|
-| `ui/__init__.py` | ○ (S3) | package marker | — |
-| `ui/presenter.py` | ○ (S3) | domain → view model：stage 進度列、成功/失敗來源、degradation notes、terminal state、run-mode 標籤、**H3-未實作**狀態、recorded-fallback 警示。**只造 display model，🚫 無商業邏輯** | `models.RunSummary`、`orchestration/run_state.py` 的 progress event、`reasoning/conflict_extension.UNIMPLEMENTED_LABEL` |
-| `streamlit_app.py` | ○ (S3) | 唯一 UI 入口：題目輸入、一至二幣選擇、run mode 選擇、run 中停用按鈕（確保一次提交＝一次呼叫）、六列進度、Report/Evidence/Log 三分頁、四項下載鈕。**只 import `ApplicationService` 與 `ui/presenter`**，🚫 不 import 具體 adapter 或 pipeline 內部 | `application.ApplicationService`、`ui/presenter.py` |
+| `ui/__init__.py` | ✅ | package marker | — |
+| `ui/presenter.py` | ✅ | domain → view model：stage 進度列、成功/失敗來源、degradation notes、terminal state、run-mode 標籤、**H3-未實作**狀態、recorded-fallback 警示、**trust funnel（G3）**（`trust_funnel()` 把 `evidence.json` 蒸餾成 source_type／independence_group 漏斗與 reliability mix，純函數、framework-free）。**只造 display model，🚫 無商業邏輯、🚫 不 import Streamlit** | `models.RunSummary`、`orchestration/run_state.py` 的 progress event、`reasoning/conflict_extension.UNIMPLEMENTED_LABEL` |
+| `streamlit_app.py`（位於 `ui/streamlit_app.py`） | ✅ | 唯一 UI 入口：題目輸入、一至二幣選擇、run mode 選擇、run 中停用按鈕（確保一次提交＝一次呼叫）、`st.status` 串流真實 `ExecutionEvent` 進度、trust funnel、Report/Evidence/Log 三分頁、四項下載鈕、編輯主題。**self-bootstrap**：`sys.path.insert(0, src)` 讓 judge 無 editable install／PYTHONPATH 也能 `streamlit run`。只 import `ApplicationService`、`presenter` 與 `live_sources`/`OrganizerCsvPipeline`（組裝 offline pipeline），🚫 不 import 具體 LLM/Bedrock adapter 或 pipeline 內部 | `application.ApplicationService`、`ui/presenter.py`、`adapters/live_sources.py`、`orchestration/pipeline.OrganizerCsvPipeline` |
 
 
 ### 4.9 資料、prompt 與建置檔（**資料，不是程式碼**）
@@ -194,7 +199,7 @@
 | `prompts/arbiter-v1.md` | ✅（S9 待改） | Arbiter prompt 本體；S9 要加「invalidation 門檻只能引用 deterministic Evidence」 |
 | `HOYA_BIT_crypto_market_dataset/data/*.csv` | ✅ | 主辦方五幣 Daily OHLCV 基準（0 缺漏日、0 NaN、0 筆 OHLC 違反） |
 | `tests/fixtures/` | ✅ | 不可變的 CSV/API/LLM 輸入與 vertical-slice pair。**production code 🚫 不得 import** |
-| `Dockerfile`、`.dockerignore`、`compose.yaml` | ○ (S3 後半) | 單一 non-root image；只開 Streamlit port；掛持久化 artifact volume |
+| `Dockerfile`、`.dockerignore`、`compose.yaml` | ✅ | 單一 non-root image（`python:3.12-slim`，打包官方資料集、Streamlit healthcheck）；只開 Streamlit port；掛持久化 artifact volume。EC2 部署見 `docs/deploy-ec2.md` |
 | `.env.example` | ✅ | 只有名稱佔位，🚫 無值 |
 | `artifacts/{run_id}/` | ○（執行期產生） | 每 run 的四個檔；**已 gitignore** |
 
@@ -222,12 +227,13 @@
 | `tests/acceptance/` | ○ | Gold 雙資產、deadline 預算、artifact 契約 |
 | `tests/live/` | ○ | 真實 provider 與 Bedrock；需 `@pytest.mark.live` **且** `RUN_LIVE_TESTS=1` |
 
-### 4.11 不在 canonical tree、目前是雜訊的路徑
+### 4.11 不在 canonical agent tree、目前是平行工具/歷史路徑
 
 | 路徑 | 狀態 | 說明 |
 |---|---|---|
-| `src/calc/`、`src/skills/`、`scripts/analyze.py` | ⛔ | 工作目錄下**只剩 `__pycache__`**，`.py` 未被 `main` 追蹤——來自 `feature/crypto-data-html` 等分支的殘留。🚫 不屬 agent 樹，不要照它們寫 import |
-| `p2-etl-mvp/` | ⛔ | P2 分支的平行目錄。**永遠不進 `main`**——B/C 各自 `git checkout origin/feat/p2-report-integration -- <自己那半>` 再 `git mv` 進 `src/hoya_agent/` |
+| `src/calc/` | ✅（平行工具） | **2026-08-02 起已納入 `main` 追蹤**：`indicators`、`percentile`、`cross_asset`、`analogs`、`data_quality`。是獨立的價格分析腳本工具集（對應 `src/PRICE-IMPLEMENTATION-NOTES.md` 的 A1–A10 分析產出），**非 agent pipeline 的一部分**——`hoya_agent/` 不 import 它。🚫 不要照它們寫進 agent 的 import |
+| `src/skills/` | ✅（平行工具） | **2026-08-02 起已納入 `main` 追蹤**：`base`、`dataset`、`a1_regime`…`a9_verification`、`report`、`lint`、`html_report`。獨立的分析技能模組（CLI／報告產生器），**非 agent pipeline 的一部分**——`hoya_agent/` 不 import 它。有自己的 `tests/unit/skills/` |
+| `p2-etl-mvp/` | ⛔ | P2 分支的平行目錄。**永遠不進 `main` 的 agent 樹**——B/C 各自 `git checkout origin/feat/p2-report-integration -- <自己那半>` 再 `git mv` 進 `src/hoya_agent/` |
 | `docs/superpowers/*` | — | 設計已註明的**歷史紀錄**（已被 `.kiro/specs` 取代）。保留原文，🚫 不視為現行契約 |
 | `docs/ai/SPEC_DIFF_PLAN.md`、`STAGED_DELIVERY_PROPOSAL.md` | — | `design.md` 曾誤引為不存在的檔（已修正指向 `tasks.md`）。檔案實際存在，但**不是現行契約** |
 
@@ -429,6 +435,20 @@ renderer ─▶ ① regime headline ② per-conclusion scorecard ③ 量化 inva
 **下一步 →** [Implementation-Plan.md](Implementation-Plan.md)：把這些檔案排進**可獨立驗證的建置階段**，
 每個 stage 的「元件」欄位都會指回上面的 row。
 
-## 2026-08-01 S8/S9/S9B status addendum
+## 2026-08-02 S8/S9/S9B + live/UI/calc-skills status addendum
 
-`orchestration/{pipeline,deadline,run_state}.py` now owns deadline-aware H2-Lite sequencing; `evidence/trust.py` owns deterministic scorecards; `reporting/renderer.py` owns Trust/Regime and the dual-only comparison section. `_provisional_seams.py` is retired. Details: [S8-S9-S9B implementation](S8-S9-S9B-implementation.md).
+`orchestration/{pipeline,deadline,run_state}.py` owns deadline-aware H2-Lite sequencing;
+`evidence/trust.py` owns deterministic scorecards; `reporting/renderer.py` owns Trust/Regime
+and the dual-only comparison section. `_provisional_seams.py` is **retired** — runtime imports
+point at canonical `models.py`/`ports.py`. The **live composition root** is now
+`src/hoya_agent/composition.py` (`build_live_pipeline`：Binance ＋ Fear & Greed → `MappingArbiter`
+over凍結 Arbiter via `reasoning/mapping.py` + `reasoning/schemas.py`); `adapters/live_sources.py`
+bridges async fetchers into the deterministic pipeline's sync hooks. **Streamlit Bronze UI** landed
+in `src/hoya_agent/ui/{presenter,streamlit_app}.py` with live progress, trust funnel (G3), enforced
+`reporting/advice_lint.py`, and self-bootstrap onto `sys.path`. Deterministic fact-grounding (G1,
+`evidence/grounding.py`) is wired into the pipeline/confidence path; cross-source triangulation
+helpers (G2, `evidence/triangulation.py`) exist but are **not wired into the run**. `src/calc/` and
+`src/skills/` are tracked parallel tool packages (price-analysis scripts), not part of the agent
+pipeline. Silver live Exit passed 2026-08-02 (`tests/live/test_live_silver_pipeline.py` 1 passed in
+50.15s). Details: [S8-S9-S9B implementation](S8-S9-S9B-implementation.md) and
+[EC2 deployment guide](deploy-ec2.md).

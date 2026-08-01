@@ -6,13 +6,14 @@
 sequenceDiagram
     participant User as User/UI
     participant App as ApplicationService
+    participant Pipe as DeadlineAwarePipeline
     participant Store as ArtifactStore
     participant Plan as Planner
     participant MW as Market Worker
     participant RA as Research Agent
     participant EP as Evidence Processor
-    participant H3 as Conflict Extension
     participant Arb as Arbiter
+    participant Fin as finalize_analysis
     participant Ren as Renderer
 
     User->>App: run(request, progress)
@@ -24,44 +25,49 @@ sequenceDiagram
     App->>Store: write_json("run_config.json", initial_snapshot)
     App->>Store: append_event(run_start)
 
-    Note over App: Phase 2: Plan
-    App->>Plan: run(request, tool_registry, deadline)
-    Plan->>Plan: Single LLM call → execution plan
-    Plan-->>App: (plan, notes) or default plan on failure
+    Note over App,Pipe: Phase 2-5 delegated to DeadlineAwarePipeline
+    App->>Pipe: execute(context, emit)
 
-    Note over App: Phase 3: Parallel Evidence Gathering
+    Note over Pipe: Phase 2: Plan
+    Pipe->>Plan: run(request, tool_registry, deadline)
+    Plan->>Plan: Single LLM call → execution plan
+    Plan-->>Pipe: (plan, notes) or default plan on failure
+    Pipe->>Pipe: _apply_skip_order(plan) — trim optional work in SKIP_ORDER
+
+    Note over Pipe: Phase 3: Parallel Evidence Gathering (fork-join)
     par Market Worker (deterministic)
-        App->>MW: build_market_evidence(asset, bars, as_of)
+        Pipe->>MW: build_market_evidence(asset, bars, as_of)
         MW->>MW: Compute indicators (return, vol, drawdown, z-score)
-        MW-->>App: WorkerResult with EvidenceDrafts
+        MW-->>Pipe: WorkerResult with EvidenceDrafts
     and Research Agent (LLM-bounded)
-        App->>RA: run(plan, request, deadline)
+        Pipe->>RA: run(plan, request, deadline)
         RA->>RA: Execute adapter calls per plan steps
         RA->>RA: Single LLM extraction call
-        RA-->>App: ResearchOutcome with EvidenceDrafts
+        RA-->>Pipe: ResearchOutcome with drafts + records
     end
+    Note over Pipe: On timeout: cancel unfinished branch, then await it
 
-    Note over App: Phase 4: Evidence Processing
-    App->>EP: build_ledger(all_drafts)
+    Note over Pipe: Phase 4: Evidence Processing
+    Pipe->>EP: complete_extracted_drafts → build_ledger(all_drafts)
     EP->>EP: Rank, dedup (SHA-256), assign IDs (ev_001, ev_002...)
-    EP-->>App: EvidenceLedger
+    EP-->>Pipe: EvidenceLedger
+    Pipe-->>App: (outcome carries ledger)
     App->>Store: write_json("evidence.json", ledger)
     App->>Store: append_event(evidence_persisted)
 
-    Note over App: Phase 5: Reasoning
-    App->>H3: evaluate(ledger, conflict_indicators, context)
-    H3-->>App: route="arbiter" (always, H3 disabled)
-    App->>Arb: run(ledger, request, conflicts, deadline)
-    Arb->>Arb: Select ≤30 evidence items
-    Arb->>Arb: Single LLM call → AnalysisResult
-    Arb->>Arb: Structural validation (DAG, links, coverage)
-    Arb->>Arb: Apply deterministic confidence caps
-    Arb-->>App: (result, notes) or fallback
+    Note over Pipe: Phase 5: Reasoning
+    Pipe->>Arb: select_balanced_evidence ≤30 + ledger_view
+    Arb->>Arb: Single LLM call → ArbiterOutput
+    Arb->>Arb: project_to_analysis_result (stamp frozen context, clamp time ranges)
+    Arb-->>Pipe: (result, notes) or deterministic fallback
+    Pipe->>Fin: build_conflict_indicators → apply_confidence_caps → build_trust_scorecards
+    Fin-->>Pipe: AnalysisResult (+ conflict_indicators on ledger)
+    Pipe-->>App: PipelineOutcome
 
     Note over App: Phase 6: Render & Finalize
-    App->>Ren: render(result, ledger, lint=hook)
-    Ren->>Ren: Build 11 sections (Traditional Chinese)
-    Ren->>Ren: Run prohibited-language lint
+    App->>Ren: render(result, ledger, lint=advice_violations)
+    Ren->>Ren: Build 11 sections (+ dual section 12) (Traditional Chinese)
+    Ren->>Ren: Run prohibited-language lint (runs last)
     Ren-->>App: report_markdown
     App->>Store: write_text("final_report.md", report)
     App->>Store: write_json("run_config.json", final_snapshot + checksums)
@@ -93,9 +99,9 @@ flowchart TD
     Validate2 -->|Yes| Accept
     Validate2 -->|No| DeterministicFallback
     
-    DeterministicFallback --> PlanFB["Planner: default plan (all ops)"]
+    DeterministicFallback --> PlanFB["Planner: default allowlisted plan"]
     DeterministicFallback --> ResFB["Research: preserve records, no drafts"]
-    DeterministicFallback --> ArbFB["Arbiter: insufficient-data result from top-5 facts"]
+    DeterministicFallback --> ArbFB["Arbiter: _fallback() → ArbiterOutput(insufficient_data);<br/>live cut: MappingArbiter returns None → deterministic report"]
 ```
 
 ---
@@ -179,10 +185,13 @@ Finalizing is not suppressing — the error is always re-raised.
 - Below `MIN_ARBITER_SECONDS` (5 s) the Arbiter is skipped so the deterministic
   finalize keeps its reserve; the run falls back deterministically and discloses it
 
-**Not yet triggered in a live run:** the *policy* and its enforcement point are complete
-and tested, but which operations count as optional is declared by the composition root
-(`optional_operations` / `counter_signal_operations`, empty by default). No production
-composition root builds `DeadlineAwarePipeline` yet, so S6 must supply that source list.
+**Now triggered in a real run:** `application.build_research_pipeline()` declares the
+source lists — baseline (`fetch_rss_news`), optional context (`fetch_fear_greed`,
+`fetch_official_announcements`) and counter-signal (`fetch_cryptopanic_news`) — which
+is what makes the fixed skip order fire in a real run instead of only in its unit
+tests. A non-allowlisted research host is rejected at registry construction, before
+any request. The live cut (`composition.build_live_pipeline`) runs without a
+Planner/Research branch, so the skip order does not apply there.
 
 ---
 
@@ -414,7 +423,14 @@ flowchart TD
 
 ## 2026-08-01 workflow update
 
-Analysis calls stop at 720 seconds, leaving artifact finalization budget. Market and Research execute as an independent fork-join; failures degrade honestly. Dual assets share one run/cutoff/ledger, aligned UTC bars, and a balanced Arbiter projection. See `s8-s9-s9b.md`.
+`_provisional_seams.py` is retired; `application.py`, `reporting/artifacts.py`, and
+orchestration consume the canonical seams in `models.py` / `ports.py` / `clock.py`.
+Analysis calls stop at 720 seconds, leaving artifact finalization budget. Market and
+Research execute as an independent fork-join (cancel-then-await); failures degrade
+honestly. Dual assets share one run/cutoff/ledger, aligned UTC bars, and a balanced
+Arbiter projection. The Reason stage crosses an explicit `ArbiterOutput` boundary
+(`project_to_analysis_result` stamps frozen context; `mapping.py` does the same for
+the live `ArbiterGeneration` cut). See `s8-s9-s9b.md`.
 
 ## 2026-08-01 workflow update (S6 second pass)
 
@@ -501,3 +517,58 @@ by `record_id`, derives the source class (and therefore reliability) and the
 independence group deterministically, and drops — with a disclosure — any fact that
 cannot be joined or validated. This keeps source policy deterministic while allowing
 the canonical extraction schema to enter the ledger.
+
+## Bronze UI Workflow (Streamlit)
+
+```mermaid
+flowchart TD
+    Start["Judge opens streamlit_app.py"]
+    Start --> Form["Form: pick 1-2 assets, question, mode"]
+    Form --> Mode{"Mode?"}
+    Mode -->|即時 official| Live["_run_live: build_request(official)<br/>_live_pipeline(now)"]
+    Mode -->|離線 rehearsal/demo| Off["_run_offline: build_request +<br/>OrganizerCsvPipeline(BRONZE_CUTOFF)"]
+
+    Live --> Bedrock{"AWS_REGION +<br/>BEDROCK_PRIMARY_MODEL_ID set?"}
+    Bedrock -->|Yes| BL["build_bedrock_llm + build_live_pipeline<br/>(MappingArbiter, live Binance + F&G)"]
+    Bedrock -->|No / build fails| Det["Deterministic live data:<br/>Binance bars + F&G, no Arbiter"]
+    BL --> Run
+    Det --> Run
+    Off --> Run["ApplicationService.run(progress=_StreamlitProgress)"]
+
+    Run --> Stream["ExecutionEvents stream into st.status panel<br/>(Planner → Market → Evidence → Renderer)"]
+    Stream --> Summary["RunSummary"]
+    Summary --> View["presenter.summary_view() + trust_funnel(evidence.json)"]
+    View --> Render["Metrics: run mode / terminal / evidence / confidence<br/>Trust funnel (G3): evidence → source types → independence groups → conflicts<br/>Tabs: Report / Evidence Ledger / Execution Log<br/>4 downloadable artifacts + degradation expander"]
+```
+
+**Invariants:**
+- Business logic lives in `application.py` / `presenter.py`; `streamlit_app.py` is glue only
+- `presenter.py` is framework-free (no Streamlit import) so it is unit-testable
+- One submit == one `ApplicationService` call (form disabled while a run is in flight)
+- H3 multi-agent debate is explicitly out of Bronze scope (caption in the UI)
+- The renderer runs `advice_lint`, so rendered text is safe by construction
+
+## Skills / CLI Analysis Workflow (src/skills + scripts/analyze.py)
+
+A deterministic, parallel analysis surface that does NOT participate in the
+`DeadlineAwarePipeline`. It is a dev/inspection entry point over the organizer
+dataset and deliberately does **not** implement the run-artifact contract.
+
+```mermaid
+flowchart TD
+    CLI["scripts/analyze.py BTC [--as-of ...] [--skills A1,A3] [--format md,html]"]
+    CLI --> Load["skills.dataset.load_bundle(data_dir, asset, as_of, benchmark)<br/>→ MarketBundle + LoadReport"]
+    Load --> Run["skills.report.run_skills(bundle, skill_ids)<br/>A1 regime · A2 position · A3 risk ·<br/>A4 participation · A5 attribution ·<br/>A7 analogs · A9 verification"]
+    Run --> Assemble["build_report → AnalysisReport<br/>(each SkillResult carries findings + EvidenceRef + limitations + section_markdown)"]
+    Assemble --> Lint["skills.lint.assert_no_advice<br/>(prohibited prescriptive language)"]
+    Lint --> Out{"--stdout?"}
+    Out -->|Yes| Print["print markdown / html"]
+    Out -->|No| Write["write <stem>.md / <stem>.html<br/>(refuse overwrite unless --force)"]
+```
+
+**Invariants:**
+- A skill never raises — missing data is an outcome (`UNAVAILABLE`), not an exception
+- A skill never invents a number — absent fields + a limitation say so
+- No skill calls a model; every number originates in `src/calc/`
+- `src/skills/` and `src/calc/` do not import `hoya_agent`; the two analysis surfaces are independent
+- This flow produces plain named files, not the 4 fixed run artifacts
