@@ -38,13 +38,13 @@ from hoya_agent.models import (
 )
 from hoya_agent.orchestration.pipeline import AnalysisPipeline
 from hoya_agent.ports import Clock, ProgressSink
+from hoya_agent.reporting.advice_lint import advice_violations
 from hoya_agent.reporting.artifacts import (
     EVIDENCE_LEDGER,
     FINAL_REPORT,
     RUN_CONFIG,
     LocalArtifactStore,
 )
-from hoya_agent.reporting.advice_lint import advice_violations
 from hoya_agent.reporting.renderer import build_insufficient_data_result, render
 
 SCHEMA_VERSION = "1.0"

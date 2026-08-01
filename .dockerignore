@@ -1,0 +1,29 @@
+# Keep the build context lean and secret-free.
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+htmlcov
+.coverage
+*.egg-info
+build
+dist
+
+# Never ship secrets or local env into the image.
+.env
+.env.*
+*.pem
+*.key
+
+# Docs / scratch not needed at runtime.
+.agents
+.kiro
+docs
+tests
+scripts
+p2-etl-mvp

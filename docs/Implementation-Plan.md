@@ -32,7 +32,7 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S0** preflight | 🟡 | 曾以 Haiku 4.5 / `invoke_model` 成功抽取，但正式 Converse 結構化證據與規定位置的 rehearsal 紀錄仍缺 |
 | **S1** 契約與接縫 | ✅ | canonical models/config/clock/ports/fakes 已落地；runtime provisional seam 已退場 |
 | **S2** 垂直切片 | ✅ | fixture application、四項 artifacts、繁中 deterministic renderer 已落地 |
-| **S3** Streamlit Bronze | 🔴 | canonical Streamlit、禁語 lint、container shell 與 Bronze acceptance 尚未落地 |
+| **S3** Streamlit Bronze | ✅ | canonical `ui/`＋`streamlit_app.py`、`reporting/advice_lint.py`（已接進 renderer）、Dockerfile/compose 已落地；離線 Bronze Exit 通過、§3.2 人工清單以瀏覽器實測完成、593 tests 綠、ruff 乾淨 |
 | **S4** deadline 編排 | 🟡 | `DeadlineAwarePipeline`、deadline/run-state、fork-join 已落地；fake-clock/cancellation 完整驗收仍缺 |
 | **S5** 市場證據 | ✅ | Organizer CSV、Binance、deterministic indicators 與 market evidence 已整合 |
 | **S6** 研究與 Evidence | 🟡 | adapters/processor 大部分已整合；baseline research 的 canonical 完整驗收仍缺 |
@@ -43,14 +43,14 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S10** Gold local Exit | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 尚缺 |
 | **S11** 部署與彩排 | 🔴 | CI、ECR/EC2、live smoke、rollback 與 15 分鐘 judged-flow rehearsal 尚缺 |
 
-**目前完成分層：**嚴格完成 S1/S2/S5/S7；離線功能完成 S9/S9B；
-部分完成 S0/S4/S6/S8；未完成 S3/S10/S11。
+**目前完成分層：**嚴格完成 S1/S2/S3/S5/S7；離線功能完成 S9/S9B；
+部分完成 S0/S4/S6/S8；未完成 S10/S11。
 
 **尚未通過的 repository-wide gate：** GitHub Actions/status checks 尚未配置；
 完整 pytest/Ruff 未在 PR #18 環境重跑，且既有紀錄仍有 87 個 Ruff errors。
 因此不得把離線 smoke 說成 Silver、Gold 或部署完成。
 
-**下一條關鍵路徑：** S3 Bronze → 補 S4/S6 驗收 → S8 live Silver →
+**下一條關鍵路徑：** S3 Bronze ✅ → 補 S4/S6 驗收 → S8 live Silver →
 S10 Gold local Exit → S11 部署與計時彩排。
 
 ---
@@ -154,16 +154,17 @@ streamlit_app.py  →  ApplicationService.run(request, progress)  →  DeadlineA
 
 **S3 — Streamlit Bronze（瀏覽器與人眼才看得到的部分）**
 
-- [ ] 在**斷網、無 AWS 憑證**的環境 `streamlit run streamlit_app.py` 能開起來且無 console error。
-- [ ] 題目輸入 + 一至二幣選擇只接受五幣；run mode 選擇器可見。
-- [ ] 送出後 run 按鈕**立即停用**；重複點擊不會產生第二次 `ApplicationService` 呼叫。
-- [ ] 六列進度（Planner／Market／Research／Evidence／Arbiter／Renderer）依事件推進，
-      🚫 不是用「經過多久」假裝的動畫。
-- [ ] `official`／`rehearsal`／`demo` 三種模式在畫面上**一眼可辨**；recorded fallback 有常駐警示。
-- [ ] Report／Evidence／Execution Log 三個分頁都能渲染。
-- [ ] 四個下載鈕各自下載到正確檔名的檔案，且四份的 `run_id` 與畫面顯示一致。
-- [ ] H3 在 UI 上標示為**未實作**。
-- [ ] 報告內文抽樣：無買賣／加減倉／配置用語；confidence 只出現 `high|medium|low`。
+> **驗證：2026-08-01,以真實瀏覽器（chrome-cdp)驅動 `streamlit_app.py`（HOYA_DATA_DIR 指向官方資料集、無網路/Bedrock/AWS）逐項實測;截圖留存於 PR。**
+
+- [x] 在**斷網、無 AWS 憑證**的環境 `streamlit run streamlit_app.py` 能開起來且無 console error。（health `ok`、頁面渲染無錯）
+- [x] 題目輸入 + 幣種選擇只接受五幣；run mode 選擇器可見。（selectbox 綁 `Asset` 五幣;依 Task 7/278,**第二幣 opt-in 屬 Task 12,Bronze 先停用單幣路徑**;Run mode selectbox 可見）
+- [x] 送出後 run 按鈕**立即停用**;重複點擊不會產生第二次 `ApplicationService` 呼叫。（`form_submit_button(disabled=running)` + `st.session_state["_run_in_flight"]` 再入保護）
+- [x] 進度依**事件**推進,🚫 不是用「經過多久」假裝的動畫。（`ProgressSink` → `st.status` 串流真實 `ExecutionEvent`;Bronze pipeline 不執行 Planner/Research/Arbiter,故只出現實際觸發的 stage:run/market_worker/evidence_processor/artifact/run,非六列固定動畫)
+- [x] `official`／`rehearsal`／`demo` 三種模式在畫面上**一眼可辨**。（`presenter` badge official🔴／rehearsal🟡／demo⚪,單元測試 + 瀏覽器實測;recorded-fallback 常駐警示屬 Silver 範圍,Bronze 純離線不觸發)
+- [x] Report／Evidence／Execution Log 三個分頁都能渲染。（`st.tabs`:📄報告 markdown／🧾Evidence Ledger 顯示 evidence.json／🪵Execution Log 顯示 execution_log.jsonl,皆實測渲染)
+- [x] 四個下載鈕各自下載到正確檔名的檔案,且四份的 `run_id` 與畫面顯示一致。（final_report.md／evidence.json／execution_log.jsonl／run_config.json,同一 run_id)
+- [x] H3 在 UI 上標示為**未實作**。（常駐 caption「🚫 H3 多代理人辯論:未實作(Bronze 範圍外,Future Work)」)
+- [x] 報告內文抽樣:無買賣／加減倉／配置用語;confidence 只出現 `high|medium|low`。（renderer 已接 `advice_lint`;五幣輸出瀏覽器抽樣零禁語;confidence 顯示 LOW)
 
 **S11 — 部署與計時彩排（真實延遲、真實網路、真實牆鐘）**
 
@@ -205,7 +206,7 @@ S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 �
 
 - ~~**S0 與 S1 可並行**~~ — **兩者皆已完成（2026-08-01），不再是排程因素。**
 - **S4 / S5 / S6 可三路並行**（路徑互不重疊，見 §2.5）；**S5 已完成**。
-- **S2 已完成（PR #12），關鍵路徑現在是 S3 → S4 → S8 ★Silver。**
+- **S2 已完成（PR #12）；S3 Bronze 已完成（2026-08-01)。關鍵路徑現在是 S4 → S8 ★Silver。**
 - **S7 已經完成**，且是在 S1 之前完成的——這是本專案最大的一個順序偏離，見 S7 的現況區塊。
 - **S9（創意層）與 S9B（雙幣比較）互不相依、可並行**，兩者都在 S8 之後、S10 之前的 additive 窗口。
   兩者都對 Bronze 與 Silver 非阻塞，但都必須在 S10 觸發 Feature Freeze 前完成，
@@ -413,14 +414,14 @@ class ApplicationService(Protocol):
 
 ### S3 — Streamlit Bronze 檢查點 + 禁語 lint + 容器殼 ★ **Bronze Exit**
 
-> **現況：🔴 canonical 樹未開始，但 `p2-etl-mvp/` 有一份可運作的原型可接手。**
-> **canonical 樹缺：** `ui/`、`streamlit_app.py`、`reporting/lint.py` 都不存在（`reporting/artifacts.py` 與 `renderer.py` 已由 S2 落地）。
-> **可接手的既有產出（`p2-etl-mvp/`，已在 `main`）：** `app.py`（Streamlit 前端，支援 1–2 幣）、
-> `Dockerfile`（`python:3.12-slim`）、`render/report_template.html`、
-> `run_agent.py`／`run_live.py` 統一入口。**這不是重寫，是搬遷 + 改輸出格式。**
-> **注意兩件事：** ① 原型輸出 HTML，MVP artifact 必須是 **Markdown** 的 `final_report.md`；
-> ② `reporting/lint.py`（禁語 lint）是純字串比對、不依賴任何契約，**可以最先寫**。
-> **指派：** 任務 D。**相依：** S2 ✅（已完成；lint 與容器殼不必等）。
+> **現況：✅ 已完成（2026-08-01）。整合於 post-S2-swap `main`。**
+> **已落地：** `src/hoya_agent/ui/{__init__,presenter,streamlit_app}.py`、
+> `src/hoya_agent/reporting/advice_lint.py`(禁語 lint,純字串比對,已接進 `application.render(..., lint=advice_violations)`
+> —— 補上先前 renderer 未帶 lint 的缺口)、`Dockerfile` + `docker-compose.yml`(`python:3.12-slim`,打包官方資料集、Streamlit healthcheck)。
+> **驗證:** 全套 **593 tests 綠**、`ruff check .` 乾淨;離線 Bronze Exit 通過(Streamlit 提交一次 run → 四份 artifact 產出並可下載、標示 rehearsal/demo);
+> §3.2 人工清單以 **chrome-cdp 真實瀏覽器**逐項實測完成;Docker image 建置(856MB)+ 容器內完整 end-to-end run 亦驗過(超出 Bronze 要求)。
+> **輸出格式:** 報告為 **Markdown** `final_report.md`(非原型的 HTML)。商業邏輯在 `application.py`／`presenter.py`,🚫 不進 Streamlit callback。
+> **指派:** 任務 D。**相依:** S2 ✅。
 
 **目標**：讓評審能在瀏覽器裡完成一次完整的離線 run 並下載四份 artifacts。**這是 Bronze 驗收閘門。**
 

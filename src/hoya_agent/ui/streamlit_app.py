@@ -15,8 +15,9 @@ Business logic lives in `application.py` / `presenter.py`; this file is only glu
 from __future__ import annotations
 
 import asyncio
+import json
 import tempfile
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import streamlit as st
@@ -74,51 +75,47 @@ def _run_offline(assets: list[Asset], question: str, run_mode: RunMode, progress
     return asyncio.run(service.run(request, progress=progress))
 
 
-def main() -> None:
-    st.set_page_config(page_title="HOYA Market Agent — Bronze", page_icon="🧾", layout="wide")
-    st.title("🧾 加密市場分析 Agent")
-    st.caption("多源資訊的信任提煉 · Bronze(離線、deterministic、無 Bedrock/AWS)· 研究導向,非投資建議")
+def _artifact_text(view: dict, name: str) -> str | None:
+    path = view["artifacts"].get(name)
+    if path and Path(path).exists():
+        return Path(path).read_text(encoding="utf-8")
+    return None
 
-    with st.form("req"):
-        c1, c2, c3, c4 = st.columns([1.8, 4, 1.2, 1.1])
-        assets = c1.multiselect("幣種(1–2)", [a.value for a in Asset], default=["BTC"], max_selections=2)
-        question = c2.text_input("題目 / 問題", placeholder="例:BTC 過去兩週表現?")
-        mode = c3.selectbox("Run mode", ["rehearsal", "demo"], index=0)
-        submitted = c4.form_submit_button("執行分析", use_container_width=True)
 
-    if not submitted:
-        st.info("選 1–2 個幣種、輸入題目,按「執行分析」。Bronze 為離線 rehearsal/demo,產出四個固定 artifact。")
-        return
-    if not assets:
-        st.warning("請至少選一個幣種。")
-        return
-
-    with st.status("離線分析中(官方 CSV → 證據 → 報告 → artifacts)…", expanded=True) as status:
-        summary = _run_offline(
-            [Asset(a) for a in assets], question, RunMode(mode), progress=_StreamlitProgress(status)
-        )
-        status.update(label="分析完成", state="complete", expanded=False)
-    view = summary_view(summary)
-
+def _render_result(view: dict) -> None:
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Run mode", f"{view['run_mode_icon']} {view['run_mode_label']}")
     m2.metric("執行狀態", f"{view['terminal_icon']} {view['terminal_label']}")
     m3.metric("證據筆數", view["evidence_count"])
     m4.metric("信心", view["confidence"].upper())
     st.caption(f"run_id: {view['run_id']}　·　artifact_dir: {view['artifact_dir']}")
+    # H3 multi-agent debate is out of Bronze scope; make that explicit in the UI.
+    st.caption("🚫 H3 多代理人辯論:未實作(Bronze 範圍外,Future Work)")
 
     if view["insufficient"]:
         st.warning("此增量無 Arbiter,依規格輸出 deterministic「資料不足」報告(方向性結論待 P3)。", icon="⚠️")
 
-    st.subheader("報告(deterministic Renderer;已過投資建議 lint)")
-    st.markdown(view["report_markdown"] or "_(無)_")
+    # Report / Evidence / Execution Log as three tabs (spec §3.2 S3).
+    tab_report, tab_evidence, tab_log = st.tabs(["📄 報告", "🧾 Evidence Ledger", "🪵 Execution Log"])
+    with tab_report:
+        st.caption("deterministic Renderer;已過投資建議 lint")
+        st.markdown(view["report_markdown"] or "_(無)_")
+    with tab_evidence:
+        raw = _artifact_text(view, "evidence.json")
+        if raw:
+            st.json(json.loads(raw))
+        else:
+            st.write("_(無 evidence.json)_")
+    with tab_log:
+        raw = _artifact_text(view, "execution_log.jsonl")
+        st.code(raw or "(無 execution_log.jsonl)", language="json")
 
     st.subheader("四個固定 artifact")
     dl = st.columns(len(ARTIFACT_ORDER))
     for col, name in zip(dl, ARTIFACT_ORDER):
-        path = view["artifacts"].get(name)
-        if path and Path(path).exists():
-            col.download_button(f"⬇️ {name}", Path(path).read_text(encoding="utf-8"), file_name=name)
+        raw = _artifact_text(view, name)
+        if raw is not None:
+            col.download_button(f"⬇️ {name}", raw, file_name=name)
         else:
             col.write(f"❌ {name}")
     if view["missing_artifacts"]:
@@ -128,6 +125,46 @@ def main() -> None:
         with st.expander(f"揭露(degradation) · {len(view['degradation_notes'])}"):
             for note in view["degradation_notes"]:
                 st.write("•", note)
+
+
+def main() -> None:
+    st.set_page_config(page_title="HOYA Market Agent — Bronze", page_icon="🧾", layout="wide")
+    st.title("🧾 加密市場分析 Agent")
+    st.caption("多源資訊的信任提煉 · Bronze(離線、deterministic、無 Bedrock/AWS)· 研究導向,非投資建議")
+
+    running = st.session_state.get("_run_in_flight", False)
+    with st.form("req"):
+        c1, c2, c3, c4 = st.columns([1.8, 4, 1.2, 1.1])
+        # Five-asset allowlist, single-asset Bronze path. The second-asset opt-in
+        # (dual comparison) belongs to Task 12 and stays disabled until it lands.
+        asset = c1.selectbox("幣種(單幣;雙幣比較待 Task 12)", [a.value for a in Asset], index=0)
+        assets = [asset]
+        question = c2.text_input("題目 / 問題", placeholder="例:BTC 過去兩週表現?")
+        mode = c3.selectbox("Run mode", ["rehearsal", "demo"], index=0)
+        # Disabled while a run is in flight so one submit == one ApplicationService call.
+        submitted = c4.form_submit_button("執行分析", use_container_width=True, disabled=running)
+
+    if not submitted:
+        st.info("選 1–2 個幣種、輸入題目,按「執行分析」。Bronze 為離線 rehearsal/demo,產出四個固定 artifact。")
+        return
+    if running:  # a submit queued while the previous run was still executing
+        st.warning("上一個分析仍在進行,已忽略重複的執行請求。")
+        return
+    if not assets:
+        st.warning("請至少選一個幣種。")
+        return
+
+    st.session_state["_run_in_flight"] = True
+    try:
+        with st.status("離線分析中(官方 CSV → 證據 → 報告 → artifacts)…", expanded=True) as status:
+            summary = _run_offline(
+                [Asset(a) for a in assets], question, RunMode(mode), progress=_StreamlitProgress(status)
+            )
+            status.update(label="分析完成", state="complete", expanded=False)
+    finally:
+        st.session_state["_run_in_flight"] = False
+
+    _render_result(summary_view(summary))
 
 
 if __name__ == "__main__":
