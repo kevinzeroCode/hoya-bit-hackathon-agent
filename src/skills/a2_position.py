@@ -113,7 +113,7 @@ def run(bundle: MarketBundle) -> SkillResult:
         bullet("收盤價", fmt_num(last_close)),
     ]
     for window in MA_WINDOWS:
-        value = ma_distances[window]
+        value = ma_distances[window]    
         lines.append(bullet(f"距 MA{window}", fmt_pct(value, signed=True) if value is not None else "不可得"))
     lines += [
         bullet("52 週區間位置", fmt_ratio(position), "0 為區間下緣、1 為上緣"),

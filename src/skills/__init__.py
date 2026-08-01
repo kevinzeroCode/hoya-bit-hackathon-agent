@@ -40,6 +40,11 @@ from .base import (
     SkillResult,
 )
 from .dataset import DatasetError, LoadReport, load_bundle
+from .html_report import (
+    markdown_subset_to_html,
+    render_report_html,
+    render_section_html,
+)
 from .lint import ProhibitedAdviceError, assert_no_advice, find_prohibited_terms
 from .report import SKILL_ORDER, AnalysisReport, build_report, render_report, run_skills
 
@@ -66,6 +71,9 @@ __all__ = [
     "build_report",
     "find_prohibited_terms",
     "load_bundle",
+    "markdown_subset_to_html",
     "render_report",
+    "render_report_html",
+    "render_section_html",
     "run_skills",
 ]

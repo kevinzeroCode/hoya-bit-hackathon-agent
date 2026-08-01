@@ -63,6 +63,18 @@ class SkillResult:
     def is_usable(self) -> bool:
         return self.status in (OK, DEGRADED)
 
+    @property
+    def section_html(self) -> str:
+        """The same section as HTML, derived from ``section_markdown``.
+
+        Derived rather than separately templated: a second renderer would let
+        the HTML and Markdown disagree about a number, which is the one thing
+        this package must never do.
+        """
+        from .html_report import render_section_html
+
+        return render_section_html(self)
+
 
 @dataclass(frozen=True)
 class MarketBundle:

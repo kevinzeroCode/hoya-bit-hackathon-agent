@@ -20,6 +20,7 @@ from . import (
     a9_verification,
 )
 from .base import DEGRADED, OK, UNAVAILABLE, MarketBundle, SkillResult, unavailable
+from .html_report import render_report_html
 from .lint import assert_no_advice
 
 SKILL_ORDER = ("A1", "A2", "A3", "A4", "A5", "A7", "A9")
@@ -49,12 +50,17 @@ STATUS_TEXT = {OK: "完成", DEGRADED: "部分降級", UNAVAILABLE: "不可得"}
 
 @dataclass(frozen=True)
 class AnalysisReport:
-    """A rendered report plus the structured results behind it."""
+    """A rendered report plus the structured results behind it.
+
+    Both renderings are produced from one run of the skills, so the Markdown
+    and the HTML always describe the same numbers.
+    """
 
     asset: str
     as_of: date | None
     results: tuple[SkillResult, ...]
     markdown: str
+    html: str
 
     @property
     def statuses(self) -> dict[str, str]:
@@ -136,11 +142,12 @@ def render_report(bundle: MarketBundle, results: tuple[SkillResult, ...]) -> str
 
 
 def build_report(bundle: MarketBundle, skill_ids: tuple[str, ...] = SKILL_ORDER) -> AnalysisReport:
-    """Run the skills and render the document in one call."""
+    """Run the skills once and render both output formats from that one run."""
     results = run_skills(bundle, skill_ids)
     return AnalysisReport(
         asset=bundle.asset,
         as_of=bundle.as_of,
         results=results,
         markdown=render_report(bundle, results),
+        html=render_report_html(bundle, results),
     )
