@@ -50,6 +50,7 @@ import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from enum import Enum
+from typing import Generic, TypeVar
 
 from pydantic import (
     BaseModel,
@@ -60,6 +61,8 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+
+DataT = TypeVar("DataT")
 
 # ---------------------------------------------------------------------------
 # Enums (all str-backed for direct serialization)
@@ -155,6 +158,17 @@ class TerminalState(str, Enum):
     cancelled = "cancelled"
 
 
+class SourceStatus(str, Enum):
+    """Normalized adapter outcome status (design.md §8.7)."""
+
+    ok = "ok"
+    empty = "empty"
+    timeout = "timeout"
+    http_error = "http_error"
+    malformed = "malformed"
+    rejected = "rejected"
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -243,6 +257,36 @@ def _validate_real_date(v: str, field_name: str) -> str:
             f"{field_name} must be a real YYYY-MM-DD calendar date"
         ) from exc
     return stripped
+
+
+# ---------------------------------------------------------------------------
+# SourceResult — adapter result envelope (design.md §8.7)
+# ---------------------------------------------------------------------------
+
+
+class SourceResult(BaseModel, Generic[DataT]):
+    """Typed envelope returned by every adapter (design.md §8.7).
+
+    Carries provider identity, status, data, timing metadata, safe query
+    parameters, and a normalized error category. Secrets and authorization
+    headers must never appear in `query_or_parameters`.
+    """
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+
+    source_name: str
+    source_url: str | None = None
+    status: SourceStatus
+    data: DataT
+    fetched_at: datetime
+    published_at: datetime | None = None
+    query_or_parameters: str | None = None
+    content_reference: str | None = None
+    is_cached: bool = False
+    cache_time: datetime | None = None
+    is_stale: bool = False
+    latency_ms: float | None = None
+    error_category: str | None = None
 
 
 # ---------------------------------------------------------------------------
