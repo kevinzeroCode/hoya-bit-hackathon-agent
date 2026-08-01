@@ -39,6 +39,15 @@
 | 5 | After Feature Freeze | 10 | P1 + P4 lead; all rehearse | Docker/ECR/EC2 delivery, one timed judged-flow rehearsal, rollback and submission verification complete without new features |
 | Future | Post-hackathon only | Future Work references | Explicitly re-approved ownership | Never executes during or blocks Bronze, Silver, Gold, deployment, rehearsal or submission |
 
+## Current checkpoint (2026-08-01, main@d7245e4)
+
+- Complete: Tasks 1, 2, 4 and 6.
+- Core landed but acceptance remains open: Tasks 3 and 8.
+- Mostly landed but canonical baseline acceptance remains open: Task 5.
+- Offline implementation complete, repository-wide gates remain open: Tasks 11 and 12.
+- Not complete: Tasks 0, 7, 9 and 10.
+- Full pytest/Ruff, live Silver, Gold local Exit and deployment/rehearsal must not be claimed.
+
 ## Required Tasks
 
 - [ ] **0. Record external-access preflight without blocking Bronze**
@@ -56,7 +65,7 @@
   - **Acceptance:** Preflight results are redacted and no credential appears in tracked files. Missing live access never blocks Bronze; Silver remains blocked until one designated baseline research source and at least one Bedrock model can complete the required live path.
   - **Commit:** `chore: record service access preflight`
 
-- [ ] **1. Scaffold the package and freeze shared contracts**
+- [x] **1. Scaffold the package and freeze shared contracts**
 
   Executed as two Kiro runs, 1a then 1b. A single run producing ~25 contract
   types plus ports, config and fakes is where field-name drift happens, and
@@ -86,7 +95,7 @@
   - **Acceptance:** Invalid assets, naive datetimes, malformed Evidence, deprecated freshness fields, Evidence-owned stance and unsupported Link stance fail validation. Inconsistent cache metadata and a `fact` with dependencies fail validation. The existing Task 6 suite still passes, proving the new contracts did not break the downstream consumer.
   - **Commit:** `feat: define core evidence and analysis contracts`
 
-- [ ] **1b. Freeze the runtime seams**
+- [x] **1b. Freeze the runtime seams**
   - **Owner:** P1, reviewed by P2/P3/P4
   - **Wave / dependency:** Wave 0 / Task 1a
   - **Spec:** 6, 10.3, 13, 14
@@ -98,18 +107,18 @@
     - Create: `tests/fakes.py`
     - Create: `tests/unit/test_config.py`
     - Modify: `src/hoya_agent/models.py`
-  - [ ] Add the remaining plumbing models to `models.py`: `RunContext`, `RawSourceRecord`, `WorkerResult`, `ExecutionEvent`, `RunConfigSnapshot`, `RunSummary`, `ResearchPlan`.
-  - [ ] First write failing port tests, then define typed same-process boundaries for `Clock`, `LLMClient`, generic `SourceAdapter`, specialized `MarketDataAdapter` and `ResearchSourceAdapter`, `ProgressSink`, local `ArtifactStore` and a future persistence port for run summaries and artifact references.
-  - [ ] Define `ToolRegistry` as a static configuration-backed allowlist with no runtime plugin discovery, remote registry or mutation by retrieved content.
-  - [ ] Implement `config.py` with the locked env names and a sanitized snapshot that records optional-key presence as booleans, never values.
-  - [ ] Add reusable fixed clock, fake LLM, fake adapters, local/in-memory artifact and persistence fakes, static fake tool registry and in-memory progress sink under `tests/fakes.py`; move the temporary path bootstraps from `tests/contract/conftest.py` and `tests/unit/reasoning/conftest.py` into `tests/conftest.py` and delete them.
-  - [ ] Run `python -m pytest tests/unit tests/contract -q` and `ruff check .`.
+  - [x] Add the remaining plumbing models to `models.py`: `RunContext`, `RawSourceRecord`, `WorkerResult`, `ExecutionEvent`, `RunConfigSnapshot`, `RunSummary`, `ResearchPlan`.
+  - [x] First write failing port tests, then define typed same-process boundaries for `Clock`, `LLMClient`, generic `SourceAdapter`, specialized `MarketDataAdapter` and `ResearchSourceAdapter`, `ProgressSink`, local `ArtifactStore` and a future persistence port for run summaries and artifact references.
+  - [x] Define `ToolRegistry` as a static configuration-backed allowlist with no runtime plugin discovery, remote registry or mutation by retrieved content.
+  - [x] Implement `config.py` with the locked env names and a sanitized snapshot that records optional-key presence as booleans, never values.
+  - [x] Add reusable fixed clock, fake LLM, fake adapters, local/in-memory artifact and persistence fakes, static fake tool registry and in-memory progress sink under `tests/fakes.py`; move the temporary path bootstraps from `tests/contract/conftest.py` and `tests/unit/reasoning/conftest.py` into `tests/conftest.py` and delete them.
+  - [x] Run `python -m pytest tests/unit tests/contract -q` and `ruff check .`.
   - **Acceptance:** Official mode uses the injected UTC clock, `analysis_as_of` remains immutable, no secret value reaches a snapshot, and all owners can implement against typed same-process seams without importing Streamlit or concrete providers. No database, queue, broker, remote registry, persistent implementation or independent service is introduced.
   - **Commit:** `feat: define shared runtime seams`
 
-- [x] **2. Deliver the fixture vertical slice and incremental artifact contract** (landed ahead of Task 1b; the S1 runtime seams stand in via `_provisional_seams.py` + a self-activating bridge test)
+- [x] **2. Deliver the fixture vertical slice and incremental artifact contract** (canonical seam swap completed by PR #18)
   - **Owner:** P1 with P3; P2 and P4 review the interface
-  - **Wave / dependency:** Wave 1 / Task 1 (**1a only**; 1b seams are stubbed, see `docs/ai/S2_CONTRACT_EXPECTATIONS.md`)
+  - **Wave / dependency:** Wave 1 / Task 1 (1a and 1b complete; provisional seams retired)
   - **Spec:** 4.3, 6.2, 9.8, 17 Day 1 morning
   - **Files:**
     - Create: `src/hoya_agent/application.py`
@@ -134,7 +143,7 @@
   - **Acceptance:** The network-free application-service fixture path produces four parseable artifacts and honest `rehearsal` metadata without Bedrock or AWS. The report contains no facts absent from fixtures, missing analysis produces the deterministic fallback, and artifact-write failures follow the approved disclosure contract. Bronze is completed only after the Task 7 offline Streamlit checkpoint also passes.
   - **Commit:** `feat: add fixture artifact vertical slice`
 
-- [ ] **3. Implement deadline-aware fork-join orchestration**
+- [ ] **3. Implement deadline-aware fork-join orchestration** — core landed in PR #18; dedicated fake-clock/cancellation acceptance remains
   - **Owner:** P1
   - **Wave / dependency:** Wave 2 / Task 2
   - **Spec:** 8.2, 9.1, 11, 12
@@ -157,7 +166,7 @@
   - **Acceptance:** One branch timeout reaches Renderer with completed sibling Evidence and a degraded state; stage deadlines cancel pending calls; cancellation maps to `cancelled`; terminal state is logged and exported without being inferred by the UI.
   - **Commit:** `feat: add deadline aware orchestration`
 
-- [ ] **4. Implement deterministic OHLCV market evidence**
+- [x] **4. Implement deterministic OHLCV market evidence**
   - **Owner:** P2
   - **Wave / dependency:** Wave 2 / Task 1
   - **Spec:** 7.5, 9.3, 10.1, 18.2
@@ -175,16 +184,16 @@
     - Create: `tests/unit/data/test_indicators.py`
     - Create: `tests/unit/data/test_market_worker.py`
     - Create: `tests/contract/test_market_adapters.py`
-  - [ ] Write golden tests for return, realized volatility, maximum drawdown, volume change, rolling z-score and relative change using hand-computable fixture values.
-  - [ ] Implement UTC parsing and reject incomplete daily candles from historical calculations; represent the current candle separately as an intraday snapshot.
-  - [ ] Implement Binance klines as the designated baseline live market source and retain endpoint, pair, parameters, UTC range and `fetched_at` in source metadata; on baseline failure, emit an honest typed partial/degraded gap without switching to a second live provider.
-  - [ ] Implement Market Worker without any LLM dependency and convert each metric into a high-reliability, reproducible `EvidenceItem`.
-  - [ ] Add a failing cross-asset test that rejects direct base-volume comparison and permits quote volume, return, volatility, relative change or each asset's z-score.
-  - [ ] Run `python -m pytest tests/unit/data tests/contract/test_market_adapters.py -q`.
+  - [x] Write golden tests for return, realized volatility, maximum drawdown, volume change, rolling z-score and relative change using hand-computable fixture values.
+  - [x] Implement UTC parsing and reject incomplete daily candles from historical calculations; represent the current candle separately as an intraday snapshot.
+  - [x] Implement Binance klines as the designated baseline live market source and retain endpoint, pair, parameters, UTC range and `fetched_at` in source metadata; on baseline failure, emit an honest typed partial/degraded gap without switching to a second live provider.
+  - [x] Implement Market Worker without any LLM dependency and convert each metric into a high-reliability, reproducible `EvidenceItem`.
+  - [x] Add a failing cross-asset test that rejects direct base-volume comparison and permits quote volume, return, volatility, relative change or each asset's z-score.
+  - [x] Run `python -m pytest tests/unit/data tests/contract/test_market_adapters.py -q`.
   - **Acceptance:** Golden values and UTC cutoffs pass; baseline market failure returns a typed partial/degraded gap without claiming a second live provider; CSV/live source cutover is explicitly represented with `fetched_at`; Market Worker has no import or call path to `LLMClient`. The generic `SourceAdapter` seam remains available for separately approved post-hackathon providers.
   - **Commit:** `feat: add deterministic market evidence`
 
-- [ ] **5. Implement research adapters and Evidence Processor**
+- [ ] **5. Implement research adapters and Evidence Processor** — majority landed; canonical baseline acceptance remains
   - **Owner:** P2
   - **Wave / dependency:** Wave 3 / Tasks 1 and 4
   - **Spec:** 7.5, 9.4-9.6, 10.1, 10.3
@@ -217,7 +226,7 @@
   - **Acceptance:** The designated baseline research adapter can produce normalized, schema-valid Evidence; optional-source failure is non-blocking; duplicate syndication is not independent; missing or rejected sources produce explicit gaps without inventing facts. The existing multi-source fixture may exercise diversity counting but does not become a Silver Exit Gate.
   - **Commit:** `feat: normalize research evidence ledger`
 
-- [ ] **6. Implement bounded Planner, Research Agent and Arbiter**
+- [x] **6. Implement bounded Planner, Research Agent and Arbiter**
   - **Owner:** P3
   - **Wave / dependency:** Wave 2 / Tasks 1 and 2
   - **Spec:** 7.4-7.5, 9.2, 9.4, 9.7, 13, 14
@@ -238,16 +247,16 @@
     - Create: `tests/unit/reasoning/test_research_agent.py`
     - Create: `tests/unit/reasoning/test_arbiter.py`
     - Create: `tests/unit/reasoning/test_conflict_extension.py`
-  - [ ] Write Planner tests for bounded research steps, time range, Evidence types and asset/question mismatch warning; Planner must not produce a market conclusion or select arbitrary providers, tools, hosts or URLs.
-  - [ ] Implement a thin Bedrock Converse wrapper with the configured model IDs, operation-specific `max_tokens`, the current stage deadline and typed/schema-validated structured output.
-  - [ ] Reject raw unvalidated LLM output before Renderer or artifact admission; allow at most one schema repair attempt within the same deadline, then emit the deterministic fallback signal.
-  - [ ] Implement Research Agent as a bounded executor over the finite operations supplied by the static `ToolRegistry`; prohibit free loops, arbitrary URLs, allowlist mutation and facts without admitted Evidence IDs.
-  - [ ] Preserve prompt-injection-like source text only as quoted Evidence data; it cannot alter policy, deadlines, token bounds, tools, providers or the artifact contract.
-  - [ ] Write Arbiter tests for reliability/freshness ordering, truncation to configurable 20-30 Evidence items, one primary generation, one schema repair attempt and deterministic fallback.
-  - [ ] Validate fact -> inference -> conclusion dependencies, `ClaimEvidenceLink` references and `supports|opposes|neutral` stance, confidence rubric, limitations, invalidation conditions and absence of Ledger-external facts.
-  - [ ] Implement `ConflictExtension` with `DisabledConflictExtension` as the only Bronze, Silver and Gold implementation; it performs no network or LLM call, logs `enable_conditional_debate=true` as disabled/ignored and always routes to Arbiter.
-  - [ ] Test that UI-facing status data labels H3 unimplemented and that no Bull/Bear/Judge prompt, task, test path or Feature Freeze exception exists.
-  - [ ] Run `python -m pytest tests/contract/test_bedrock_client.py tests/unit/reasoning -q`.
+  - [x] Write Planner tests for bounded research steps, time range, Evidence types and asset/question mismatch warning; Planner must not produce a market conclusion or select arbitrary providers, tools, hosts or URLs.
+  - [x] Implement a thin Bedrock Converse wrapper with the configured model IDs, operation-specific `max_tokens`, the current stage deadline and typed/schema-validated structured output.
+  - [x] Reject raw unvalidated LLM output before Renderer or artifact admission; allow at most one schema repair attempt within the same deadline, then emit the deterministic fallback signal.
+  - [x] Implement Research Agent as a bounded executor over the finite operations supplied by the static `ToolRegistry`; prohibit free loops, arbitrary URLs, allowlist mutation and facts without admitted Evidence IDs.
+  - [x] Preserve prompt-injection-like source text only as quoted Evidence data; it cannot alter policy, deadlines, token bounds, tools, providers or the artifact contract.
+  - [x] Write Arbiter tests for reliability/freshness ordering, truncation to configurable 20-30 Evidence items, one primary generation, one schema repair attempt and deterministic fallback.
+  - [x] Validate fact -> inference -> conclusion dependencies, `ClaimEvidenceLink` references and `supports|opposes|neutral` stance, confidence rubric, limitations, invalidation conditions and absence of Ledger-external facts.
+  - [x] Implement `ConflictExtension` with `DisabledConflictExtension` as the only Bronze, Silver and Gold implementation; it performs no network or LLM call, logs `enable_conditional_debate=true` as disabled/ignored and always routes to Arbiter.
+  - [x] Test that UI-facing status data labels H3 unimplemented and that no Bull/Bear/Judge prompt, task, test path or Feature Freeze exception exists.
+  - [x] Run `python -m pytest tests/contract/test_bedrock_client.py tests/unit/reasoning -q`.
   - **Acceptance:** Arbiter emits a schema-valid `AnalysisResult` from a fake LLM; malformed output repairs once then falls back deterministically; prompt/schema versions are exposed for run configuration; Research Agent cannot escape the static tool plan; H3 performs no Bull/Bear/Judge call and remains outside two-day implementation.
   - **Commit:** `feat: add bounded bedrock reasoning`
 
@@ -274,7 +283,7 @@
   - **Acceptance:** Bronze passes when the completely offline Streamlit fixture path produces and downloads all four artifacts without network, Bedrock, AWS credentials or Docker acceptance. Container support starts the same Streamlit application, contains no secrets and does not redefine the Bronze gate.
   - **Commit:** `feat: add streamlit demo shell`
 
-- [ ] **8. Integrate the complete H2-Lite core and degradation paths**
+- [ ] **8. Integrate the complete H2-Lite core and degradation paths** — offline core landed; live Silver remains
   - **Owner:** P1 integrates; P2/P3/P4 repair owned modules
   - **Wave / dependency:** Wave 3 / Tasks 3, 4, 5, 6 and 7
   - **Spec:** 8.2, 11, 12, 18.1-18.4
@@ -344,7 +353,7 @@
   - **Acceptance:** Feature Freeze used the earlier approved trigger; Docker local runtime, ECR and EC2 delivery checks are complete; exactly one complete timed judged-flow rehearsal is required; demo fallback remains honest; rollback and submission evidence are documented; H3 is labelled unimplemented with no optional in-hackathon gate.
   - **Commit:** `docs: finalize deploy and demo runbook`
 
-- [ ] **11. Add the deterministic creativity layer (trust distillation + market insight)** `[CC]`
+- [ ] **11. Add the deterministic creativity layer (trust distillation + market insight)** `[CC]` — offline implementation complete; full repository gate pending
   - **Owner:** CC (Claude Code); reviewed by P1
   - **Wave / dependency:** Wave 4, after Task 8 H2-Lite integration / non-blocking for Bronze and Silver core
   - **Spec:** Requirement 16; design.md §19; evidence-contracts.md §16
@@ -369,7 +378,7 @@
   - **Acceptance:** Scorecard, regime, and quantified invalidation are deterministic, coin-agnostic, consistent with confidence, contain no LLM-minted numbers, carry no investment advice, use no uncalibrated precise probability, and degrade to explicit `unavailable` without blocking core artifacts or gates.
   - **Commit:** `feat: add deterministic trust distillation and market insight`
 
-- [ ] **12. Deliver dual-asset comparison**
+- [ ] **12. Deliver dual-asset comparison** — offline implementation complete; S3 UI opt-in and full repository gate pending
   - **Owner:** data owner for comparison inputs; reasoning owner for the Arbiter quota (frozen path — needs that owner's agreement); reporting/UI owner for the report section and the second-asset opt-in. Reviewed by P1.
   - **Wave / dependency:** Wave 4, after Task 8 H2-Lite integration; same additive window as Task 11. Must land before Feature Freeze and must not delay Gold local Exit, deployment, the timed rehearsal or submission.
   - **Spec:** Requirement 17; Requirement 13 for the permitted scales; design.md §20; §9 for the per-asset Arbiter quota
