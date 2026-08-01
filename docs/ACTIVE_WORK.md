@@ -148,21 +148,39 @@
 > 若模型開通沒過或 model ID 不對，整個 H2-Lite 架構是死的，A／B／C 做得再好都沒用。
 > 所以 **D 的 Bedrock preflight 排在所有事情前面**，而且它剛好不需要等任何人。
 
-### 唯一的 gate（約 30–60 分鐘，做完就解鎖 B 和 C）
+### 唯一的 gate（約 1 小時，做完就解鎖 B 和 C）
 
-**「agent 用 Kiro」的人先把 `task/6-bedrock-reasoning` 合併進 `main`。**
-它已測過（134 passed + 15 subtests）、路徑合乎 `structure.md`、不需修改。
-合併後 `main` 第一次有一棵真的樹，B 和 C 才有目標可搬。
-合併時唯一會撞的是 `src/hoya_agent/__init__.py` 與 `adapters/__init__.py`，兩個都是空殼。
+由「agent 用 Kiro」的人做，兩步：
+
+1. **把 `task/6-bedrock-reasoning` 合併進 `main`。** 它已測過（134 passed + 15 subtests）、
+   路徑合乎 `structure.md`、不需修改。合併後 `main` 第一次有一棵真的樹。
+   唯一會撞的是 `src/hoya_agent/__init__.py` 與 `adapters/__init__.py`，兩個都是空殼。
+2. **順手把三個跨界共用檔搬進去**，B 和 C 才不會為了同一個檔互相等：
+
+   ```bash
+   git checkout origin/feat/p2-report-integration -- \
+     p2-etl-mvp/evidence/types.py p2-etl-mvp/evidence/policies.py p2-etl-mvp/tests/test_policies.py
+   # 移到 src/hoya_agent/evidence/ 與 tests/unit/evidence/，改 import 前綴，跑綠，push
+   ```
+
+   兩個檔都只依賴標準函式庫，搬完即可獨立跑綠，不需要 `models.py`。
 
 **D（UI）不受這個 gate 影響，現在就能開工。**
 
 ### 四份任務與路徑佔用（依四人專長切分，互不重疊，可同時 commit）
 
 分工依據是四個人實際的專長：**UI／資訊整理／agent 用 Kiro／分析指標**。
-P2 現有那 48 個檔照這個切法會自然裂成兩半——`data/` 與行情 adapters 屬分析指標，
-`evidence/` 與新聞社群 adapters 屬資訊整理。已確認**沒有跨界共用檔案**
-（`_assets.py` 只被 reddit／rss 用，`text_clean.py` 只被 research 抽取用）。
+P2 現有那 48 個檔照這個切法會裂成兩半——`data/` 與行情 adapters 屬分析指標，
+`evidence/` 與新聞社群 adapters 屬資訊整理。
+
+**唯一的跨界共用檔案是 `evidence/types.py` 與 `evidence/policies.py`**：B 的
+`market_worker.py`、`price_analysis.py`、`regime.py` 都 import `EvidenceDraft`。
+所以這兩個檔**不歸 B 也不歸 C，而是併進 gate 由 A 一起搬**（見下）——它們本來就是契約性質，
+`types.py` 檔頭明寫是 `models.py` 的暫時替身，`policies.py` 是鐵則 5 的 reliability 靜態表。
+兩個檔都只依賴標準函式庫，可以獨立先落地。
+
+其餘沒有跨界共用：`_assets.py` 只被 reddit／rss 用，`text_clean.py` 只被 research 抽取用，
+`data/types.py` 只被 B 自己的檔案用。
 
 | 專長 | 任務 | 分支 | 獨佔路徑 |
 |---|---|---|---|
@@ -215,11 +233,13 @@ P2 現有那 48 個檔照這個切法會自然裂成兩半——`data/` 與行�
 **驗收**：一次成功的 Bedrock 呼叫證據進 `docs/evidence/`；`streamlit run` 能開起來；
 lint 對「買進／加倉／做多／配置」等詞全部攔下。
 
-### 兩條協調規則（不遵守一定會撞）
+### 三條協調規則（不遵守一定會撞）
 
-1. **`p2-etl-mvp/` 誰都不要刪。** B 和 C 會同時掏空這個目錄（B 拿 `data/` 與行情 adapters，
-   C 拿 `evidence/` 與新聞 adapters）。任何一方順手 `git rm -r p2-etl-mvp/`，另一方 rebase 就會炸開。
-   **兩人都只用 `git mv`，目錄本身留著，最後由 A 在合流時清掉。**
+1. **一律從 `main` 開分支，不要從 `feat/p2-*` 開。** 需要 P2 的檔案時，用
+   `git checkout origin/feat/p2-report-integration -- <只取自己那半的路徑>` 拉進來，
+   再 `git mv` 到 `src/hoya_agent/` 底下。這樣 `p2-etl-mvp/` 這個目錄**從頭到尾不會進 `main`**，
+   也就沒有「誰負責刪它」的問題——B 和 C 各拉各的一半，永遠不會碰到對方的檔案。
+   代價是 per-file git history 會斷，但 P2 的原始 commit 都還留在 `feat/p2-*` 分支上，可回溯。
 2. **A 落地前，B 和 C 不要自己建 `pyproject.toml`。** 那是 A 的獨佔路徑，自己建等於開出第三棵樹。
    要跑測試就用臨時 venv：
 
@@ -228,6 +248,73 @@ lint 對「買進／加倉／做多／配置」等詞全部攔下。
    uv pip install --python .venv/Scripts/python.exe httpx pydantic boto3 pytest
    PYTHONPATH=src .venv/Scripts/python.exe -m pytest tests -q
    ```
+3. **`evidence/types.py`、`evidence/policies.py` 由 gate 負責，B 和 C 都不要碰。**
+   兩邊都會 import 它們；各搬各的就會產生兩份。
+
+### 開工指令（照抄即可）
+
+所有人的分支都**從 `main` 開**，不要從 `feat/p2-*` 開。以下分支目前都還不存在，是你自己建的。
+
+**A — agent 用 Kiro**（先做 gate，做完 push `main`，其他人才動）
+
+```bash
+git checkout main && git pull
+git merge origin/task/6-bedrock-reasoning        # gate 第 1 步
+git checkout origin/feat/p2-report-integration -- \
+  p2-etl-mvp/evidence/types.py p2-etl-mvp/evidence/policies.py p2-etl-mvp/tests/test_policies.py
+# 搬到 src/hoya_agent/evidence/ 與 tests/unit/evidence/，改 import，跑綠
+git push origin main                              # gate 完成，通知 B 和 C
+git checkout -b task/1a-contracts-core            # 接著跑 Kiro Task 1a
+```
+
+**D — UI**（不等 gate，現在就開）
+
+```bash
+git checkout main && git pull
+git checkout -b task/0-preflight-and-ui
+git checkout origin/feat/p2-report-integration -- \
+  p2-etl-mvp/render_report.py p2-etl-mvp/render/     # P2 已寫好的報告產生器與模板
+```
+
+**B — 分析指標**（等 A 說 gate 完成）
+
+```bash
+git checkout main && git pull                     # 要拿到 gate 之後的 main
+git checkout -b task/4-market-data-layer
+git checkout origin/feat/p2-report-integration -- \
+  p2-etl-mvp/data/indicators.py p2-etl-mvp/data/market_series.py \
+  p2-etl-mvp/data/market_worker.py p2-etl-mvp/data/price_analysis.py \
+  p2-etl-mvp/data/regime.py p2-etl-mvp/data/types.py \
+  p2-etl-mvp/adapters/organizer_csv.py p2-etl-mvp/adapters/binance.py p2-etl-mvp/adapters/okx.py \
+  p2-etl-mvp/tests/test_indicators.py p2-etl-mvp/tests/test_market_series.py \
+  p2-etl-mvp/tests/test_market_worker.py p2-etl-mvp/tests/test_price_analysis.py \
+  p2-etl-mvp/tests/test_regime.py p2-etl-mvp/tests/test_organizer_csv.py \
+  p2-etl-mvp/tests/test_binance.py p2-etl-mvp/tests/test_okx.py
+```
+
+**C — 資訊整理**（等 A 說 gate 完成）
+
+```bash
+git checkout main && git pull
+git checkout -b task/5-evidence-layer
+git checkout origin/feat/p2-report-integration -- \
+  p2-etl-mvp/evidence/processor.py p2-etl-mvp/data/text_clean.py \
+  p2-etl-mvp/adapters/_assets.py p2-etl-mvp/adapters/cryptopanic.py \
+  p2-etl-mvp/adapters/reddit.py p2-etl-mvp/adapters/rss.py \
+  p2-etl-mvp/adapters/alternative_me.py p2-etl-mvp/reasoning/research_extractor.py \
+  p2-etl-mvp/tests/test_processor.py p2-etl-mvp/tests/test_text_clean.py \
+  p2-etl-mvp/tests/test_cryptopanic.py p2-etl-mvp/tests/test_reddit.py \
+  p2-etl-mvp/tests/test_rss.py p2-etl-mvp/tests/test_alternative_me.py \
+  p2-etl-mvp/tests/test_research_extractor.py
+```
+
+拉下來之後：`git mv` 到 `src/hoya_agent/` 對應目錄、把 import 從
+`from data.x import` 改成 `from hoya_agent.data.x import`、測試分流進 `tests/unit/`
+與 `tests/contract/`、跑綠、commit。
+
+**沒有人要拉的**：`adapters/coingecko.py`、`tests/test_coingecko.py`（steering 已定 MVP 不實作）、
+`reasoning/gpt_client.py`、`reasoning/llm_client.py`、`run_gpt_extract.py`（LLM 邊界統一用 A 的
+`adapters/bedrock.py`）、`run_full.py`、`run_live.py`、`verify.py`（原型用的執行腳本，由 Task 3 編排取代）。
 
 ### 合流順序（四份做完之後）
 
