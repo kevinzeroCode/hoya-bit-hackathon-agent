@@ -178,7 +178,10 @@ code{font-family:var(--mono); font-size:.875em; background:var(--code); padding:
 .scroll{overflow-x:auto; margin:0 0 16px; border:1px solid var(--line); border-radius:10px; background:var(--card)}
 table{border-collapse:collapse; width:100%; font-size:14px; min-width:420px}
 th,td{text-align:left; padding:9px 14px; border-bottom:1px solid var(--line); vertical-align:top}
-th{font-size:12px; letter-spacing:.03em; color:var(--muted); text-transform:uppercase; white-space:nowrap; background:var(--bg)}
+th{
+  font-size:12px; letter-spacing:.03em; color:var(--muted);
+  text-transform:uppercase; white-space:nowrap; background:var(--bg);
+}
 tbody tr:last-child td{border-bottom:none}
 .section{
   border:1px solid var(--line); border-left:3px solid var(--accent);
@@ -194,7 +197,10 @@ tbody tr:last-child td{border-bottom:none}
 .badge.ok{background:var(--ok-soft); color:var(--ok)}
 .badge.degraded{background:var(--warn-soft); color:var(--warn)}
 .badge.unavailable{background:var(--off-soft); color:var(--off)}
-.limitations{border-left:3px solid var(--warn); background:var(--warn-soft); border-radius:10px; padding:16px 20px; font-size:14.5px}
+.limitations{
+  border-left:3px solid var(--warn); background:var(--warn-soft);
+  border-radius:10px; padding:16px 20px; font-size:14.5px;
+}
 .limitations h2{border:none; margin:0 0 8px; font-size:16px}
 footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--line); font-size:13px; color:var(--muted)}
 """

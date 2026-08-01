@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]  # from tests/unit/skills/
 SCRIPT = REPO_ROOT / "scripts" / "analyze.py"
 
 

@@ -31,9 +31,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from skills import build_report, load_bundle
-from skills.dataset import DEFAULT_ASSETS, DatasetError
-from skills.report import SKILL_ORDER
+# E402 is deliberate: these imports must follow the sys.path insert above so the
+# script also runs from a bare clone, without `pip install -e .`.
+from skills import build_report, load_bundle  # noqa: E402
+from skills.dataset import DEFAULT_ASSETS, DatasetError  # noqa: E402
+from skills.report import SKILL_ORDER  # noqa: E402
 
 DEFAULT_DATA_DIR = REPO_ROOT / "HOYA_BIT_crypto_market_dataset" / "data"
 

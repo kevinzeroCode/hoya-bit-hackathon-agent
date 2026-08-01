@@ -9,7 +9,8 @@ import pytest
 from skills.base import MarketBundle
 from skills.dataset import load_bundle
 
-DATASET_DIR = Path(__file__).resolve().parents[2] / "HOYA_BIT_crypto_market_dataset" / "data"
+# parents[3] == repo root, from tests/unit/skills/
+DATASET_DIR = Path(__file__).resolve().parents[3] / "HOYA_BIT_crypto_market_dataset" / "data"
 
 
 @pytest.fixture(scope="session")
