@@ -14,7 +14,7 @@ HOYA 加密市場分析 AI Agent 的**資料側**原型:把多個來源的原始
 ## 快速開始
 
 ```bash
-python -m pip install -e ".[dev]"      # 或 pip install httpx pytest pandas
+python -m pip install -e ".[dev]"      # 裝 httpx + boto3(Bedrock) + pytest;GPT mock 另加 ".[dev,gpt]"
 python -m pytest -q                     # 104 passed（含真官方資料 golden 測）
 
 python verify.py            # 離線完整流程 + 每張卡「完整欄位」（= 欄位契約，給整合對接）
