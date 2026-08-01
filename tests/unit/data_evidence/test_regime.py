@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from hoya_agent.data.market_worker import WorkerResult
 from hoya_agent.data.regime import MarketRegime, build_regime_evidence, classify_regime
 from hoya_agent.data.types import MarketBar
+from hoya_agent.evidence.policies import reliability_for
 
 
 def bars_from_returns(rets: list[float], start: float = 100.0, start_date: date = date(2026, 1, 1)) -> list[MarketBar]:
@@ -58,7 +59,10 @@ def test_build_regime_evidence_is_high_market_draft():
     assert result.status == "completed"
     d = result.drafts[0]
     assert d.source_type == "market"
-    assert d.reliability == "high"
-    assert d.metric_name == "market_regime"
+    assert reliability_for(d.source_class) == "high"
+    # A regime is a label, not a number, so it carries no numeric metric — the
+    # label itself is traceable through the content reference instead.
+    assert d.metric_value is None
+    assert "market regime" in d.content_reference
     assert d.asset == "BTC"
     assert d.normalized_fact.strip()

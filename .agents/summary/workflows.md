@@ -415,3 +415,66 @@ flowchart TD
 ## 2026-08-01 workflow update
 
 Analysis calls stop at 720 seconds, leaving artifact finalization budget. Market and Research execute as an independent fork-join; failures degrade honestly. Dual assets share one run/cutoff/ledger, aligned UTC bars, and a balanced Arbiter projection. See `s8-s9-s9b.md`.
+
+## 2026-08-01 workflow update (S6 second pass)
+
+Two stages of the primary workflow gained deterministic steps.
+
+**Evidence stage — extraction completion before merge.** Research drafts now pass through
+`research_extractor.complete_extracted_drafts()` first. The bounded LLM call supplies wording
+only; reliability comes from the static table (a feed item whose original page was not fetched
+stays `low`), `independence_group` from `policies.independence_group()`, and every timestamp
+from the fetched record. One record may yield several facts, so one article becomes several
+Evidence items. A fact citing a `record_id` that was never fetched is dropped with a
+disclosure — previously such drafts were rejected wholesale at merge time, which is why
+extracted research never reached the ledger.
+
+**Post-Arbiter — material conflict, then caps, then scorecards.** `finalize_analysis()` runs
+after the Arbiter and before the outcome is returned:
+
+```mermaid
+flowchart TD
+    Result["Arbiter AnalysisResult (claims + stanced links)"]
+    Result --> Detect["build_conflict_indicators(links, ledger)<br/>§9 rule, deterministic"]
+    Detect -->|no conflict| Trust
+    Detect -->|conflict| Attach["Attach indicators to ledger<br/>+ material_conflict_detected event"]
+    Attach --> Caps["apply_confidence_caps(...)<br/>conclusion → low, overall ≠ high"]
+    Caps --> Trust["build_trust_scorecards(...)<br/>consistency reads the indicators"]
+    Trust --> Out["PipelineOutcome (ledger + result + notes)"]
+```
+
+Conflict detection has to run here rather than inside the Evidence Processor because stance
+lives on `ClaimEvidenceLink`, so the rule is undecidable until claims exist. H3 stays disabled
+and is never consulted; the conflict is preserved regardless. Both `DeadlineAwarePipeline` and
+`OrganizerCsvPipeline` apply the pass, so the offline path surfaces conflicts too.
+
+**Composition — the skip order now has its source lists.** `application.build_research_pipeline()`
+declares baseline (`fetch_rss_news`), optional context (`fetch_fear_greed`,
+`fetch_official_announcements`) and counter-signal (`fetch_cryptopanic_news`) operations, which
+is what makes the fixed skip order fire in a real run instead of only in its unit tests.
+A non-allowlisted research host is rejected at registry construction, before any request.
+
+## 2026-08-01 workflow update (S8 third pass — Arbiter boundary)
+
+The Reason stage gained an explicit boundary crossing:
+
+```mermaid
+flowchart TD
+    Ledger["EvidenceLedger (canonical, enum-valued)"]
+    Ledger --> Balanced["select_balanced_evidence(...) ≤30"]
+    Balanced --> View["ledger_view(...) → string-valued EvidenceView[]"]
+    View --> Arb["Arbiter.run(result_schema=ArbiterOutput)<br/>1 call + ≤1 repair"]
+    Arb -->|LLMError / structural violation| FB["_fallback() → ArbiterOutput<br/>insufficient_data=true"]
+    Arb --> Out["ArbiterOutput"]
+    FB --> Out
+    Out --> Proj["project_to_analysis_result(...)<br/>stamp frozen context, map enums,<br/>fill/clamp time ranges"]
+    Proj -->|ValidationError| Degrade["stage degraded → deterministic report"]
+    Proj --> Final["finalize_analysis(...) → conflicts → caps → scorecards"]
+```
+
+Why the view exists: the frozen reasoning layer reads attributes through `str(...)`, so
+enum-valued items make `_reliability_rank()` return unknown. Left unfixed, `select_evidence()`
+loses its high-first priority and the deterministic fallback emits a report with no claims and
+no evidence links — a silent loss of exactly the traceability the fallback exists to provide.
+The same reasoning applies to the output schema's `Literal` strings and
+`apply_confidence_caps()`'s string comparisons.

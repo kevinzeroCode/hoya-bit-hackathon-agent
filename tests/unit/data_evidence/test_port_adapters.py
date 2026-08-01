@@ -41,8 +41,8 @@ def _ctx(as_of: datetime, assets=(Asset.BTC,)):
     return build_run_context(req, FixedClock(as_of))
 
 
-def _mock_client(handler) -> httpx.Client:
-    return httpx.Client(transport=httpx.MockTransport(handler))
+def _mock_client(handler) -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
 # ── CsvMarketAdapter ────────────────────────────────────────────────────────

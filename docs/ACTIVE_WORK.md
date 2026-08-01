@@ -12,11 +12,11 @@
 | S1 | ✅ | canonical contracts/runtime seams 完成 |
 | S2 | ✅ | fixture vertical slice 與四 artifacts 完成；provisional seam 已刪除 |
 | S3 | 🔴 | canonical Streamlit、lint、container 與 Bronze acceptance 未完成 |
-| S4 | ✅ | per-stage 預算、finalize 保留、stage 狀態機、`WorkerStatus` 映射、cancel-then-await fork-join、取消落盤與固定跳過順序（含裁剪 `ResearchPlan` 的執行點）全部完成（2026-08-01 第二輪，75 tests）。⚠️ optional／反方訊號的**來源清單**由組裝端宣告，待 S6 填入才會在真實 run 觸發 |
+| S4 | ✅ | per-stage 預算、finalize 保留、stage 狀態機、`WorkerStatus` 映射、cancel-then-await fork-join、取消落盤與固定跳過順序（含裁剪 `ResearchPlan` 的執行點）全部完成（2026-08-01 第二輪，75 tests）。✅ optional／反方訊號的**來源清單**已由 S6 的組裝端填入（`application.build_research_pipeline()`），真實 run 可觸發 |
 | S5 | ✅ | deterministic market evidence 完成 |
-| S6 | 🟡 | research adapters/processor 大部分完成；canonical baseline acceptance 未完成 |
+| S6 | 🟡 | 四項功能缺口＋型別統一完成（2026-08-01；第二輪四項、第五輪型別）：material conflict 由 `evidence/ledger.build_conflict_indicators` + `pipeline.finalize_analysis` 落盤並降信心；多事實抽取進 `src/`；CryptoPanic／Fear & Greed／official 有 port 包裝；組裝端宣告 baseline／optional／反方訊號清單；**單次 deadline-bound retry**；**單一共用 `httpx.AsyncClient`**；**`evidence/types.py` 已刪除**——`evidence/drafts.py::PendingEvidence` 為唯一 draft 型別，reliability／group／hash／id 全由 processor 指派；非 canonical 的 `evidence/evidence_json.py` 一併刪除。**仍缺**：mock-transport 測試位置（在 `tests/unit/data_evidence/` 而非凍結的 `tests/contract/`）、`p2-etl-mvp/` 退場 |
 | S7 | ✅ | bounded reasoning 完成並凍結 |
-| S8 | 🟡 | 離線 H2-Lite/fallback 完成；live Silver 未通過 |
+| S8 | 🟡 | 離線 H2-Lite/fallback 完成；**推理接線已補完**（2026-08-01 第三輪：`reasoning/arbiter_output.py` 的 `ArbiterOutput` + `project_to_analysis_result()` + `ledger_view()`，未改任何凍結檔，21 新測試）。**Move 2 已補研究來源的單次 retry 與 live 腳手架**（`fetch_with_single_retry`、`tests/live/`、`scripts/live_silver_run.py`；真實 provider 實跑 8 passed／4 skipped、無 schema 漂移）。⛔ 只剩 live Bedrock 呼叫，卡在本機無 AWS 憑證 |
 | S9 | ✅（離線） | Trust/Regime/Invalidation 完成 |
 | S9B | ✅（離線） | one-run dual-asset comparison 完成 |
 | S10 | 🔴 | Gold local Exit 未開始 |

@@ -241,7 +241,6 @@ These paths are completed and covered by tests. Changes require owner agreement:
 
 - `src/hoya_agent/adapters/bedrock.py`
 - `src/hoya_agent/reasoning/` (entire package)
-- `src/hoya_agent/evidence/types.py`
 - `src/hoya_agent/evidence/policies.py`
 - `tests/unit/evidence/test_policies.py`
 - `prompts/`

@@ -29,7 +29,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.evidence.drafts import PendingEvidence
 
 # Only audit facts an LLM extracted from free text. Market/official facts are
 # deterministic tool output (or verified announcements), not LLM paraphrase.
@@ -153,24 +153,25 @@ def ground_fact(normalized_fact: str, content_reference: str) -> GroundingVerdic
 
 
 def ground_drafts(
-    drafts: Iterable[EvidenceDraft],
+    drafts: Iterable[PendingEvidence],
     *,
     verify_source_types: frozenset[str] = LLM_EXTRACTED_SOURCE_TYPES,
-) -> tuple[list[tuple[EvidenceDraft, GroundingVerdict]], list[str]]:
+) -> tuple[list[tuple[PendingEvidence, GroundingVerdict]], list[str]]:
     """Audit every LLM-extracted draft; return (draft, verdict) pairs + notes.
 
     Non-mutating: frozen drafts are returned untouched. Market/official drafts
     are passed through as `verified` (deterministic tool output, not paraphrase).
     Disclosure notes are collected for `degradation_notes` / the execution log.
     """
-    results: list[tuple[EvidenceDraft, GroundingVerdict]] = []
+    results: list[tuple[PendingEvidence, GroundingVerdict]] = []
     notes: list[str] = []
     for draft in drafts:
-        if draft.source_type not in verify_source_types:
+        source_type = str(getattr(draft.source_type, "value", draft.source_type))
+        if source_type not in verify_source_types:
             results.append((draft, GroundingVerdict(GroundingStatus.verified)))
             continue
         verdict = ground_fact(draft.normalized_fact, draft.content_reference)
         results.append((draft, verdict))
         if verdict.status is GroundingStatus.partial:
-            notes.append(f"{draft.source_name}:{verdict.note}")
+            notes.append(f"{draft.draft.source_name}:{verdict.note}")
     return results, notes

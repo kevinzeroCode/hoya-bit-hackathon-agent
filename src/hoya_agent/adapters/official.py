@@ -26,9 +26,10 @@ from typing import Any
 import httpx
 
 from hoya_agent.adapters._assets import mentions
+from hoya_agent.adapters._errors import category_note, classify_error
 from hoya_agent.data.market_worker import WorkerResult
-from hoya_agent.evidence.policies import SourceClass, independence_group, reliability_for
-from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.evidence.drafts import PendingEvidence, pending
+from hoya_agent.evidence.policies import SourceClass
 
 try:
     import xml.etree.ElementTree as ET
@@ -151,11 +152,11 @@ def _extract_entries(root: Any) -> list[dict[str, str | None]]:
     return entries
 
 
-def fetch_official_announcements(
+async def fetch_official_announcements(
     *,
     assets: Sequence[str],
     analysis_as_of: datetime,
-    client: httpx.Client,
+    client: httpx.AsyncClient,
     lookback_days: int = 14,
     timeout: float = 45.0,
     feed_overrides: dict[str, dict[str, str]] | None = None,
@@ -168,7 +169,7 @@ def fetch_official_announcements(
     feeds = feed_overrides if feed_overrides is not None else OFFICIAL_FEEDS
     earliest = analysis_as_of - timedelta(days=lookback_days)
     fetched_at = datetime.now(UTC)
-    drafts: list[EvidenceDraft] = []
+    drafts: list[PendingEvidence] = []
     degradation: list[str] = []
 
     for asset in assets:
@@ -185,12 +186,15 @@ def fetch_official_announcements(
         publisher_domain = feed_config["publisher_domain"]
 
         try:
-            resp = client.get(feed_url, timeout=timeout)
+            resp = await client.get(feed_url, timeout=timeout)
             resp.raise_for_status()
             root = ET.fromstring(resp.text)  # type: ignore[union-attr]
-        except (httpx.HTTPError, ET.ParseError, Exception):  # noqa: BLE001
+        except (httpx.HTTPError, ET.ParseError, Exception) as exc:  # noqa: BLE001
             degradation.append(
-                f"{source_name} 取得失敗（best-effort 來源，非阻塞）"
+                category_note(
+                    f"{source_name} 取得失敗（best-effort 來源，非阻塞）",
+                    classify_error(exc),
+                )
             )
             continue
 
@@ -216,13 +220,11 @@ def fetch_official_announcements(
                 continue
 
             link = entry.get("link") or feed_url
-            group = independence_group(
-                original_publisher=publisher_domain,
-                source_url=link,
-            )
 
             drafts.append(
-                EvidenceDraft(
+                pending(
+                    source_class=SourceClass.OFFICIAL_ANNOUNCEMENT,
+                    original_publisher=publisher_domain,
                     asset=asset_upper,
                     source_type="official",
                     source_name=source_name,
@@ -233,8 +235,6 @@ def fetch_official_announcements(
                     content_reference=f"{source_name} 官方公告"
                     f"（{published.date() if published else '日期未知'}）",
                     normalized_fact=title,
-                    reliability=reliability_for(SourceClass.OFFICIAL_ANNOUNCEMENT),
-                    independence_group=group,
                 )
             )
             asset_drafts += 1

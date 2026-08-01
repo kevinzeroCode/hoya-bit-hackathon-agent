@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 
 from hoya_agent.data.price_analysis import AnomalyDay
 from hoya_agent.evidence.triangulation import triangulate
-from hoya_agent.evidence.types import EvidenceItem
+from hoya_agent.models import EvidenceItem
 
 UTC = timezone.utc
 
@@ -14,7 +14,7 @@ UTC = timezone.utc
 def _item(eid: str, published: date, *, asset: str | None, source_type: str, group: str) -> EvidenceItem:
     return EvidenceItem(
         evidence_id=eid,
-        content_hash=eid,
+        content_hash=eid.encode().hex().ljust(64, "0"),
         asset=asset,
         source_type=source_type,
         source_name=f"src-{eid}",
@@ -62,14 +62,14 @@ def test_unexplained_move_is_strength_one():
 
 def test_window_boundary_excludes_far_news():
     anomalies = [AnomalyDay(date(2026, 5, 20), -0.08, -3.4)]
-    items = [_item("ev_far", date(2026, 5, 23), asset="BTC", source_type="news", group="g")]  # 3 days off
+    items = [_item("ev_901", date(2026, 5, 23), asset="BTC", source_type="news", group="g")]  # 3 days off
     e = triangulate(anomalies, items, asset="BTC", window_days=1)[0]
     assert e.strength == 1  # outside ±1 day
 
 
 def test_other_asset_news_is_not_counted():
     anomalies = [AnomalyDay(date(2026, 5, 20), -0.08, -3.4)]
-    items = [_item("ev_eth", date(2026, 5, 20), asset="ETH", source_type="news", group="g")]
+    items = [_item("ev_902", date(2026, 5, 20), asset="ETH", source_type="news", group="g")]
     e = triangulate(anomalies, items, asset="BTC")[0]
     assert e.strength == 1  # ETH news does not corroborate a BTC move
 

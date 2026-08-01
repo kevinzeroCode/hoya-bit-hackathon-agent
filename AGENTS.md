@@ -27,7 +27,10 @@ src/hoya_agent/
 │   ├── organizer_csv.py   # Competition OHLCV benchmark data
 │   ├── alternative_me.py  # Fear & Greed (low, market-wide, asset=None)
 │   ├── rss.py             # Original publisher feeds (medium reliability)
-│   └── port_adapters.py   # Port-conforming async wrappers (CSV, Binance, RSS)
+│   ├── official.py        # Official project announcement feeds (best-effort, high)
+│   ├── _errors.py         # Normalized timeout/http_error/malformed/rejected categories
+│   └── port_adapters.py   # Port-conforming async wrappers (CSV, Binance, RSS,
+│                          # CryptoPanic, Fear & Greed, official)
 ├── data/                  # Deterministic computation — no LLM, no network
 │   ├── indicators.py      # return, volatility, drawdown, volume z-score
 │   ├── market_worker.py   # OHLCV bars → high-reliability EvidenceDrafts
@@ -35,20 +38,28 @@ src/hoya_agent/
 │   ├── regime.py          # Market state classification (first-match rule)
 │   └── price_analysis.py  # Cross-asset: anomaly, attribution, comparison
 ├── evidence/              # Ledger assembly — no LLM, no network
-│   ├── processor.py       # Rank, SHA-256 dedup, stable ID assignment
-│   ├── policies.py        # Static reliability, independence group, confidence caps
-│   └── types.py           # FROZEN — provisional dataclasses (do not modify)
+│   ├── drafts.py          # PendingEvidence: canonical draft + provenance (source_class, publisher, metric)
+│   ├── processor.py       # Sole assigner: reliability, independence group, SHA-256 hash, ev_NNN ids
+│   ├── ledger.py          # Queries, material-conflict indicators (§9), confidence signals
+│   ├── grounding.py       # Fact grounding: extracted numbers must appear in the source
+│   ├── trust.py           # Deterministic conclusion-only Trust Scorecards
+│   ├── triangulation.py   # Cross-source agreement helpers (not wired into the run)
+│   └── policies.py        # Static reliability, independence group, confidence caps
 ├── reasoning/             # FROZEN — LLM interaction (exactly 1 call per stage)
 │   ├── planner.py         # Bounded plan generation (max 8 steps, allowlist only)
 │   ├── research_agent.py  # Adapter execution + 1 LLM extraction call
+│   ├── research_extractor.py  # Extraction schema + deterministic draft completion (added, not frozen-modified)
 │   ├── arbiter.py         # Claims (fact→inference→conclusion) + structural validation
+│   ├── arbiter_output.py  # ArbiterOutput LLM-boundary schema + projection + string ledger view (added)
 │   ├── prompt_library.py  # Versioned prompt loading (only version IDs reach logs)
 │   └── conflict_extension.py  # H3 stub — always disabled, routes to Arbiter
 ├── reporting/             # Deterministic output — no LLM
 │   ├── renderer.py        # 11-section zh-Hant report (+ dual-only section 12)
+│   ├── advice_lint.py     # Prohibited prescriptive-language lint (runs last)
 │   └── artifacts.py       # Atomic writes (tmp+fsync+replace) for 4 fixed files
 └── orchestration/
-    ├── pipeline.py        # Deadline-aware H2-Lite + cancel-then-await fork-join + dual-asset projection
+    ├── pipeline.py        # Deadline-aware H2-Lite + cancel-then-await fork-join + dual-asset
+    │                      # projection + finalize_analysis (conflicts → caps → scorecards)
     ├── deadline.py        # Stage budget milestones, proportional scaling, finalize reserve
     └── run_state.py       # Stage lifecycle, WorkerStatus mapping, terminal-state derivation
 prompts/                   # planner-v1.md, research-extraction-v1.md, arbiter-v1.md
@@ -72,6 +83,7 @@ Six fixed stages, single pass:
 
 - **`extra="forbid"` on all Pydantic models** — undeclared fields are rejected, not silently accepted
 - **No exceptions from adapters** — all return `WorkerResult(status, drafts, notes)` or `(data, notes)` tuples; failures become degradation disclosures
+- **Producers never state their own reliability** — an `EvidenceDraft` has no `reliability` or `independence_group` field; a producer supplies `source_class` + publisher provenance in `PendingEvidence`, and `evidence/processor.py` is the only place those are assigned
 - **Confidence caps are deterministic and post-LLM** — the model's self-assessed confidence is lowered by policy rules, never loosened
 - **Evidence items have no stance** — stance (`supports`/`opposes`/`neutral`) lives only on `ClaimEvidenceLink`, not on the evidence itself
 - **Atomic artifact writes** — every file write uses tmp → fsync → `os.replace`; no partial content on crash
@@ -84,7 +96,6 @@ Six fixed stages, single pass:
 ```
 src/hoya_agent/adapters/bedrock.py
 src/hoya_agent/reasoning/         (entire package)
-src/hoya_agent/evidence/types.py
 src/hoya_agent/evidence/policies.py
 tests/unit/evidence/test_policies.py
 prompts/

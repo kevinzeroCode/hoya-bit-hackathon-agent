@@ -27,12 +27,12 @@ KLINES = [
 ]
 
 
-def _client(handler) -> httpx.Client:
-    return httpx.Client(transport=httpx.MockTransport(handler))
+def _client(handler) -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
-def test_parses_klines_into_marketbars_up_to_as_of():
-    bars, degradation = fetch_binance_daily(
+async def test_parses_klines_into_marketbars_up_to_as_of():
+    bars, degradation = await fetch_binance_daily(
         "BTC", analysis_as_of=AS_OF, client=_client(lambda r: httpx.Response(200, json=KLINES))
     )
     assert all(isinstance(b, MarketBar) for b in bars)
@@ -40,23 +40,27 @@ def test_parses_klines_into_marketbars_up_to_as_of():
     assert bars[0].close == 105.0
 
 
-def test_symbol_mapping_in_request():
+async def test_symbol_mapping_in_request():
     captured: dict[str, str] = {}
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    async def handler(request: httpx.Request) -> httpx.Response:
         captured["url"] = str(request.url)
         return httpx.Response(200, json=KLINES)
 
-    fetch_binance_daily("ETH", analysis_as_of=AS_OF, client=_client(handler))
+    await fetch_binance_daily("ETH", analysis_as_of=AS_OF, client=_client(handler))
     assert "ETHUSDT" in captured["url"]
 
 
-def test_unsupported_asset_raises():
+async def test_unsupported_asset_raises():
     with pytest.raises(ValueError):
-        fetch_binance_daily("DOGE", analysis_as_of=AS_OF, client=_client(lambda r: httpx.Response(200, json=KLINES)))
+        await fetch_binance_daily(
+            "DOGE", analysis_as_of=AS_OF, client=_client(lambda r: httpx.Response(200, json=KLINES))
+        )
 
 
-def test_http_error_is_degradation_not_crash():
-    bars, degradation = fetch_binance_daily("BTC", analysis_as_of=AS_OF, client=_client(lambda r: httpx.Response(500)))
+async def test_http_error_is_degradation_not_crash():
+    bars, degradation = await fetch_binance_daily(
+        "BTC", analysis_as_of=AS_OF, client=_client(lambda r: httpx.Response(500))
+    )
     assert bars == []
     assert degradation

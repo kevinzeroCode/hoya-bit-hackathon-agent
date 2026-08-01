@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Sequence
+from typing import Any
 
 from hoya_agent.evidence.grounding import (
     LLM_EXTRACTED_SOURCE_TYPES,
@@ -22,7 +23,15 @@ from hoya_agent.evidence.grounding import (
 )
 from hoya_agent.evidence.policies import ConfidenceSignals, Reliability
 from hoya_agent.evidence.processor import build_ledger  # noqa: F401
-from hoya_agent.evidence.types import EvidenceItem, EvidenceLedger
+from hoya_agent.models import ConflictIndicator, EvidenceItem, EvidenceLedger
+
+# Persisted with every indicator so a later rule change stays auditable.
+CONFLICT_RULE_VERSION = "1.0"
+
+
+def _plain(value: Any) -> str:
+    """Enum member or plain string to its wire value."""
+    return str(getattr(value, "value", value))
 
 
 def filter_by_asset(ledger: EvidenceLedger, asset: str) -> list[EvidenceItem]:
@@ -156,6 +165,60 @@ def detect_material_conflict(
         opposing_groups=opposing_groups,
         is_material=has_both_sides and has_independent_pair,
     )
+
+
+def build_conflict_indicators(
+    *,
+    claim_evidence_links: Sequence[Any],
+    ledger: Any,
+    rule_version: str = CONFLICT_RULE_VERSION,
+) -> list[ConflictIndicator]:
+    """Derive every material-conflict indicator for a result's links (§9).
+
+    Deterministic and claim-level: stance lives on the link, so the same evidence
+    can support one claim and oppose another. Only claims carrying both stances
+    are examined, and a claim that fails any of the three §9 conditions produces
+    no indicator rather than a weakened one.
+
+    Ordering is by `claim_id` and every id list is sorted, so two runs over the
+    same ledger emit byte-identical indicators regardless of link order.
+    """
+    supporting: dict[str, list[str]] = defaultdict(list)
+    opposing: dict[str, list[str]] = defaultdict(list)
+    for link in claim_evidence_links:
+        stance = _plain(getattr(link, "stance", None))
+        claim_id = str(getattr(link, "claim_id", ""))
+        evidence_id = str(getattr(link, "evidence_id", ""))
+        if not claim_id or not evidence_id:
+            continue
+        if stance == "supports":
+            supporting[claim_id].append(evidence_id)
+        elif stance == "opposes":
+            # `neutral` provides context only and can never create a conflict.
+            opposing[claim_id].append(evidence_id)
+
+    indicators: list[ConflictIndicator] = []
+    for claim_id in sorted(set(supporting) & set(opposing)):
+        conflict = detect_material_conflict(
+            claim_id,
+            supporting_evidence_ids=supporting[claim_id],
+            opposing_evidence_ids=opposing[claim_id],
+            ledger=ledger,
+        )
+        if not conflict.is_material:
+            continue
+        indicators.append(
+            ConflictIndicator(
+                claim_id=claim_id,
+                supporting_evidence_ids=sorted(set(conflict.supporting_ids)),
+                opposing_evidence_ids=sorted(set(conflict.opposing_ids)),
+                independence_groups=sorted(
+                    set(conflict.supporting_groups) | set(conflict.opposing_groups)
+                ),
+                rule_version=rule_version,
+            )
+        )
+    return indicators
 
 
 # ---------------------------------------------------------------------------

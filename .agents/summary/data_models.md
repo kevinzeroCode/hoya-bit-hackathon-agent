@@ -608,7 +608,7 @@ Produced by `project_evidence_list(items, links)` for requirements AC 5.7. One r
 
 ---
 
-## Data Layer Types (from `data/` and `evidence/types.py`)
+## Data Layer Types (from `data/types.py` and `evidence/drafts.py`)
 
 ### MarketBar (`data/types.py`)
 

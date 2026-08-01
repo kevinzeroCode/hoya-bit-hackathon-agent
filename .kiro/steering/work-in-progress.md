@@ -14,8 +14,11 @@ in the other steering files; human-readable detail is in `docs/ACTIVE_WORK.md`.
 - Partial: S0, S6 and S8.
 - Not complete: S10 and S11.
 - Never describe offline S8/S9/S9B smoke as live Silver, Gold or deployment success.
-- The non-live pytest suite and `ruff check .` were verified on 2026-08-01 (S4 second pass):
-  1100 passed / 0 failed, Ruff clean. GitHub CI/status checks are still not configured.
+- The non-live pytest suite and `ruff check .` were verified on 2026-08-01 (S6 fifth pass):
+  1215 passed / 0 failed (15 subtests), Ruff clean, `scripts/verify_s8_s9_s9b.py` PASS,
+  `tests/live` 12 skipped by default. A real provider run (`RUN_LIVE_TESTS=1`) gave
+  8 passed / 4 skipped with no schema drift — see `docs/rehearsals/live-source-check.md`.
+  GitHub CI/status checks are still not configured.
 
 ## Frozen paths
 
@@ -66,8 +69,44 @@ The complete Evidence Ledger remains the artifact of record and must not be trun
    as optional is declared by the composition root (`optional_operations` /
    `counter_signal_operations`, empty by default), so S6 must supply that source list when
    it assembles the live pipeline or the order will never trigger in a real run.
-3. S6 canonical baseline research acceptance and remaining normalization gaps.
-4. S8 one schema-valid live Bedrock run through baseline market/research plus an independent fallback run.
+3. S6 canonical baseline research acceptance: the four functional gaps are closed
+   (2026-08-01 second pass) — deterministic `ConflictIndicator` generation is wired into the
+   run (`evidence/ledger.build_conflict_indicators` + `orchestration/pipeline.finalize_analysis`),
+   multi-fact extraction lives in `src/` (`reasoning/research_extractor.py`, added without
+   modifying any frozen file), the remaining research sources have port-conforming wrappers
+   (`CryptoPanicResearchAdapter`, `FearGreedResearchAdapter`,
+   `OfficialAnnouncementsResearchAdapter` plus `adapters/_errors.py`), and the composition root
+   declares the skip-order source lists (`application.build_research_pipeline`).
+   Still open: the mock-transport adapter tests live in `tests/unit/data_evidence/` rather than
+   the frozen `tests/contract/`, and `p2-etl-mvp/` is still tracked.
+   Closed 2026-08-01 (fifth pass): the provisional-type unification — `evidence/types.py` is
+   deleted, `evidence/drafts.py::PendingEvidence` (canonical draft + provenance) is the only
+   draft type, and `evidence/processor.py` is the sole assigner of reliability, independence
+   group, content hash and ids. The non-canonical `evidence/evidence_json.py` writer went with
+   it. Also closed: one deadline-bound retry (`fetch_with_single_retry`), one shared
+   `httpx.AsyncClient` per run owned by the registry, and the adapter-level official-mode test
+   (`tests/unit/data_evidence/test_official_mode_sources.py`, which scans production code for
+   fixture imports and recorded-response loaders). Live provider verification ran for real:
+   8 passed / 4 skipped, no schema drift — `docs/rehearsals/live-source-check.md`.
+4. S8 one schema-valid live Bedrock run through baseline market/research plus an independent
+   fallback run. **The schema blocker recorded earlier is resolved (2026-08-01, third pass):**
+   `reasoning/arbiter_output.py` (new file, no frozen file modified) defines `ArbiterOutput` —
+   `AnalysisResult` minus the frozen request context, with nullable time ranges, which is
+   exactly the shape the frozen `_fallback()` produces — plus `project_to_analysis_result()`
+   and `ledger_view()`. `pipeline._run_arbiter()` applies the projection and
+   `application.build_research_pipeline()` wires the Arbiter automatically when an `llm` is
+   supplied. Three silent-degradation traps are pinned by tests: the boundary schema must use
+   plain strings because `apply_confidence_caps()` compares with `str()`; the Arbiter must
+   receive `ledger_view()` items or `_reliability_rank()` sees `"Reliability.high"` and the
+   fallback emits zero claims; `_fallback()` renders assets as `"Asset.BTC"`.
+   What remains is only the live call: one real Bedrock Converse structured output through
+   `adapters/bedrock.py` (still zero to date) across both baseline paths. The scaffold is in
+   place — `tests/live/` (guarded by the `live` marker **and** `RUN_LIVE_TESTS=1`; 12 skipped
+   by default) and `scripts/live_silver_run.py --mode live|fallback`. The fallback half ran
+   offline on 2026-08-01: `run_20260801_160034_s0034`, degraded, four artifacts present.
+   Live Bedrock is blocked by environment only — this machine has no AWS credentials and no
+   `BEDROCK_PRIMARY_MODEL_ID`. Commands to finish it are in
+   `docs/rehearsals/live-source-check.md`.
 5. S10 two separate single-asset Gold runs and deadline/artifact acceptance.
 6. S11 CI, ECR/EC2, rollback and one timed judged-flow rehearsal.
 7. Remove repository-wide Ruff debt and run the complete non-live suite.

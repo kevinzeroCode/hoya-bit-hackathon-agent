@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 import httpx
 
 from hoya_agent.adapters.official import fetch_official_announcements
+from hoya_agent.evidence.policies import reliability_for
 
 UTC = timezone.utc
 ANALYSIS_AS_OF = datetime(2026, 7, 17, 6, 0, 0, tzinfo=UTC)
@@ -77,12 +78,12 @@ def _mock_transport(responses: dict[str, tuple[int, str]]):
 
 
 class TestOfficialSuccess:
-    def test_returns_relevant_drafts_from_rss(self):
+    async def test_returns_relevant_drafts_from_rss(self):
         transport = _mock_transport({
             "ethereum.org": (200, VALID_RSS),
         })
-        client = httpx.Client(transport=transport)
-        result = fetch_official_announcements(
+        client = httpx.AsyncClient(transport=transport)
+        result = await fetch_official_announcements(
             assets=["ETH"],
             analysis_as_of=ANALYSIS_AS_OF,
             client=client,
@@ -92,16 +93,16 @@ class TestOfficialSuccess:
         assert result.status in ("completed", "partial")
         assert len(result.drafts) >= 1
         # All drafts should be high reliability (official source)
-        assert all(d.reliability == "high" for d in result.drafts)
+        assert all(reliability_for(d.source_class) == "high" for d in result.drafts)
         assert all(d.source_type == "official" for d in result.drafts)
         assert all(d.asset == "ETH" for d in result.drafts)
 
-    def test_returns_relevant_drafts_from_atom(self):
+    async def test_returns_relevant_drafts_from_atom(self):
         transport = _mock_transport({
             "bitcoin.org": (200, VALID_ATOM),
         })
-        client = httpx.Client(transport=transport)
-        result = fetch_official_announcements(
+        client = httpx.AsyncClient(transport=transport)
+        result = await fetch_official_announcements(
             assets=["BTC"],
             analysis_as_of=ANALYSIS_AS_OF,
             client=client,
@@ -109,17 +110,17 @@ class TestOfficialSuccess:
         )
         assert result.status in ("completed", "partial")
         assert len(result.drafts) >= 1
-        assert result.drafts[0].reliability == "high"
-        assert result.drafts[0].independence_group == "bitcoin.org"
+        assert reliability_for(result.drafts[0].source_class) == "high"
+        assert result.drafts[0].original_publisher == "bitcoin.org"
 
-    def test_filters_by_analysis_window(self):
+    async def test_filters_by_analysis_window(self):
         # Set analysis_as_of before the articles
         early_cutoff = datetime(2026, 7, 1, 0, 0, 0, tzinfo=UTC)
         transport = _mock_transport({
             "ethereum.org": (200, VALID_RSS),
         })
-        client = httpx.Client(transport=transport)
-        result = fetch_official_announcements(
+        client = httpx.AsyncClient(transport=transport)
+        result = await fetch_official_announcements(
             assets=["ETH"],
             analysis_as_of=early_cutoff,
             client=client,
@@ -131,13 +132,13 @@ class TestOfficialSuccess:
         # None should match since all are after Jul 1
         assert result.status == "failed"
 
-    def test_multi_asset_fetches_each_configured_feed(self):
+    async def test_multi_asset_fetches_each_configured_feed(self):
         transport = _mock_transport({
             "ethereum.org": (200, VALID_RSS),
             "bitcoin.org": (200, VALID_ATOM),
         })
-        client = httpx.Client(transport=transport)
-        result = fetch_official_announcements(
+        client = httpx.AsyncClient(transport=transport)
+        result = await fetch_official_announcements(
             assets=["ETH", "BTC"],
             analysis_as_of=ANALYSIS_AS_OF,
             client=client,
@@ -149,11 +150,11 @@ class TestOfficialSuccess:
 
 
 class TestOfficialTimeout:
-    def test_timeout_returns_degradation(self):
-        def handler(request: httpx.Request) -> httpx.Response:
+    async def test_timeout_returns_degradation(self):
+        async def handler(request: httpx.Request) -> httpx.Response:
             raise httpx.ReadTimeout("timed out")
-        client = httpx.Client(transport=httpx.MockTransport(handler))
-        result = fetch_official_announcements(
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        result = await fetch_official_announcements(
             assets=["ETH"],
             analysis_as_of=ANALYSIS_AS_OF,
             client=client,
@@ -165,12 +166,12 @@ class TestOfficialTimeout:
 
 
 class TestOfficialHttpError:
-    def test_http_500_returns_degradation(self):
+    async def test_http_500_returns_degradation(self):
         transport = _mock_transport({
             "ethereum.org": (500, "Internal Server Error"),
         })
-        client = httpx.Client(transport=transport)
-        result = fetch_official_announcements(
+        client = httpx.AsyncClient(transport=transport)
+        result = await fetch_official_announcements(
             assets=["ETH"],
             analysis_as_of=ANALYSIS_AS_OF,
             client=client,
@@ -179,12 +180,12 @@ class TestOfficialHttpError:
         assert result.status == "failed"
         assert len(result.degradation) >= 1
 
-    def test_http_429_returns_degradation(self):
+    async def test_http_429_returns_degradation(self):
         transport = _mock_transport({
             "ethereum.org": (429, "Too Many Requests"),
         })
-        client = httpx.Client(transport=transport)
-        result = fetch_official_announcements(
+        client = httpx.AsyncClient(transport=transport)
+        result = await fetch_official_announcements(
             assets=["ETH"],
             analysis_as_of=ANALYSIS_AS_OF,
             client=client,
@@ -195,12 +196,12 @@ class TestOfficialHttpError:
 
 
 class TestOfficialMalformedPayload:
-    def test_invalid_xml_returns_degradation(self):
+    async def test_invalid_xml_returns_degradation(self):
         transport = _mock_transport({
             "ethereum.org": (200, "this is not xml at all <broken"),
         })
-        client = httpx.Client(transport=transport)
-        result = fetch_official_announcements(
+        client = httpx.AsyncClient(transport=transport)
+        result = await fetch_official_announcements(
             assets=["ETH"],
             analysis_as_of=ANALYSIS_AS_OF,
             client=client,
@@ -209,13 +210,13 @@ class TestOfficialMalformedPayload:
         assert result.status == "failed"
         assert len(result.degradation) >= 1
 
-    def test_empty_rss_no_items(self):
+    async def test_empty_rss_no_items(self):
         empty_rss = '<?xml version="1.0"?><rss><channel></channel></rss>'
         transport = _mock_transport({
             "ethereum.org": (200, empty_rss),
         })
-        client = httpx.Client(transport=transport)
-        result = fetch_official_announcements(
+        client = httpx.AsyncClient(transport=transport)
+        result = await fetch_official_announcements(
             assets=["ETH"],
             analysis_as_of=ANALYSIS_AS_OF,
             client=client,
@@ -226,11 +227,11 @@ class TestOfficialMalformedPayload:
 
 
 class TestOfficialMissingFeedConfig:
-    def test_unconfigured_asset_reports_gap(self):
-        result = fetch_official_announcements(
+    async def test_unconfigured_asset_reports_gap(self):
+        result = await fetch_official_announcements(
             assets=["DOGE"],  # not in OFFICIAL_FEEDS
             analysis_as_of=ANALYSIS_AS_OF,
-            client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200))),
+            client=httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200))),
             feed_overrides={},  # empty overrides
         )
         assert result.status == "failed"
@@ -240,13 +241,13 @@ class TestOfficialMissingFeedConfig:
 class TestOfficialNonBlocking:
     """Official adapter failures never raise — they always return WorkerResult."""
 
-    def test_partial_success_one_asset_fails(self):
+    async def test_partial_success_one_asset_fails(self):
         transport = _mock_transport({
             "ethereum.org": (200, VALID_RSS),
             "bitcoin.org": (500, "error"),
         })
-        client = httpx.Client(transport=transport)
-        result = fetch_official_announcements(
+        client = httpx.AsyncClient(transport=transport)
+        result = await fetch_official_announcements(
             assets=["ETH", "BTC"],
             analysis_as_of=ANALYSIS_AS_OF,
             client=client,

@@ -17,7 +17,11 @@
 
 ### ⚠️ Minor Inconsistencies Found
 
-1. **`evidence/evidence_json.py` vs `reporting/artifacts.py` — dual writer concern**
+1. ~~**`evidence/evidence_json.py` vs `reporting/artifacts.py` — dual writer concern**~~
+   **Resolved 2026-08-01 (fifth pass):** `evidence/evidence_json.py` is deleted along with
+   its test. It was a P2 prototype writer whose schema (`evidence-ledger/p2-prototype-v1`)
+   contradicted `evidence-contracts.md` §12, and nothing under `src/` imported it. The
+   canonical writer is `reporting/artifacts.py`.
    - `components.md` lists `evidence_json.py` in the evidence layer
    - `architecture.md` assigns artifact writing to `reporting/artifacts.py`
    - **Reality:** Both exist. `evidence_json.py` is a P2 prototype writer with a different schema (`schema: "evidence-ledger/p2-prototype-v1"`). The canonical writer is `reporting/artifacts.py`. This is documented in the work-in-progress steering but represents an unresolved code duplication.
@@ -118,7 +122,7 @@
 
 ### Redundancy to Clean Up
 - `_provisional_seams.py` duplicates type definitions now canonically in `models.py` and `ports.py`
-- `evidence/evidence_json.py` duplicates artifact-writing responsibility of `reporting/artifacts.py`
+- ~~`evidence/evidence_json.py` duplicates artifact-writing responsibility of `reporting/artifacts.py`~~ — resolved 2026-08-01: the prototype writer is deleted
 - Both are documented technical debt awaiting the swap procedure
 
 ---

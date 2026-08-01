@@ -4,18 +4,21 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from hoya_agent.evidence.drafts import PendingEvidence, pending
 from hoya_agent.evidence.grounding import (
     GroundingStatus,
     ground_drafts,
     ground_fact,
 )
-from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.evidence.policies import SourceClass
 
 UTC = timezone.utc
 
 
-def _draft(fact: str, source: str, *, source_type: str = "news") -> EvidenceDraft:
-    return EvidenceDraft(
+def _draft(fact: str, source: str, *, source_type: str = "news") -> PendingEvidence:
+    return pending(
+        source_class=SourceClass.ORIGINAL_NEWS_PAGE,
+        original_publisher="example.com",
         asset="BTC",
         source_type=source_type,
         source_name="Example News",
@@ -25,8 +28,6 @@ def _draft(fact: str, source: str, *, source_type: str = "news") -> EvidenceDraf
         query_or_parameters="q=BTC",
         content_reference=source,
         normalized_fact=fact,
-        reliability="medium",
-        independence_group="example.com",
     )
 
 
@@ -76,11 +77,12 @@ def test_purely_qualitative_is_unverified_pending_semantic_check():
 
 def test_require_grounding_excludes_ungrounded_support_from_confidence():
     from hoya_agent.evidence.ledger import confidence_signals_for_claim
-    from hoya_agent.evidence.types import EvidenceItem, EvidenceLedger
+    from hoya_agent.models import EvidenceItem, EvidenceLedger, RunMode
 
     def _item(eid, fact, source, group):
         return EvidenceItem(
-            evidence_id=eid, content_hash=eid, asset="BTC", source_type="news",
+            evidence_id=eid, content_hash=eid.encode().hex().ljust(64, "0"), asset="BTC",
+            source_type="news",
             source_name=f"src-{eid}", source_url="https://x/y",
             published_at=datetime(2026, 5, 20, tzinfo=UTC),
             fetched_at=datetime(2026, 5, 21, tzinfo=UTC), query_or_parameters="q",
@@ -90,7 +92,12 @@ def test_require_grounding_excludes_ungrounded_support_from_confidence():
 
     grounded = _item("ev_001", "BTC 下跌 8%", "Bitcoin fell 8%.", "coindesk.com")
     ungrounded = _item("ev_002", "BTC 下跌 8%", "Bitcoin fell sharply.", "theblock.co")  # 8% fabricated
-    ledger = EvidenceLedger(items=[grounded, ungrounded], dropped_duplicates=0)
+    ledger = EvidenceLedger(
+        run_id="run_20260531_000000_grd1",
+        analysis_as_of=datetime(2026, 5, 31, tzinfo=UTC),
+        run_mode=RunMode.rehearsal,
+        items=[grounded, ungrounded],
+    )
     ids = ["ev_001", "ev_002"]
 
     # Without grounding: two independent groups -> could reach high.

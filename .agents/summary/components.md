@@ -21,7 +21,7 @@ graph TB
         AltMe["alternative_me.py<br/>fetch_fear_greed"]
         RSSA["rss.py<br/>fetch_rss_news"]
         Assets["_assets.py<br/>mentions()"]
-        PortAdapters["port_adapters.py<br/>CsvMarketAdapter, BinanceMarketAdapter, RssResearchAdapter"]
+        PortAdapters["port_adapters.py<br/>CsvMarketAdapter, BinanceMarketAdapter,<br/>RssResearchAdapter, CryptoPanicResearchAdapter,<br/>FearGreedResearchAdapter, OfficialAnnouncementsResearchAdapter"]
     end
 
     subgraph DataLayer["Data Layer (src/hoya_agent/data/)"]
@@ -36,7 +36,7 @@ graph TB
         Processor["processor.py<br/>build_ledger"]
         Policies["policies.py<br/>reliability_for, max_confidence"]
         ETypes["types.py<br/>EvidenceDraft, EvidenceLedger"]
-        EJson["evidence_json.py<br/>dump_evidence_json"]
+        Proc["processor.py<br/>build_ledger"]
     end
 
     subgraph ReasoningLayer["Reasoning Layer (src/hoya_agent/reasoning/)"]
@@ -91,6 +91,22 @@ graph TB
   Finalizing is not suppressing.
 
 **Injected dependencies:** `clock`, `pipeline`, `prompt_version`, `configured_sources`, `optional_keys_present`
+
+**Composition helpers (S6):**
+- `build_research_tool_registry(...)` → `StaticToolRegistry` mapping
+  `fetch_rss_news` / `fetch_fear_greed` / `fetch_official_announcements` /
+  `fetch_cryptopanic_news` to port-conforming adapters. Handlers unwrap `SourceResult`
+  into `list[RawSourceRecord]` (the only shape the frozen Research Agent consumes) and
+  raise `SourceUnavailable` on a failed source so the agent records a gap.
+- `build_research_pipeline(...)` → `DeadlineAwarePipeline` with both branches live. This is
+  the declaration point for the fixed skip order: `BASELINE_RESEARCH_OPERATIONS`
+  (`fetch_rss_news`, never trimmed), `OPTIONAL_CONTEXT_OPERATIONS`
+  (`fetch_fear_greed`, `fetch_official_announcements`), `COUNTER_SIGNAL_OPERATIONS`
+  (`fetch_cryptopanic_news`, surrendered last).
+- `ALLOWED_RESEARCH_HOSTS` + `_require_allowlisted_host()`: a non-allowlisted host is
+  rejected at registry construction, before any request can be made.
+- `DeterministicPlanner`: with no LLM configured, returns the same allowlisted default plan
+  the frozen Planner falls back to and discloses the substitution, so research still fetches.
 
 ---
 
@@ -152,13 +168,62 @@ graph TB
 - `CsvMarketAdapter` — wraps `organizer_csv.load_organizer_csv()` for offline CSV retrieval via `asyncio.to_thread()`
 - `BinanceMarketAdapter` — wraps `binance.fetch_binance_daily()` for live kline retrieval via `asyncio.to_thread()`
 - `RssResearchAdapter` — wraps `rss.fetch_rss_news()` for first-party feed retrieval via `asyncio.to_thread()`
+- `CryptoPanicResearchAdapter` — wraps `cryptopanic.fetch_cryptopanic_news()`; no token → `SourceStatus.rejected`; the token never enters `query_or_parameters`
+- `FearGreedResearchAdapter` — wraps `alternative_me.fetch_fear_greed()`; records carry `asset=None` (market-wide)
+- `OfficialAnnouncementsResearchAdapter` — wraps `official.fetch_official_announcements()`; an asset with no configured feed is a disclosed gap
 
 **Key behaviors:**
 - All use `asyncio.to_thread()` for sync→async bridging (underlying adapters are synchronous `httpx` calls)
 - No business logic — delegates entirely to the underlying adapter module
 - Returns typed results matching the port protocol contracts
+- `fetch(*, operation, context=None, **params)` accepts either a `RunContext` or the loose
+  `assets`/`analysis_as_of`/`lookback_days` parameters the `StaticToolRegistry` passes;
+  `_resolve_target()` normalizes both and never recomputes the cutoff from the wall clock
+- `SourceStatus` is normalized from the adapter's category token (`adapters/_errors.py`):
+  `timeout | http_error | malformed | rejected`; a source with nothing to say is `empty`,
+  which is a disclosed gap rather than an error
+- `_to_raw_record()` carries provenance the deterministic completion step needs:
+  `original_publisher`, `original_page_fetched`, `source_reference`
+- `SourceUnavailable` is raised only by registry handlers, so the frozen Research Agent
+  records a failed source as a gap; an empty result never raises
 
 **Cannot:** Compute indicators; assign reliability; make decisions about evidence; bypass configured timeouts.
+
+---
+
+### Adapter Error Categories (`adapters/_errors.py`)
+
+**Responsibility:** One normalized failure vocabulary shared by the flat adapters, so a
+degradation note can be mapped back to `SourceResult.status`.
+
+**Key behaviors:**
+- `classify_error(exc)` → `timeout | http_error | malformed | rejected`
+- `category_note(message, category)` appends a `[category=…]` token after the human-readable text
+- `category_of(notes)` reads the token back at the port boundary
+
+**Cannot:** Raise across a port; carry provider payloads, credentials, or URLs.
+
+---
+
+### Research Extractor (`reasoning/research_extractor.py`)
+
+**Responsibility:** The two halves the frozen `ResearchAgent` takes by injection — the
+structured-output schema for bounded extraction, and the deterministic completion that turns
+extracted wording into Evidence drafts. Migrated from `p2-etl-mvp/reasoning/research_extractor.py`.
+
+**Key behaviors:**
+- `ResearchExtraction` / `ExtractedFact` (`extra="forbid"`): one record may yield several facts,
+  so one article becomes several Evidence items rather than one summary; carries a `relevant`
+  verdict so off-topic feed noise is dropped without a second LLM call
+- `complete_extracted_drafts(drafts, *, records, fetched_at)` → `(drafts, notes)`:
+  reliability from the static policy table (feed item with no original page fetched stays `low`),
+  `independence_group` from `policies.independence_group()`, timestamps from the record
+- A fact citing a `record_id` that was never fetched is dropped and disclosed, never repaired
+- `MAX_FACTS_PER_RECORD = 3`; `content_reference` is a bounded quotation (≤400 chars of body)
+  so `evidence/grounding.py` can check extracted numbers against the source's own wording
+- Already-complete drafts (market worker, source adapters) pass through untouched
+
+**Cannot:** Let the model assign reliability, independence group, or stance; write files; call an LLM itself.
 
 ---
 
@@ -193,9 +258,7 @@ graph TB
 ---
 
 ### Arbiter (`reasoning/arbiter.py`)
-
 **Responsibility:** Forms the market judgement. Receives ≤30 ranked evidence items and produces a layered `AnalysisResult` with fact→inference→conclusion claims.
-
 **Key behaviors:**
 - Selects evidence: prioritizes high-reliability, conflict-involved items, round-robin across groups
 - Single LLM call with max_tokens=8000
@@ -204,6 +267,39 @@ graph TB
 - Fallback on failure: low-confidence insufficient-data result from up to 5 high-reliability facts
 
 **Cannot:** Assign reliability; create evidence; loosen confidence caps; make multiple calls.
+
+**Boundary note:** its `result_schema` is `ArbiterOutput`, not `AnalysisResult`, and it must
+receive `ledger_view()` items rather than canonical `EvidenceItem`s — see below.
+
+---
+
+### Arbiter Output Schema (`reasoning/arbiter_output.py`)
+
+**Responsibility:** The schema the Arbiter's single call fills, and the deterministic
+projection onto `AnalysisResult`. Added 2026-08-01 without modifying any frozen file.
+
+**Key behaviors:**
+- `ArbiterOutput` = `AnalysisResult` minus the frozen request context
+  (`run_id`, `question`, `assets`, `analysis_as_of`), with nullable claim and market-context
+  time ranges — exactly the shape the frozen `_fallback()` produces. `extra="forbid"` also
+  keeps the deterministic-only `trust_scorecards` / `market_regime` out of the model's reach.
+- **All boundary values are plain `Literal` strings, never enums.** The frozen
+  `apply_confidence_caps()` compares confidence and stance via `str(...)`; a `str`-mixin enum
+  renders as `"Reliability.low"` / `"Stance.supports"` and matches nothing, so every cap
+  adjustment would corrupt the payload and silently drop the run into its fallback.
+- `ledger_view()` / `EvidenceView` / `LedgerView`: string-valued ledger view, the same pattern
+  as `ReasoningRequest`. Without it `_reliability_rank()` returns unknown for every item, so
+  `select_evidence()` loses its high-first priority, `_fallback()` finds no facts and emits a
+  report with no claims or links, and the only-low-evidence cap never fires.
+- `project_to_analysis_result(output, *, request, evidence_items)` → `(result, notes)`:
+  stamps the frozen context, maps strings to canonical enums, tolerates the fallback's
+  `"Asset.BTC"` formatting, fills a missing time range from the evidence window
+  (earliest evidence date → cutoff) and clamps anything past the cutoff. Notes record every
+  correction so the report discloses it. A `ValidationError` is the caller's signal to use the
+  deterministic fallback.
+
+**Cannot:** Call an LLM; write files; widen the frozen cutoff; invent a time range not derived
+from evidence.
 
 ---
 
@@ -248,15 +344,71 @@ graph TB
 
 ---
 
+### Evidence Drafts (`evidence/drafts.py`)
+
+**Responsibility:** The single draft type, and the provenance the processor needs.
+Replaced the provisional dataclasses in `evidence/types.py`, which is deleted.
+
+**Key behaviors:**
+- `PendingEvidence` = canonical `models.EvidenceDraft` + `source_class` +
+  `original_publisher`/`provider_id` + optional `MetricValue`
+- **A draft has no `reliability` and no `independence_group`.** That is the contract:
+  they are processor-assigned. The old dataclass carried them, which let a producer
+  state its own trustworthiness.
+- `pending(...)` builds and validates in one call; plain strings for asset and source
+  type are coerced to enums, so an unsupported value is rejected where it is produced
+  rather than dropped later at ledger time
+- `MetricValue` carries a deterministic number that `EvidenceItem` (16 fields,
+  `extra="forbid"`) cannot hold, which §16.4 needs for a verifiable threshold
+
+**Cannot:** Assign reliability or grouping; call an LLM, the network or the filesystem.
+
+---
+
 ### Evidence Processor (`evidence/processor.py`)
 
-**Responsibility:** Merges all `EvidenceDraft` items into one clean, ranked, deduplicated `EvidenceLedger`.
+**Responsibility:** Merges all `PendingEvidence` into one canonical
+`models.EvidenceLedger`, and is the **only** place the processor-assigned fields are
+assigned.
 
 **Pipeline:**
-1. Rank by reliability (high→medium→low), then by freshness
-2. Exact-hash dedup (SHA-256 of canonicalized normalized_fact)
-3. Assign stable IDs (`ev_001`, `ev_002`, ...)
-4. Return `EvidenceLedger` with items + dropped_duplicates count
+1. reliability from `source_class` (static table — never a producer, never an LLM)
+2. independence group: original publisher → registered domain → configured provider id
+3. `content_hash` over the canonicalized fact (exact matching only)
+4. rank by reliability, then freshness, then input order
+5. exact-hash dedup, keeping the highest-ranked copy
+6. assign `ev_001`, `ev_002`, … then sort the ledger by id
+
+**Merge support:** `existing=` admits an already-processed ledger (the market branch
+when research lands later) and reuses its assignments while renumbering ids across the
+merged set. `existing_metrics=` is re-keyed **by content hash** — a metric left on a
+stale id would silently point at the wrong evidence.
+
+---
+
+### Evidence Ledger Service (`evidence/ledger.py`)
+
+**Responsibility:** Deterministic queries and rules over a built ledger. No LLM, no network,
+no file I/O.
+
+**Key behaviors:**
+- `build_conflict_indicators(*, claim_evidence_links, ledger)` → `list[ConflictIndicator]`:
+  the evidence-contracts §9 rule. Only claims carrying both a `supports` and an `opposes`
+  link are examined; both sides must hold `high`/`medium` reliability and at least one pair
+  must come from different `independence_group` values. `neutral` links can never create a
+  conflict, and an unresolvable `evidence_id` is ignored rather than assumed.
+  Output is ordered by `claim_id` with sorted id lists, so link order cannot change it.
+  `CONFLICT_RULE_VERSION` is persisted with each indicator.
+- `detect_material_conflict(...)` — the single-claim primitive the above builds on
+- `confidence_signals_for_claim(...)` — supporting groups / max reliability / conflict /
+  stale inputs for the deterministic confidence caps, with grounding gating for
+  LLM-extracted facts
+- `filter_by_asset` / `filter_by_source_type` / `distinct_source_types` /
+  `distinct_independence_groups` / `has_first_hand_source` / `source_coverage_gaps`
+- `select_for_arbiter` / `select_for_arbiter_dual` — ledger-side selection helpers
+  (the live run currently uses the orchestration-side balanced projection)
+
+**Cannot:** Assign reliability; call an LLM; mutate the ledger it is given.
 
 ---
 
@@ -330,7 +482,7 @@ graph TB
 **Responsibility:** Stage order for the H2-Lite run. Hosts `DeadlineAwarePipeline`
 (plan → market/research fork-join → ledger → Arbiter) and `OrganizerCsvPipeline`
 (the offline organizer-CSV-only market branch). Bridges provisional
-`evidence/types.py` dataclasses to canonical `models.py` contracts.
+pending evidence to the canonical ledger through `evidence/processor.py`.
 
 **Key behaviors:**
 - `DeadlineAwarePipeline.execute()`: builds `DeadlineManager.for_run()` and a
@@ -354,6 +506,18 @@ graph TB
   trimmed; if nothing survives, the research branch is not started at all.
 - `_classify()`: counter-signal is checked before optional context, so an operation
   declared as both is treated as the more valuable category
+- Evidence stage: research drafts pass through
+  `research_extractor.complete_extracted_drafts()` before merging, so extracted facts get
+  reliability/independence group/timestamps from deterministic policy rather than from the
+  model. Facts citing an unfetched record are dropped with a disclosure.
+- `finalize_analysis(ledger, result)`: the deterministic post-LLM pass. Builds
+  `ConflictIndicator`s from the result's links, attaches them to the ledger with a
+  `material_conflict_detected` degradation event, re-applies the frozen
+  `apply_confidence_caps()` (so a conflicted conclusion is capped at `low` and overall
+  confidence cannot stay `high`), then builds Trust Scorecards last because their
+  `consistency` dimension reads those indicators. Uses `model_dump(mode="json")` — the cap
+  helper compares confidence as plain strings, and enum members never match its rank table.
+  Applied by both `DeadlineAwarePipeline` and `OrganizerCsvPipeline`.
 - `OrganizerCsvPipeline.execute()`: iterates assets, loads bars, builds market evidence
 - `to_contract_ledger()`: maps frozen dataclasses to Pydantic models, preserves `metric_name`/`metric_value` in side index
 

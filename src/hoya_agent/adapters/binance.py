@@ -33,11 +33,11 @@ SOURCE_NAME = "Binance Spot"
 INDEPENDENCE_GROUP = "binance.com"
 
 
-def fetch_binance_daily(
+async def fetch_binance_daily(
     asset: str,
     *,
     analysis_as_of: datetime,
-    client: httpx.Client,
+    client: httpx.AsyncClient,
     limit: int = 500,
     timeout: float = 45.0,
 ) -> tuple[list[MarketBar], list[str]]:
@@ -47,7 +47,7 @@ def fetch_binance_daily(
     symbol = _SYMBOLS[asset]
 
     try:
-        resp = client.get(
+        resp = await client.get(
             KLINES_URL,
             params={"symbol": symbol, "interval": "1d", "limit": limit},
             timeout=timeout,

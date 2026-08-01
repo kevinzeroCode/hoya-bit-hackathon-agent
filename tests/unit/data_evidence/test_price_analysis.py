@@ -22,6 +22,7 @@ from hoya_agent.data.price_analysis import (
     rolling_correlation,
 )
 from hoya_agent.data.types import MarketBar
+from hoya_agent.evidence.policies import reliability_for
 
 _DATA_DIR = default_data_dir()
 
@@ -118,7 +119,7 @@ def test_comparison_evidence_cross_asset():
     assert r.status == "completed"
     assert len(r.drafts) == 3
     for d in r.drafts:
-        assert d.source_type == "market" and d.reliability == "high"
+        assert d.source_type == "market" and reliability_for(d.source_class) == "high"
     facts = " ".join(d.normalized_fact for d in r.drafts)
     assert "相關性" in facts and "百分位" in facts   # correlation + relative-strength included
     assert "volume" not in facts.lower()             # never base-asset volume across coins

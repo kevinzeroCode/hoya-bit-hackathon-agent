@@ -25,9 +25,14 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from hoya_agent.adapters._errors import (
+    CATEGORY_REJECTED,
+    category_note,
+    classify_error,
+)
 from hoya_agent.data.market_worker import WorkerResult
-from hoya_agent.evidence.policies import independence_group, news_reliability
-from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.evidence.drafts import PendingEvidence, pending
+from hoya_agent.evidence.policies import SourceClass
 
 CRYPTOPANIC_URL = "https://cryptopanic.com/api/v1/posts/"
 
@@ -37,24 +42,33 @@ def _parse_dt(value: str) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def fetch_cryptopanic_news(
+async def fetch_cryptopanic_news(
     *,
     assets: Sequence[str],
     analysis_as_of: datetime,
-    client: httpx.Client,
+    client: httpx.AsyncClient,
     api_token: str | None,
     lookback_days: int = 14,
     timeout: float = 45.0,
 ) -> WorkerResult:
     if not api_token:
-        return WorkerResult("failed", [], ["CryptoPanic disabled: no api_token (optional source)"])
+        return WorkerResult(
+            "failed",
+            [],
+            [
+                category_note(
+                    "CryptoPanic disabled: no api_token (optional source)",
+                    CATEGORY_REJECTED,
+                )
+            ],
+        )
 
     wanted = {a.upper() for a in assets}
     earliest = analysis_as_of - timedelta(days=lookback_days)
     fetched_at = datetime.now(timezone.utc)
 
     try:
-        resp = client.get(
+        resp = await client.get(
             CRYPTOPANIC_URL,
             params={"auth_token": api_token, "currencies": ",".join(sorted(wanted))},
             timeout=timeout,
@@ -62,9 +76,18 @@ def fetch_cryptopanic_news(
         resp.raise_for_status()
         payload = resp.json()
     except (httpx.HTTPError, ValueError) as exc:
-        return WorkerResult("failed", [], [f"CryptoPanic fetch failed: {type(exc).__name__}"])
+        return WorkerResult(
+            "failed",
+            [],
+            [
+                category_note(
+                    f"CryptoPanic fetch failed: {type(exc).__name__}",
+                    classify_error(exc),
+                )
+            ],
+        )
 
-    drafts: list[EvidenceDraft] = []
+    drafts: list[PendingEvidence] = []
     degradation: list[str] = []
 
     for post in payload.get("results", []):
@@ -86,14 +109,15 @@ def fetch_cryptopanic_news(
         source = post.get("source") or {}
         publisher_domain = (source.get("domain") or "").strip()
         source_title = (source.get("title") or "").strip() or "CryptoPanic"
-        group = independence_group(
-            original_publisher=publisher_domain or None,
-            source_url=post.get("url") or CRYPTOPANIC_URL,
-        )
 
         asset = next(a for a in wanted if a in codes)
         drafts.append(
-            EvidenceDraft(
+            pending(
+                # Aggregator feed item: the original page was not fetched, so the
+                # static policy keeps this `low` no matter who published it.
+                source_class=SourceClass.NEWS_AGGREGATOR,
+                original_publisher=publisher_domain or None,
+                provider_id="cryptopanic.com",
                 asset=asset,
                 source_type="news",
                 source_name=source_title,
@@ -105,8 +129,6 @@ def fetch_cryptopanic_news(
                 content_reference=f"headline via CryptoPanic ({source_title}, {published.date()})",
                 # Untrusted: the headline is stored verbatim as a quoted fact only.
                 normalized_fact=title,
-                reliability=news_reliability(original_page_fetched=False),
-                independence_group=group,
             )
         )
 

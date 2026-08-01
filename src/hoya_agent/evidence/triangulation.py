@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 
 from hoya_agent.data.price_analysis import AnomalyDay
-from hoya_agent.evidence.types import EvidenceItem
+from hoya_agent.models import EvidenceItem
 
 # Source types that describe the whole market rather than one coin (e.g. Fear &
 # Greed). They corroborate any asset's event regardless of the item's `asset`.

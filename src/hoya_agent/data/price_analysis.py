@@ -24,8 +24,8 @@ from hoya_agent.data.indicators import realized_volatility, simple_return
 from hoya_agent.data.market_series import bars_asof, closes
 from hoya_agent.data.market_worker import WorkerResult
 from hoya_agent.data.types import MarketBar
-from hoya_agent.evidence.policies import SourceClass, reliability_for
-from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.evidence.drafts import PendingEvidence, pending
+from hoya_agent.evidence.policies import SourceClass
 
 UTC = timezone.utc
 
@@ -181,14 +181,14 @@ def analog_base_rates(
 def _draft(
     asset, fact, *, ref, params, metric, source_name, group, url, as_of,
     metric_value: float | None = None,
-) -> EvidenceDraft:
-    return EvidenceDraft(
+) -> PendingEvidence:
+    return pending(
+        source_class=SourceClass.DETERMINISTIC_CALC, original_publisher=group,
         asset=asset, source_type="market", source_name=source_name, source_url=url,
         published_at=datetime(as_of.year, as_of.month, as_of.day, tzinfo=UTC),
         fetched_at=datetime.now(UTC), query_or_parameters=params,
         content_reference=ref, normalized_fact=fact,
-        reliability=reliability_for(SourceClass.DETERMINISTIC_CALC),
-        independence_group=group, metric_name=metric, metric_value=metric_value,
+        metric_name=metric, metric_value=metric_value,
     )
 
 

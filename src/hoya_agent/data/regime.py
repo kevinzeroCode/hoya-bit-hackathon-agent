@@ -22,8 +22,8 @@ from hoya_agent.data.indicators import realized_volatility, simple_return
 from hoya_agent.data.market_series import bars_asof, closes
 from hoya_agent.data.market_worker import WorkerResult
 from hoya_agent.data.types import MarketBar
-from hoya_agent.evidence.policies import SourceClass, reliability_for
-from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.evidence.drafts import pending
+from hoya_agent.evidence.policies import SourceClass
 from hoya_agent.models import Asset
 from hoya_agent.models import MarketRegime as ContractMarketRegime
 from hoya_agent.models import RegimeLabel as ContractRegimeLabel
@@ -174,7 +174,9 @@ def build_regime_evidence(
         f"波動處於自身歷史第 {regime.vol_percentile * 100:.0f} 百分位、"
         f"區間位置 {regime.range_position * 100:.0f}%，截至 {regime.as_of} UTC）"
     )
-    draft = EvidenceDraft(
+    draft = pending(
+        source_class=SourceClass.DETERMINISTIC_CALC,
+        original_publisher=independence_group,
         asset=asset,
         source_type="market",
         source_name=source_name,
@@ -188,8 +190,5 @@ def build_regime_evidence(
         ),
         content_reference=f"market regime = {regime.label} as of {regime.as_of}",
         normalized_fact=fact,
-        reliability=reliability_for(SourceClass.DETERMINISTIC_CALC),
-        independence_group=independence_group,
-        metric_name="market_regime",
     )
     return WorkerResult("completed", [draft], [])

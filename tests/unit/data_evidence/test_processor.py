@@ -4,10 +4,23 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from hoya_agent.evidence.processor import build_ledger
-from hoya_agent.evidence.types import EvidenceDraft, EvidenceItem, EvidenceLedger
+from hoya_agent.evidence.drafts import PendingEvidence, pending
+from hoya_agent.evidence.ledger import (
+    distinct_independence_groups,
+    distinct_source_types,
+    select_for_arbiter,
+)
+from hoya_agent.evidence.policies import SourceClass
+from hoya_agent.evidence.processor import build_ledger as _build_ledger
+from hoya_agent.models import EvidenceItem, EvidenceLedger, RunMode
 
 UTC = timezone.utc
+
+_CLASS_FOR_RELIABILITY = {
+    "high": SourceClass.DETERMINISTIC_CALC,
+    "medium": SourceClass.ORIGINAL_NEWS_PAGE,
+    "low": SourceClass.NEWS_AGGREGATOR,
+}
 
 
 def _draft(
@@ -18,8 +31,11 @@ def _draft(
     source_name: str = "CoinDesk",
     group: str = "coindesk.com",
     published: datetime | None = None,
-) -> EvidenceDraft:
-    return EvidenceDraft(
+) -> PendingEvidence:
+    return pending(
+        # A producer names its static source class; the processor decides reliability.
+        source_class=_CLASS_FOR_RELIABILITY[reliability],
+        original_publisher=group,
         asset="BTC",
         source_type=source_type,
         source_name=source_name,
@@ -29,9 +45,17 @@ def _draft(
         query_or_parameters="params",
         content_reference="ref",
         normalized_fact=fact,
-        reliability=reliability,  # type: ignore[arg-type]
-        independence_group=group,
     )
+
+
+def build_ledger(drafts) -> EvidenceLedger:
+    """Test seam: the processor needs the run identity the pipeline supplies."""
+    return _build_ledger(
+        list(drafts),
+        run_id="run_20260531_000000_prc1",
+        analysis_as_of=datetime(2026, 5, 31, tzinfo=UTC),
+        run_mode=RunMode.rehearsal,
+    ).ledger
 
 
 def test_merges_sources_into_one_ledger_with_stable_ids():
@@ -65,10 +89,17 @@ def test_dedup_collapses_identical_facts():
         _draft("Same headline reposted", source_name="Aggregator", group="aggregator.com"),
         _draft("Unique fact"),
     ]
-    ledger = build_ledger(drafts)
-    facts = [i.normalized_fact for i in ledger.items]
+    build = _build_ledger(
+        drafts,
+        run_id="run_20260531_000000_prc1",
+        analysis_as_of=datetime(2026, 5, 31, tzinfo=UTC),
+        run_mode=RunMode.rehearsal,
+    )
+    facts = [i.normalized_fact for i in build.ledger.items]
     assert facts.count("Same headline reposted") == 1
-    assert ledger.dropped_duplicates == 1
+    assert build.dropped_duplicates == 1
+    # The collapse is disclosed in the ledger itself, not only in a return value.
+    assert any("去重" in event.message for event in build.ledger.degradation_events)
 
 
 def test_identical_fact_same_hash_regardless_of_whitespace_case():
@@ -85,11 +116,11 @@ def test_source_and_independence_diversity_stats():
         _draft("s", source_type="social", group="alternative.me"),
     ]
     ledger = build_ledger(drafts)
-    assert ledger.source_type_count == 3      # market / news / social
-    assert ledger.independence_group_count == 3
+    assert len(distinct_source_types(ledger)) == 3      # market / news / social
+    assert len(distinct_independence_groups(ledger)) == 3
 
 
 def test_top_returns_first_n_for_arbiter():
     drafts = [_draft(f"fact {i}") for i in range(5)]
     ledger = build_ledger(drafts)
-    assert len(ledger.top(2)) == 2
+    assert len(select_for_arbiter(ledger, max_items=2)) == 2

@@ -21,8 +21,8 @@ from hoya_agent.data.indicators import (
 )
 from hoya_agent.data.market_series import bars_asof, closes, volumes
 from hoya_agent.data.types import MarketBar
-from hoya_agent.evidence.policies import SourceClass, reliability_for
-from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.evidence.drafts import PendingEvidence, pending
+from hoya_agent.evidence.policies import SourceClass
 
 WorkerStatus = Literal["completed", "partial", "failed"]
 
@@ -41,7 +41,7 @@ DEFAULT_WINDOWS = MarketWindows()
 @dataclass(frozen=True)
 class WorkerResult:
     status: WorkerStatus
-    drafts: list[EvidenceDraft]
+    drafts: list[PendingEvidence]
     degradation: list[str] = field(default_factory=list)
 
 
@@ -66,10 +66,8 @@ def build_market_evidence(
     """
     usable = bars_asof(bars, analysis_as_of)
     fetched_at = datetime.now(timezone.utc)
-    # Market reliability comes from the static policy, never from an LLM.
-    reliability = reliability_for(SourceClass.DETERMINISTIC_CALC)
 
-    drafts: list[EvidenceDraft] = []
+    drafts: list[PendingEvidence] = []
     degradation: list[str] = []
 
     if not usable:
@@ -83,7 +81,11 @@ def build_market_evidence(
 
     def add(metric_name: str, value: float, window: int, fact: str) -> None:
         drafts.append(
-            EvidenceDraft(
+            pending(
+                # Reliability is the processor's call; the worker only states which
+                # static source class produced the number.
+                source_class=SourceClass.DETERMINISTIC_CALC,
+                original_publisher=independence_group,
                 asset=asset,
                 source_type="market",
                 source_name=source_name,
@@ -94,8 +96,6 @@ def build_market_evidence(
                 f"range={first_date.isoformat()}..{last_date.isoformat()} UTC daily close",
                 content_reference=f"{window}-bar {metric_name} over {first_date.isoformat()}..{last_date.isoformat()}",
                 normalized_fact=fact,
-                reliability=reliability,
-                independence_group=independence_group,
                 metric_name=metric_name,
                 metric_value=value,
             )

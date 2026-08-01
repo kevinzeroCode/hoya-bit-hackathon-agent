@@ -20,22 +20,24 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict, deque
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+from pydantic import ValidationError
 
 from hoya_agent.adapters.organizer_csv import default_data_dir, load_organizer_csv
 from hoya_agent.data.market_worker import build_market_evidence
 from hoya_agent.data.price_analysis import build_comparison_evidence
 from hoya_agent.data.regime import build_regime_evidence, classify_market_regime
 from hoya_agent.data.types import MarketBar
+from hoya_agent.evidence.drafts import MetricValue, PendingEvidence
 from hoya_agent.evidence.grounding import ground_drafts
+from hoya_agent.evidence.ledger import build_conflict_indicators
 from hoya_agent.evidence.processor import build_ledger
 from hoya_agent.evidence.trust import build_trust_scorecards
-from hoya_agent.evidence.types import EvidenceDraft
-from hoya_agent.evidence.types import EvidenceLedger as WorkerLedger
 from hoya_agent.models import (
     AnalysisResult,
     Asset,
@@ -51,7 +53,6 @@ from hoya_agent.models import (
     MarketContext,
     Reliability,
     RunContext,
-    SourceType,
     Stance,
     TerminalState,
     TimeRange,
@@ -65,6 +66,13 @@ from hoya_agent.orchestration.deadline import (
 )
 from hoya_agent.orchestration.run_state import EventEmitter, RunStateMachine, StageState
 from hoya_agent.ports import Clock
+from hoya_agent.reasoning.arbiter import apply_confidence_caps
+from hoya_agent.reasoning.arbiter_output import (
+    ArbiterOutput,
+    ledger_view,
+    project_to_analysis_result,
+)
+from hoya_agent.reasoning.research_extractor import complete_extracted_drafts
 
 
 @dataclass
@@ -121,6 +129,7 @@ class DeadlineAwarePipeline:
         per_stage_timeout_seconds: float = 45.0,
         optional_operations: Sequence[str] = (),
         counter_signal_operations: Sequence[str] = (),
+        source_note_sink: list[str] | None = None,
     ) -> None:
         self._clock = clock
         self._market = market_pipeline
@@ -128,6 +137,10 @@ class DeadlineAwarePipeline:
         self._research = research_agent
         self._arbiter = arbiter
         self._stage_timeout = per_stage_timeout_seconds
+        # Disclosures from inside the tool registry — a source that only succeeded on
+        # its retry, for instance. The registry has no other route to the report, and
+        # a recovered-but-flaky source in the judged run must still be admitted.
+        self._source_notes = source_note_sink
         # Which planned operations count as optional is configuration, not a guess
         # the pipeline makes. Everything not listed here is baseline work and is
         # never surrendered to the clock.
@@ -140,6 +153,10 @@ class DeadlineAwarePipeline:
         notes: list[str] = []
         durations: dict[str, int] = {}
         reasoning_request = _reasoning_request(context)
+        # One pipeline instance serves one run; a stale note from a previous run
+        # would be attributed to this one.
+        if self._source_notes is not None:
+            self._source_notes.clear()
 
         plan = None
         if self._planner is not None:
@@ -221,6 +238,8 @@ class DeadlineAwarePipeline:
             state.settle(STAGE_MARKET, StageState(market_outcome.terminal_state.value))
 
         # A degraded sibling never discards the branch that did finish.
+        if self._source_notes:
+            notes.extend(self._source_notes)
         if isinstance(research_result, BaseException):
             cancelled = isinstance(research_result, asyncio.CancelledError)
             notes.append(
@@ -244,12 +263,19 @@ class DeadlineAwarePipeline:
                 StageState.degraded if research_notes else StageState.completed,
             )
 
-        # Current research extraction schemas are owner-specific. Only admit a
-        # draft when it already has the full evidence contract; malformed data
-        # is disclosed and never smuggled into the Arbiter payload.
+        # Extracted facts arrive with wording only. Reliability, independence group
+        # and provenance are completed deterministically, and a fact citing a record
+        # that was never fetched is disclosed rather than admitted.
         state.start(STAGE_EVIDENCE)
         ledger = market_outcome.ledger
         research_drafts = list(getattr(research_result, "drafts", ()) or ())
+        if research_drafts:
+            research_drafts, extraction_notes = complete_extracted_drafts(
+                research_drafts,
+                records=list(getattr(research_result, "records", ()) or ()),
+                fetched_at=self._clock.now_utc(),
+            )
+            notes.extend(extraction_notes)
         if research_drafts:
             ledger, rejected = _merge_research_drafts(context, ledger, research_drafts)
             if rejected:
@@ -267,13 +293,16 @@ class DeadlineAwarePipeline:
                     deadline, state, reasoning_request, ledger, notes
                 )
                 notes.extend(arbiter_notes)
-                if result is not None:
-                    result = _attach_trust(result, ledger)
-                else:
+                if result is None:
                     result = market_outcome.result
             else:
                 notes.append("剩餘時間不足，略過 Arbiter 並保留 artifacts finalize 預算。")
                 state.settle(STAGE_ARBITER, StageState.degraded, message=notes[-1])
+
+        # Deterministic and post-LLM: conflicts, caps and scorecards are decided
+        # here so the model can never talk its way past them.
+        ledger, result, conflict_notes = finalize_analysis(ledger, result)
+        notes.extend(conflict_notes)
 
         durations.update(state.stage_durations_ms())
         # Nothing arrived and the acquisition window cut the market branch off: the
@@ -395,7 +424,12 @@ class DeadlineAwarePipeline:
         arbiter_items = select_balanced_evidence(
             ledger.items, max_evidence, protected_ids=protected_ids
         )
-        arbiter_ledger = ledger.model_copy(update={"items": arbiter_items})
+        # The frozen reasoning layer reads attributes through `str(...)`, so it is
+        # handed a string-valued view of the ledger for the same reason it is handed
+        # `ReasoningRequest` instead of `RunContext`. With enum-valued items its
+        # high-reliability priority and its fallback's fact selection both fail
+        # silently — see `EvidenceView`.
+        arbiter_ledger = ledger_view(arbiter_items)
         if len(arbiter_items) < len(ledger.items):
             extra_notes.append(
                 f"雙資產 Arbiter 輸入依資產/來源配額由 {len(ledger.items)} 筆縮為 "
@@ -419,6 +453,23 @@ class DeadlineAwarePipeline:
             )
             state.settle(STAGE_ARBITER, StageState.degraded, message=extra_notes[-1])
             return None, extra_notes
+
+        # An `ArbiterOutput` carries no request context by design; deterministic code
+        # stamps the frozen run identity and cutoff back on. A projection failure is
+        # an Arbiter failure, not a run failure.
+        if isinstance(result, ArbiterOutput):
+            try:
+                result, projection_notes = project_to_analysis_result(
+                    result, request=reasoning_request, evidence_items=arbiter_ledger.items
+                )
+            except ValidationError as exc:
+                extra_notes.append(
+                    f"Arbiter 輸出無法投影為 AnalysisResult（{type(exc).__name__}），"
+                    "使用 deterministic fallback。"
+                )
+                state.settle(STAGE_ARBITER, StageState.degraded, message=extra_notes[-1])
+                return None, extra_notes
+            extra_notes.extend(projection_notes)
         state.settle(STAGE_ARBITER, StageState.completed)
         return result, extra_notes + list(arbiter_notes)
 
@@ -463,123 +514,41 @@ def select_balanced_evidence(
 
 
 @dataclass(frozen=True)
-class MetricValue:
-    """A deterministic numeric value that its Evidence Item carries.
+class MappedLedger:
+    """The canonical ledger plus what `EvidenceItem` cannot carry.
 
-    `models.EvidenceItem` has 16 fields and `extra="forbid"`, so it cannot hold
-    `metric_name`/`metric_value`. Dropping them would make
-    `evidence-contracts.md` §16.4 unsatisfiable, because a quantified
-    invalidation threshold must equal a value carried by the referenced evidence.
-    They are therefore preserved here, keyed by `evidence_id`.
+    `unmapped` is retained for callers but is now always empty: drafts are
+    canonical `EvidenceDraft` models, so an unsupported asset or source type is
+    rejected where it is produced rather than silently dropped at ledger time.
     """
 
-    metric_name: str
-    metric_value: float
-
-
-@dataclass(frozen=True)
-class MappedLedger:
     ledger: EvidenceLedger
     metric_index: dict[str, MetricValue]
     unmapped: list[str]
 
 
 def to_contract_ledger(
-    worker_ledger: WorkerLedger,
+    pending_items: Sequence[PendingEvidence],
     *,
     context: RunContext,
     degradation_messages: Sequence[str] = (),
 ) -> MappedLedger:
-    """Convert a worker ledger into the canonical contract ledger, losing nothing silently."""
-    now = datetime.now(timezone.utc)
-    items: list[EvidenceItem] = []
-    metric_index: dict[str, MetricValue] = {}
-    unmapped: list[str] = []
-    events: list[DegradationEvent] = []
+    """Assign reliability, grouping, hashes and ids, then return the ledger.
 
-    for raw in worker_ledger.items:
-        asset, source_type, reliability, reason = _map_enums(raw)
-        if reason is not None:
-            unmapped.append(raw.evidence_id)
-            events.append(
-                _event(
-                    now,
-                    stage=STAGE_EVIDENCE,
-                    event_type="evidence_unmappable",
-                    source=raw.source_name,
-                    message=f"{raw.evidence_id} 未納入 Ledger：{reason}",
-                )
-            )
-            continue
-
-        items.append(
-            EvidenceItem(
-                evidence_id=raw.evidence_id,
-                asset=asset,
-                source_type=source_type,
-                source_name=raw.source_name,
-                source_url=raw.source_url,
-                published_at=raw.published_at,
-                fetched_at=raw.fetched_at,
-                query_or_parameters=raw.query_or_parameters,
-                content_reference=raw.content_reference,
-                normalized_fact=raw.normalized_fact,
-                reliability=reliability,
-                independence_group=raw.independence_group,
-                content_hash=raw.content_hash,
-                is_cached=raw.is_cached,
-                cache_time=raw.cache_time,
-                is_stale=raw.is_stale,
-            )
-        )
-        if raw.metric_name is not None and raw.metric_value is not None:
-            metric_index[raw.evidence_id] = MetricValue(
-                metric_name=raw.metric_name, metric_value=float(raw.metric_value)
-            )
-
-    if worker_ledger.dropped_duplicates:
-        events.append(
-            _event(
-                now,
-                stage=STAGE_EVIDENCE,
-                event_type="exact_duplicate_collapsed",
-                source="evidence_processor",
-                message=f"以 content_hash 精確去重，收合 {worker_ledger.dropped_duplicates} 筆重複證據。",
-            )
-        )
-
-    for message in degradation_messages:
-        events.append(
-            _event(
-                now,
-                stage=STAGE_MARKET,
-                event_type="metric_unavailable",
-                source="public_market_data",
-                message=message,
-            )
-        )
-
-    if not items and not events:
-        # models.EvidenceLedger rejects an empty ledger with no stated reason.
-        events.append(
-            _event(
-                now,
-                stage=STAGE_EVIDENCE,
-                event_type="no_evidence",
-                source="pipeline",
-                message="本次 run 未取得任何可用證據，且未記錄其他降級原因。",
-            )
-        )
-
-    ledger = EvidenceLedger(
+    A thin seam over `evidence.processor.build_ledger` so the pipeline keeps one
+    call site while the processor owns every assignment rule.
+    """
+    build = build_ledger(
+        pending_items,
         run_id=context.run_id,
         analysis_as_of=context.analysis_as_of,
         run_mode=context.run_mode,
-        items=sorted(items, key=lambda item: item.evidence_id),
-        conflict_indicators=[],
-        degradation_events=events,
+        degradation_messages=degradation_messages,
+        now=datetime.now(timezone.utc),
     )
-    return MappedLedger(ledger=ledger, metric_index=metric_index, unmapped=unmapped)
+    return MappedLedger(
+        ledger=build.ledger, metric_index=dict(build.metric_index), unmapped=[]
+    )
 
 
 class OrganizerCsvPipeline:
@@ -605,7 +574,7 @@ class OrganizerCsvPipeline:
 
     async def execute(self, context: RunContext, emit: EventEmitter) -> PipelineOutcome:
         as_of = self._analysis_date or context.analysis_as_of.date()
-        drafts: list[EvidenceDraft] = []
+        drafts: list[PendingEvidence] = []
         degradation: list[str] = []
         statuses: list[str] = []
         bars_by_asset: dict[Asset, Sequence[MarketBar]] = {}
@@ -676,7 +645,7 @@ class OrganizerCsvPipeline:
         degradation.extend(grounding_notes)
 
         mapped = to_contract_ledger(
-            build_ledger(drafts), context=context, degradation_messages=degradation
+            drafts, context=context, degradation_messages=degradation
         )
         self.last_metric_index = mapped.metric_index
         emit(
@@ -690,7 +659,8 @@ class OrganizerCsvPipeline:
         )
 
         result = _dual_asset_result(context, mapped, bars_by_asset, as_of)
-        notes = []
+        ledger, result, conflict_notes = finalize_analysis(mapped.ledger, result)
+        notes = list(conflict_notes)
         if result is None:
             notes.append(
                 "Arbiter 尚未接線，本次僅產出 deterministic 市場證據，未產出經驗證的推論或結論。"
@@ -701,11 +671,11 @@ class OrganizerCsvPipeline:
 
         terminal_state = (
             TerminalState.failed
-            if not mapped.ledger.items and all(status == "failed" for status in statuses)
+            if not ledger.items and all(status == "failed" for status in statuses)
             else TerminalState.degraded
         )
         return PipelineOutcome(
-            ledger=mapped.ledger,
+            ledger=ledger,
             result=result,
             terminal_state=terminal_state,
             degradation_notes=notes,
@@ -716,7 +686,7 @@ class OrganizerCsvPipeline:
 
     def _market_evidence_for(
         self, asset: Asset, as_of: date, degradation: list[str]
-    ) -> tuple[str, list[EvidenceDraft], Sequence[MarketBar] | None]:
+    ) -> tuple[str, list[PendingEvidence], Sequence[MarketBar] | None]:
         """Load bars and build market evidence for one asset; failures degrade, never raise."""
         try:
             bars = self._bars_for(asset)
@@ -756,27 +726,6 @@ class OrganizerCsvPipeline:
             output_count=output_count,
             message=message,
         )
-
-
-def _map_enums(
-    raw,  # noqa: ANN001 - the worker dataclass is provisional and untyped here on purpose
-) -> tuple[Asset | None, SourceType | None, Reliability | None, str | None]:
-    """Map the dataclass string fields onto the contract enums."""
-    asset: Asset | None = None
-    if raw.asset is not None:
-        try:
-            asset = Asset(_enum_value(raw.asset))
-        except ValueError:
-            return None, None, None, f"不支援的資產 {raw.asset!r}"
-    try:
-        source_type = SourceType(_enum_value(raw.source_type))
-    except ValueError:
-        return None, None, None, f"不支援的 source_type {raw.source_type!r}"
-    try:
-        reliability = Reliability(_enum_value(raw.reliability))
-    except ValueError:
-        return None, None, None, f"不支援的 reliability {raw.reliability!r}"
-    return asset, source_type, reliability, None
 
 
 def _event(
@@ -863,73 +812,29 @@ def _merge_research_drafts(
     context: RunContext,
     ledger: EvidenceLedger,
     research_drafts: Sequence[Any],
+    *,
+    metric_index: Mapping[str, MetricValue] | None = None,
 ) -> tuple[EvidenceLedger, int]:
-    drafts: list[EvidenceDraft] = []
-    for item in ledger.items:
-        drafts.append(
-            EvidenceDraft(
-                asset=item.asset.value if item.asset else None,
-                source_type=item.source_type.value,
-                source_name=item.source_name,
-                source_url=item.source_url,
-                published_at=item.published_at,
-                fetched_at=item.fetched_at,
-                query_or_parameters=item.query_or_parameters,
-                content_reference=item.content_reference,
-                normalized_fact=item.normalized_fact,
-                reliability=item.reliability.value,
-                independence_group=item.independence_group,
-                is_cached=item.is_cached,
-                cache_time=item.cache_time,
-                is_stale=item.is_stale,
-            )
-        )
-    rejected = 0
-    required = (
-        "asset",
-        "source_type",
-        "source_name",
-        "fetched_at",
-        "query_or_parameters",
-        "content_reference",
-        "normalized_fact",
-        "reliability",
-        "independence_group",
+    """Fold research evidence into the market ledger, re-ranking the merged set.
+
+    Anything that is not `PendingEvidence` is counted as rejected rather than
+    coerced: a producer that cannot state its own source class cannot have its
+    reliability decided for it.
+    """
+    admitted = [item for item in research_drafts if isinstance(item, PendingEvidence)]
+    rejected = len(research_drafts) - len(admitted)
+
+    build = build_ledger(
+        admitted,
+        run_id=context.run_id,
+        analysis_as_of=context.analysis_as_of,
+        run_mode=context.run_mode,
+        existing=ledger.items,
+        existing_metrics=metric_index,
+        now=datetime.now(timezone.utc),
     )
-    for raw in research_drafts:
-        if any(getattr(raw, name, None) is None for name in required[1:]):
-            rejected += 1
-            continue
-        try:
-            drafts.append(
-                EvidenceDraft(
-                    asset=(
-                        _enum_value(getattr(raw, "asset"))
-                        if getattr(raw, "asset", None) is not None
-                        else None
-                    ),
-                    source_type=_enum_value(getattr(raw, "source_type")),
-                    source_name=str(getattr(raw, "source_name")),
-                    source_url=getattr(raw, "source_url", None),
-                    published_at=getattr(raw, "published_at", None),
-                    fetched_at=getattr(raw, "fetched_at"),
-                    query_or_parameters=str(getattr(raw, "query_or_parameters")),
-                    content_reference=str(getattr(raw, "content_reference")),
-                    normalized_fact=str(getattr(raw, "normalized_fact")),
-                    reliability=_enum_value(getattr(raw, "reliability")),
-                    independence_group=str(getattr(raw, "independence_group")),
-                    is_cached=bool(getattr(raw, "is_cached", False)),
-                    cache_time=getattr(raw, "cache_time", None),
-                    is_stale=bool(getattr(raw, "is_stale", False)),
-                    metric_name=getattr(raw, "metric_name", None),
-                    metric_value=getattr(raw, "metric_value", None),
-                )
-            )
-        except (TypeError, ValueError):
-            rejected += 1
-    mapped = to_contract_ledger(build_ledger(drafts), context=context)
-    merged_events = list(ledger.degradation_events) + list(mapped.ledger.degradation_events)
-    return mapped.ledger.model_copy(update={"degradation_events": merged_events}), rejected
+    merged_events = list(ledger.degradation_events) + list(build.ledger.degradation_events)
+    return build.ledger.model_copy(update={"degradation_events": merged_events}), rejected
 
 
 def _attach_trust(result: Any, ledger: EvidenceLedger) -> Any:
@@ -945,6 +850,65 @@ def _attach_trust(result: Any, ledger: EvidenceLedger) -> Any:
     payload = result.model_dump()
     payload["trust_scorecards"] = [card.model_dump() for card in cards]
     return AnalysisResult.model_validate(payload)
+
+
+def finalize_analysis(
+    ledger: EvidenceLedger, result: Any
+) -> tuple[EvidenceLedger, Any, list[str]]:
+    """Deterministic post-analysis pass: conflicts → confidence caps → scorecards.
+
+    Material conflict is claim-level, so it can only be decided once stanced links
+    exist. Detecting it here rather than inside the Arbiter keeps the rule out of
+    the prompt: the indicator is derived from the ledger, persisted in
+    `evidence.json`, and the affected conclusion is capped at `low` even though the
+    model asked for `high`. H3 never runs — the conflict survives regardless.
+
+    Trust Scorecards are built last because their `consistency` dimension reads the
+    indicators this function just attached.
+    """
+    if not isinstance(result, AnalysisResult):
+        return ledger, result, []
+
+    notes: list[str] = []
+    indicators = build_conflict_indicators(
+        claim_evidence_links=result.claim_evidence_links, ledger=ledger
+    )
+    if indicators:
+        ledger = ledger.model_copy(
+            update={
+                "conflict_indicators": indicators,
+                "degradation_events": [
+                    *ledger.degradation_events,
+                    *(
+                        DegradationEvent(
+                            stage=STAGE_EVIDENCE,
+                            event_type="material_conflict_detected",
+                            source="evidence_processor",
+                            message=(
+                                f"{indicator.claim_id} 同時存在 reliability 至少 medium 且來自不同"
+                                f"獨立群組的支持與反對證據（支持 "
+                                f"{'、'.join(indicator.supporting_evidence_ids)}；反對 "
+                                f"{'、'.join(indicator.opposing_evidence_ids)}），"
+                                "雙方證據均保留，信心受規則上限約束。"
+                            ),
+                            timestamp=ledger.analysis_as_of,
+                        )
+                        for indicator in indicators
+                    ),
+                ],
+            }
+        )
+        # `mode="json"` because the frozen cap helper compares confidence as plain
+        # strings; enum members would never match the rank table.
+        payload, cap_notes = apply_confidence_caps(
+            result.model_dump(mode="json"),
+            indicators,
+            {item.evidence_id: item for item in ledger.items},
+        )
+        result = AnalysisResult.model_validate(payload)
+        notes.extend(cap_notes)
+
+    return ledger, _attach_trust(result, ledger), notes
 
 
 def _dual_asset_result(

@@ -15,7 +15,8 @@ from hoya_agent.data.indicators import simple_return
 from hoya_agent.data.market_series import closes
 from hoya_agent.data.market_worker import WorkerResult, build_market_evidence
 from hoya_agent.data.types import MarketBar
-from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.evidence.drafts import PendingEvidence
+from hoya_agent.evidence.policies import SourceClass, reliability_for
 
 RETURN = "return_14d"
 VOL = "realized_vol_30d"
@@ -43,11 +44,14 @@ def test_draft_is_traceable_high_reliability_market():
     bars = make_bars(120)
     drafts = build_market_evidence("ETH", bars, analysis_as_of=bars[-1].date).drafts
     for d in drafts:
-        assert isinstance(d, EvidenceDraft)
+        assert isinstance(d, PendingEvidence)
         assert d.asset == "ETH"
         assert d.source_type == "market"
-        assert d.reliability == "high"
-        assert d.independence_group == INDEPENDENCE_GROUP
+        # Deterministic calculation is a `high` source class; the processor is the
+        # one that turns that into a reliability on the ledger item.
+        assert d.source_class is SourceClass.DETERMINISTIC_CALC
+        assert reliability_for(d.source_class) == "high"
+        assert d.original_publisher == INDEPENDENCE_GROUP
         assert d.normalized_fact.strip()
         assert d.content_reference.strip()
         assert d.query_or_parameters.strip()
@@ -94,4 +98,4 @@ def test_real_btc_return_draft_matches_golden():
     result = build_market_evidence("BTC", bars, analysis_as_of=date(2026, 5, 31))
     ret = next(d for d in result.drafts if d.metric_name == RETURN)
     assert ret.metric_value == pytest.approx(-0.048843, abs=1e-6)
-    assert ret.reliability == "high"
+    assert reliability_for(ret.source_class) == "high"

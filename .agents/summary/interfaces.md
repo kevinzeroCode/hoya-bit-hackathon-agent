@@ -503,7 +503,97 @@ class RssResearchAdapter:
     """ResearchSourceAdapter over a first-party outlet RSS feed → RawSourceRecord[]."""
     def __init__(self, *, feed_url: str, source_name: str, publisher_domain: str,
                  client: httpx.Client | None = None) -> None: ...
-    async def fetch(self, *, operation: str, context: RunContext, **params: object) -> list[RawSourceRecord]: ...
+    async def fetch(self, *, operation: str, context: RunContext | None = None,
+                    **params: object) -> SourceResult[list[RawSourceRecord]]: ...
+```
+
+### CryptoPanicResearchAdapter / FearGreedResearchAdapter / OfficialAnnouncementsResearchAdapter
+
+```python
+class CryptoPanicResearchAdapter:
+    """Aggregator feed; `rejected` without a token, and the token never reaches parameters."""
+    def __init__(self, *, api_token: str | None, client: httpx.Client | None = None) -> None: ...
+
+class FearGreedResearchAdapter:
+    """Whole-market sentiment; records carry `asset=None`."""
+    def __init__(self, *, client: httpx.Client | None = None, limit: int = 7) -> None: ...
+
+class OfficialAnnouncementsResearchAdapter:
+    """Configured official project feeds; a missing feed is a disclosed gap."""
+    def __init__(self, *, client: httpx.Client | None = None,
+                 feed_overrides: dict[str, dict[str, str]] | None = None) -> None: ...
+
+# All three share the research fetch signature:
+    async def fetch(self, *, operation: str, context: RunContext | None = None,
+                    **params: object) -> SourceResult[list[RawSourceRecord]]: ...
+```
+
+`context` is optional because `StaticToolRegistry` invokes operations with loose
+`assets` / `analysis_as_of` / `lookback_days` parameters rather than a `RunContext`;
+`_resolve_target()` / `_resolve_cutoff()` accept either and never recompute the cutoff.
+
+```python
+# adapters/port_adapters.py
+class SourceUnavailable(RuntimeError):
+    """Raised only by registry handlers, so a failed source becomes a disclosed gap."""
+    def __init__(self, operation: str, status: SourceStatus, detail: str | None) -> None: ...
+
+# adapters/_errors.py — normalized failure vocabulary
+def classify_error(exc: BaseException) -> str          # timeout|http_error|malformed|rejected
+def category_note(message: str, category: str) -> str  # appends "[category=…]"
+def category_of(notes: object) -> str | None
+```
+
+---
+
+## Research Composition (application.py)
+
+```python
+# Operation names shared by the registry, the Planner allowlist and the skip order
+RESEARCH_OPERATION_RSS = "fetch_rss_news"
+RESEARCH_OPERATION_OFFICIAL = "fetch_official_announcements"
+RESEARCH_OPERATION_FEAR_GREED = "fetch_fear_greed"
+RESEARCH_OPERATION_CRYPTOPANIC = "fetch_cryptopanic_news"
+
+BASELINE_RESEARCH_OPERATIONS: tuple[str, ...]     # never trimmed by the skip order
+OPTIONAL_CONTEXT_OPERATIONS: tuple[str, ...]      # surrendered first
+COUNTER_SIGNAL_OPERATIONS: tuple[str, ...]        # surrendered last
+ALLOWED_RESEARCH_HOSTS: frozenset[str]            # enforced before any external call
+
+@dataclass(frozen=True)
+class NewsFeed:
+    feed_url: str
+    source_name: str
+    publisher_domain: str
+
+def build_research_tool_registry(
+    *,
+    news_feeds: Sequence[NewsFeed] = DEFAULT_NEWS_FEEDS,
+    cryptopanic_api_token: str | None = None,
+    client: object | None = None,
+    official_feed_overrides: Mapping[str, Mapping[str, str]] | None = None,
+    include_optional: bool = True,
+) -> StaticToolRegistry: ...
+
+def build_research_pipeline(
+    *,
+    clock: Clock,
+    llm: object | None = None,
+    tool_registry: StaticToolRegistry | None = None,
+    market_pipeline: AnalysisPipeline | None = None,
+    arbiter: object | None = None,
+    data_dir: Path | None = None,
+    analysis_date: object | None = None,
+    cryptopanic_api_token: str | None = None,
+    client: object | None = None,
+) -> DeadlineAwarePipeline: ...
+
+@dataclass
+class DeterministicPlanner:
+    """Planner substitute when no LLM is configured; returns the allowlisted default plan."""
+    tool_registry: object
+    lookback_days: int = DEFAULT_LOOKBACK_DAYS
+    async def run(self, *, request: object, deadline: float) -> tuple[ResearchPlan, list[str]]: ...
 ```
 
 ---
@@ -635,6 +725,100 @@ def build_ledger(
     max_for_arbiter: int = 30,
 ) -> EvidenceLedger:
     """Rank, dedup, assign stable IDs. Fully deterministic."""
+```
+
+### Evidence Ledger Service
+
+```python
+# evidence/ledger.py
+CONFLICT_RULE_VERSION = "1.0"
+
+def build_conflict_indicators(
+    *,
+    claim_evidence_links: Sequence[Any],
+    ledger: Any,
+    rule_version: str = CONFLICT_RULE_VERSION,
+) -> list[ConflictIndicator]:
+    """Every material conflict for a result's links (evidence-contracts §9).
+
+    Deterministic and order-independent: sorted by claim_id with sorted id lists.
+    """
+
+def detect_material_conflict(
+    claim_id: str, *, supporting_evidence_ids, opposing_evidence_ids, ledger
+) -> ConflictResult
+def confidence_signals_for_claim(*, supporting_evidence_ids, ledger, ...) -> ConfidenceSignals
+def source_coverage_gaps(ledger) -> list[str]
+def select_for_arbiter(...) / select_for_arbiter_dual(...)
+```
+
+### Research Extraction (reasoning/research_extractor.py)
+
+```python
+PROMPT_ID = "research-extraction"
+MAX_FACTS_PER_RECORD = 3
+MAX_CONTENT_REFERENCE_CHARS = 400
+
+class ExtractedFact(BaseModel):      # extra="forbid"
+    record_id: str
+    normalized_fact: str
+    relevant: bool = True
+    event_type: str = "other"
+    asset: Asset | None = None
+
+class ResearchExtraction(BaseModel):  # the ResearchAgent's injected draft_schema
+    drafts: list[ExtractedFact] = []
+
+def complete_extracted_drafts(
+    drafts: Sequence[Any], *, records: Sequence[Any], fetched_at: datetime | None = None
+) -> tuple[list[EvidenceDraft], list[str]]:
+    """Deterministic completion: static reliability, policy independence group,
+    record timestamps. Already-complete drafts pass through; a fact citing an
+    unfetched record is dropped and disclosed."""
+```
+
+### Deterministic Post-Analysis (orchestration/pipeline.py)
+
+```python
+def finalize_analysis(
+    ledger: EvidenceLedger, result: Any
+) -> tuple[EvidenceLedger, Any, list[str]]:
+    """Conflicts → confidence caps → Trust Scorecards, in that order."""
+```
+
+### Arbiter Boundary (reasoning/arbiter_output.py)
+
+```python
+ConfidenceText = Literal["high", "medium", "low"]
+ClaimTypeText = Literal["fact", "inference", "conclusion"]
+StanceText = Literal["supports", "opposes", "neutral"]
+
+class ArbiterOutput(BaseModel):        # extra="forbid"; the Arbiter's result_schema
+    direct_answer: str
+    market_context: ArbiterMarketContext | None = None
+    claims: list[ArbiterClaim] = []            # time_range optional
+    claim_evidence_links: list[ArbiterLink] = []
+    confidence: ConfidenceText
+    confidence_rationale: str
+    limitations: list[str] = []
+    invalidation_conditions: list[ArbiterInvalidationCondition] = []
+    watch_items: list[str] = []
+    insufficient_data: bool = False
+    degradation_notes: list[str] = []
+    # no run_id / question / assets / analysis_as_of  (frozen request context)
+    # no trust_scorecards / market_regime            (deterministic only)
+
+@dataclass(frozen=True)
+class EvidenceView: ...   # EvidenceItem field names, plain-string enums
+@dataclass(frozen=True)
+class LedgerView:
+    items: list[EvidenceView]
+
+def ledger_view(items: Sequence[Any]) -> LedgerView: ...
+
+def project_to_analysis_result(
+    output: ArbiterOutput, *, request: Any, evidence_items: Sequence[Any] = ()
+) -> tuple[AnalysisResult, list[str]]: ...
 ```
 
 ### Evidence Policies

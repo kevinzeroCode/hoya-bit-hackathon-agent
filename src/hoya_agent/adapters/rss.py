@@ -15,18 +15,19 @@ from email.utils import parsedate_to_datetime
 import httpx
 
 from hoya_agent.adapters._assets import mentions
+from hoya_agent.adapters._errors import category_note, classify_error
 from hoya_agent.data.market_worker import WorkerResult
-from hoya_agent.evidence.policies import SourceClass, independence_group, reliability_for
-from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.evidence.drafts import PendingEvidence, pending
+from hoya_agent.evidence.policies import SourceClass
 
 UTC = timezone.utc
 
 
-def fetch_rss_news(
+async def fetch_rss_news(
     asset: str,
     *,
     analysis_as_of: datetime,
-    client: httpx.Client,
+    client: httpx.AsyncClient,
     feed_url: str,
     source_name: str,
     publisher_domain: str,
@@ -37,13 +38,22 @@ def fetch_rss_news(
     earliest = analysis_as_of - timedelta(days=lookback_days)
     fetched_at = datetime.now(UTC)
     try:
-        resp = client.get(feed_url, timeout=timeout)
+        resp = await client.get(feed_url, timeout=timeout)
         resp.raise_for_status()
         root = ET.fromstring(resp.text)
-    except (httpx.HTTPError, ET.ParseError):
-        return WorkerResult("failed", [], [f"RSS fetch failed for {source_name} (optional source)"])
+    except (httpx.HTTPError, ET.ParseError) as exc:
+        return WorkerResult(
+            "failed",
+            [],
+            [
+                category_note(
+                    f"RSS fetch failed for {source_name} (optional source)",
+                    classify_error(exc),
+                )
+            ],
+        )
 
-    drafts: list[EvidenceDraft] = []
+    drafts: list[PendingEvidence] = []
     for item in root.iter("item"):
         title_el, date_el, link_el = item.find("title"), item.find("pubDate"), item.find("link")
         if title_el is None or date_el is None or not (title_el.text or "").strip():
@@ -59,7 +69,9 @@ def fetch_rss_news(
             continue
         link = (link_el.text if link_el is not None else feed_url) or feed_url
         drafts.append(
-            EvidenceDraft(
+            pending(
+                source_class=SourceClass.ORIGINAL_NEWS_PAGE,
+                original_publisher=publisher_domain,
                 asset=asset,
                 source_type="news",
                 source_name=source_name,
@@ -69,10 +81,6 @@ def fetch_rss_news(
                 query_or_parameters=f"rss feed={feed_url}",
                 content_reference=f"{source_name} RSS 標題（{published.date()}）",
                 normalized_fact=title,
-                reliability=reliability_for(SourceClass.ORIGINAL_NEWS_PAGE),
-                independence_group=independence_group(
-                    original_publisher=publisher_domain, source_url=link
-                ),
             )
         )
 

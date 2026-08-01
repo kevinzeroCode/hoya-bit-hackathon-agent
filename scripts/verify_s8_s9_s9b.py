@@ -6,10 +6,11 @@ import asyncio
 import tempfile
 from datetime import UTC, date, datetime
 from pathlib import Path
-from types import SimpleNamespace
 
 from hoya_agent.application import ApplicationService, build_request
-from hoya_agent.models import Asset, EvidenceLedger, Reliability, RunMode, SourceType
+from hoya_agent.evidence.drafts import pending
+from hoya_agent.evidence.policies import SourceClass
+from hoya_agent.models import Asset, EvidenceLedger, RunMode, SourceType
 from hoya_agent.orchestration.pipeline import DeadlineAwarePipeline, OrganizerCsvPipeline
 from hoya_agent.reporting.artifacts import ARTIFACT_NAMES
 
@@ -34,7 +35,11 @@ class EmptyResearchAgent:
     async def run(self, *, plan, request, deadline):
         assert request.assets == ("BTC", "ETH")
         del plan, deadline
-        draft = SimpleNamespace(
+        # A producer states its static source class; reliability and independence
+        # group are the Evidence Processor's to assign.
+        draft = pending(
+            source_class=SourceClass.OFFICIAL_ANNOUNCEMENT,
+            original_publisher="official-project-feed",
             asset=Asset.BTC,
             source_type=SourceType.news,
             source_name="official_project_feed",
@@ -44,11 +49,6 @@ class EmptyResearchAgent:
             query_or_parameters="asset=BTC",
             content_reference="record-1",
             normalized_fact="A schema-valid research fact.",
-            reliability=Reliability.high,
-            independence_group="official-project-feed",
-            is_cached=False,
-            cache_time=None,
-            is_stale=False,
         )
         return type("Outcome", (), {"drafts": [draft], "degradation_events": []})()
 

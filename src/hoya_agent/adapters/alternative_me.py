@@ -11,24 +11,33 @@ from datetime import datetime, timezone
 
 import httpx
 
+from hoya_agent.adapters._errors import category_note, classify_error
 from hoya_agent.data.market_worker import WorkerResult
-from hoya_agent.evidence.policies import SourceClass, independence_group, reliability_for
-from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.evidence.drafts import pending
+from hoya_agent.evidence.policies import SourceClass
 
 API_URL = "https://api.alternative.me/fng/"
 UTC = timezone.utc
 
 
-def fetch_fear_greed(
-    *, analysis_as_of: datetime, client: httpx.Client, limit: int = 7, timeout: float = 45.0
+async def fetch_fear_greed(
+    *, analysis_as_of: datetime, client: httpx.AsyncClient, limit: int = 7, timeout: float = 45.0
 ) -> WorkerResult:
     fetched_at = datetime.now(UTC)
     try:
-        resp = client.get(API_URL, params={"limit": limit}, timeout=timeout)
+        resp = await client.get(API_URL, params={"limit": limit}, timeout=timeout)
         resp.raise_for_status()
         rows = resp.json()["data"]
-    except (httpx.HTTPError, ValueError, KeyError, TypeError):
-        return WorkerResult("failed", [], ["Fear & Greed fetch failed (optional source)"])
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+        return WorkerResult(
+            "failed",
+            [],
+            [
+                category_note(
+                    "Fear & Greed fetch failed (optional source)", classify_error(exc)
+                )
+            ],
+        )
 
     # Most recent reading at or before the frozen cutoff.
     best: tuple[datetime, str, str] | None = None
@@ -48,7 +57,9 @@ def fetch_fear_greed(
         return WorkerResult("failed", [], ["no Fear & Greed reading at or before analysis_as_of"])
 
     published, value, classification = best
-    draft = EvidenceDraft(
+    draft = pending(
+        source_class=SourceClass.FEAR_GREED,
+        provider_id="alternative.me",
         asset=None,  # whole-market context, not coin-specific
         source_type="social",
         source_name="Alternative.me Fear & Greed",
@@ -59,7 +70,5 @@ def fetch_fear_greed(
         content_reference=f"Fear & Greed Index = {value} ({classification}) on {published.date()} UTC",
         normalized_fact=f"全市場恐懼與貪婪指數為 {value}（{classification}），"
         f"截至 {published.date()} UTC；此為全市場情緒，非單一幣種指標。",
-        reliability=reliability_for(SourceClass.FEAR_GREED),
-        independence_group=independence_group(source_url=API_URL),
     )
     return WorkerResult("completed", [draft], [])

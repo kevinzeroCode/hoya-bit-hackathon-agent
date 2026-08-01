@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from hoya_agent.evidence.drafts import PendingEvidence, pending
 from hoya_agent.evidence.ledger import (
     confidence_signals_for_claim,
     detect_material_conflict,
@@ -16,11 +17,19 @@ from hoya_agent.evidence.ledger import (
     select_for_arbiter_dual,
     source_coverage_gaps,
 )
-from hoya_agent.evidence.policies import max_confidence
+from hoya_agent.evidence.policies import SourceClass, max_confidence
 from hoya_agent.evidence.processor import build_ledger
-from hoya_agent.evidence.types import EvidenceDraft, EvidenceLedger
+from hoya_agent.models import EvidenceLedger, RunMode
 
 UTC = timezone.utc
+
+# Reliability is no longer something a producer states, so the fixture selects the
+# static source class that yields the reliability the test needs.
+_CLASS_FOR_RELIABILITY = {
+    "high": SourceClass.DETERMINISTIC_CALC,
+    "medium": SourceClass.ORIGINAL_NEWS_PAGE,
+    "low": SourceClass.NEWS_AGGREGATOR,
+}
 
 
 def _draft(
@@ -33,8 +42,10 @@ def _draft(
     group: str = "coindesk.com",
     published: datetime | None = None,
     is_stale: bool = False,
-) -> EvidenceDraft:
-    return EvidenceDraft(
+) -> PendingEvidence:
+    return pending(
+        source_class=_CLASS_FOR_RELIABILITY[reliability],
+        original_publisher=group,
         asset=asset,
         source_type=source_type,
         source_name=source_name,
@@ -44,14 +55,17 @@ def _draft(
         query_or_parameters="params",
         content_reference="ref",
         normalized_fact=fact,
-        reliability=reliability,
-        independence_group=group,
         is_stale=is_stale,
     )
 
 
-def _build(*drafts: EvidenceDraft) -> EvidenceLedger:
-    return build_ledger(list(drafts))
+def _build(*drafts: PendingEvidence) -> EvidenceLedger:
+    return build_ledger(
+        list(drafts),
+        run_id="run_20260531_000000_led1",
+        analysis_as_of=datetime(2026, 5, 31, tzinfo=UTC),
+        run_mode=RunMode.rehearsal,
+    ).ledger
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +338,7 @@ class TestSelectForArbiter:
 
     def test_respects_max_items(self):
         drafts = [_draft(f"fact {i}", group=f"g{i}.com") for i in range(10)]
-        ledger = build_ledger(drafts)
+        ledger = _build(*drafts)
         result = select_for_arbiter(ledger, max_items=5)
         assert len(result) == 5
 
@@ -333,7 +347,7 @@ class TestSelectForArbiter:
             _draft("high1", reliability="high", source_type="market", group="a.com"),
             _draft("high2", reliability="high", source_type="market", group="b.com"),
         ] + [_draft(f"low{i}", group=f"g{i}.com") for i in range(10)]
-        ledger = build_ledger(drafts)
+        ledger = _build(*drafts)
         result = select_for_arbiter(ledger, max_items=5)
         high_facts = [i.normalized_fact for i in result if i.reliability == "high"]
         assert len(high_facts) == 2
@@ -345,7 +359,7 @@ class TestSelectForArbiter:
             _draft("low2", group="coindesk.com", source_name="CD2"),
             _draft("low3", group="theblock.co"),
         ]
-        ledger = build_ledger(drafts)
+        ledger = _build(*drafts)
         result = select_for_arbiter(ledger, max_items=3)
         groups = {i.independence_group for i in result}
         # Should prefer diverse groups
@@ -363,7 +377,7 @@ class TestSelectForArbiterDual:
                    source_type="market", group=f"eth{i}.com")
             for i in range(6)
         ]
-        ledger = build_ledger(drafts)
+        ledger = _build(*drafts)
         result = select_for_arbiter_dual(ledger, assets=["BTC", "ETH"], max_items=8)
         btc_count = sum(1 for i in result if i.asset == "BTC")
         eth_count = sum(1 for i in result if i.asset == "ETH")
@@ -379,13 +393,13 @@ class TestSelectForArbiterDual:
             _draft("eth1", asset="ETH", reliability="high",
                    source_type="market", group="eth.com"),
         ]
-        ledger = build_ledger(drafts)
+        ledger = _build(*drafts)
         result = select_for_arbiter_dual(ledger, assets=["BTC", "ETH"], max_items=10)
         none_items = [i for i in result if i.asset is None]
         assert len(none_items) == 1
 
     def test_single_asset_falls_back_to_standard(self):
         drafts = [_draft(f"f{i}", group=f"g{i}.com") for i in range(5)]
-        ledger = build_ledger(drafts)
+        ledger = _build(*drafts)
         result = select_for_arbiter_dual(ledger, assets=["BTC"], max_items=3)
         assert len(result) == 3
