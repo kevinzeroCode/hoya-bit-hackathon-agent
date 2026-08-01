@@ -53,14 +53,25 @@
 | 編排（S3） | 🟡 CSV-only pipeline 存在（`orchestration/pipeline.py` OrganizerCsvPipeline）；full deadline/fork-join 未開始 |
 | 報告（S2/Renderer） | ✅ `reporting/renderer.py` + `reporting/artifacts.py` on main |
 | UI（S4） | 🔴 未開始 |
-| **真實 Bedrock 呼叫（S0）** | 🔴 **仍是零次 —— 全案最高風險項** |
+| **真實 Bedrock 呼叫（S0）** | 🟡 **已成功呼叫過，但 S0 未關閉** —— 見下方兩個缺口 |
 
 > ⚠️ **如果你只讀一段，讀這一段：**
-> `adapters/bedrock.py` 有 371 行、契約測試全綠——**但那全是對著 stub 測的。**
-> 專案至今沒有成功呼叫過一次真實的 Bedrock。若模型未開通、region 不對或 model ID 錯，
-> 整個 H2-Lite 是死的。
-> → [Implementation-Plan 的 S0](Implementation-Plan.md) 是先做的那一節，它的 **§3.2 人工檢查清單**
-> 列出這次呼叫要留下什麼紀錄。
+> **「Bedrock 一次都沒呼叫過」已經不成立。** P2 於 2026-08-01 在 `us-west-2` 以
+> `us.anthropic.claude-haiku-4-5-20251001-v1:0` 成功呼叫，紀錄見
+> `p2-etl-mvp/docs/service-access-check.md`。
+>
+> **但 S0 仍關不掉，剩兩個獨立的缺口：**
+>
+> 1. **AWS 帳號未提交 Anthropic use case details 表單。** 目前每次 Anthropic 模型呼叫都回
+>    `ResourceNotFoundException: Model use case details have not been submitted for this account`
+>    （連續 4 次實測皆同）。Bedrock 本身可達——`list_foundation_models` 列得到 112 個模型、
+>    Haiku 4.5 在清單內，標準 AWS profile 憑證也有效。**純粹卡在主控台這一步。**
+>    這不擋離線的 Bronze／Silver，但 Gold 與現場 demo 全靠它。
+> 2. **S0 退出條件 #1 要的是一次真實的 *Converse 結構化輸出* 呼叫。** P2 那次走
+>    `invoke_model`；`adapters/bedrock.py` 走 `converse` + forced `toolConfig`，不是同一條路。
+>    已證明的是憑證／region／模型存取權，未證明的是強制工具呼叫的結構化輸出。
+>
+> → [Implementation-Plan 的 S0](Implementation-Plan.md)。
 
 ---
 

@@ -29,8 +29,14 @@
 - `_provisional_seams.py` 與 `test_s1_seam_bridge.py` 已刪除。
 - 新增 `orchestration/{deadline,pipeline,run_state}.py`、`evidence/trust.py` 與雙幣報告路徑。
 - PR #18 的離線 S8/S9/S9B acceptance smoke、compileall、變更 whitespace check 通過。
-- GitHub Actions/status checks 尚未配置；完整 pytest/Ruff 與 live Silver 不得宣稱通過。
-- 已知 repository-wide Ruff 基線仍是 87 errors；`tests/acceptance/`、`tests/live/` 尚不存在。
+- GitHub Actions/status checks 尚未配置；live Silver 仍不得宣稱通過。
+- **完整 pytest／Ruff 已於 `b84622c` 實跑**（Claude Code，2026-08-01，Python 3.12.13，
+  `uv pip install -e ".[dev]"` 後的乾淨 venv，含 streamlit 1.60.0）：
+  `pytest tests -q` → **598 passed，零失敗**；`ruff check .` → **All checks passed**。
+- **Ruff 基線 87 → 0**：PR #16 清一批，`9537d3e` 清掉剩餘 84 個，
+  `37b1379` 引進的 2 個 `I001` 也已修掉。`Implementation-Plan.md` §3.3 的
+  「`ruff check .` 乾淨」這條 DoD **現已達成**。
+- `tests/acceptance/`、`tests/live/` 尚不存在。
 
 ## Completed and frozen
 
