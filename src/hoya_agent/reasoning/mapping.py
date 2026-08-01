@@ -67,11 +67,15 @@ def build_analysis_result(
     """Same mapping as `to_analysis_result` but raises on invalid output, so callers
     that want the reason (for a degradation note) can catch it."""
     analysis_as_of = _attr(request, "analysis_as_of")
+    request_assets = [Asset(a) for a in (_attr(request, "assets") or ())]
     claims = [
         Claim(
             claim_id=c.claim_id,
             claim_type=ClaimType(c.claim_type),
-            assets=[Asset(a) for a in c.assets],
+            # A claim that omits assets defaults to the run's assets (a claim about
+            # the analysed coin belongs to that coin) — the model often leaves it
+            # empty, which the strict AnalysisResult contract rejects.
+            assets=[Asset(a) for a in c.assets] or request_assets,
             time_range=_time_range(c, analysis_as_of),
             text=c.text,
             based_on_claim_ids=list(c.based_on_claim_ids),

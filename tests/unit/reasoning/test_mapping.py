@@ -45,6 +45,23 @@ def test_valid_generation_maps_to_analysis_result_with_a_claim():
     assert result.insufficient_data is False
 
 
+def test_claim_with_empty_assets_defaults_to_request_assets():
+    # The model frequently omits a claim's assets; AnalysisResult rejects an empty
+    # list, so the mapper must default it to the run's assets.
+    gen = ArbiterGeneration(
+        direct_answer="BTC 近兩週小幅震盪。",
+        claims=[GenClaim(claim_id="cl_001", claim_type="fact", assets=[], text="近14日報酬-1.6%")],
+        claim_evidence_links=[
+            GenLink(claim_id="cl_001", evidence_id="ev_001", stance="supports", reason="市場數據"),
+        ],
+        confidence="medium",
+        confidence_rationale="單一來源。",
+    )
+    result = to_analysis_result(gen, request=_request(), ledger=None)
+    assert result is not None
+    assert [a.value for a in result.claims[0].assets] == ["BTC"]
+
+
 def test_insufficient_generation_maps_cleanly():
     gen = ArbiterGeneration(
         direct_answer="目前無法可靠判定。",
