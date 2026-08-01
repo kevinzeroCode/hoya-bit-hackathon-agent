@@ -601,6 +601,9 @@ class OrganizerCsvPipeline:
         load_bars: BarLoader | None = None,
         analysis_date: date | None = None,
         extra_drafts: Callable[[], tuple[list[EvidenceDraft], list[str]]] | None = None,
+        market_source_name: str | None = None,
+        market_independence_group: str | None = None,
+        market_source_url: str | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._load_bars = load_bars
@@ -608,6 +611,16 @@ class OrganizerCsvPipeline:
         # Injected callable for additional deterministic sources (e.g. live Fear &
         # Greed). It owns any HTTP so this module keeps its no-httpx boundary.
         self._extra_drafts = extra_drafts
+        # Provenance for the market series. Defaults (None) keep the organizer CSV
+        # labels; a live loader (e.g. Binance) must pass its own so evidence is
+        # never misattributed to the organizer benchmark.
+        self._market_source: dict[str, str] = {}
+        if market_source_name is not None:
+            self._market_source["source_name"] = market_source_name
+        if market_independence_group is not None:
+            self._market_source["independence_group"] = market_independence_group
+        if market_source_url is not None:
+            self._market_source["source_url"] = market_source_url
         self.last_metric_index: dict[str, MetricValue] = {}
 
     async def execute(self, context: RunContext, emit: EventEmitter) -> PipelineOutcome:
@@ -627,6 +640,7 @@ class OrganizerCsvPipeline:
                     asset.value,
                     bars,
                     analysis_as_of=as_of,
+                    **self._market_source,
                 )
                 drafts.extend(regime.drafts)
                 degradation.extend(regime.degradation)
@@ -649,6 +663,7 @@ class OrganizerCsvPipeline:
                     bars_by_asset[left],
                     bars_by_asset[right],
                     analysis_as_of=as_of,
+                    **self._market_source,
                 )
                 drafts.extend(comparison.drafts)
                 degradation.extend(comparison.degradation)
@@ -755,7 +770,7 @@ class OrganizerCsvPipeline:
             )
             return "failed", [], None
 
-        worker = build_market_evidence(asset.value, bars, analysis_as_of=as_of)
+        worker = build_market_evidence(asset.value, bars, analysis_as_of=as_of, **self._market_source)
         degradation.extend(f"{asset.value}: {message}" for message in worker.degradation)
         return worker.status, list(worker.drafts), bars
 

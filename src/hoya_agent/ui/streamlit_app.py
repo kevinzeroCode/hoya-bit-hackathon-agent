@@ -108,6 +108,10 @@ def _run_live(assets: list[Asset], question: str, progress=None) -> object:
             load_bars=binance_bar_loader(now),
             extra_drafts=fear_greed_drafts(now),
             analysis_date=now.date(),
+            # Real provenance: this series is live Binance spot, NOT the organizer CSV.
+            market_source_name="binance_spot",
+            market_independence_group="binance",
+            market_source_url="https://api.binance.com/api/v3/klines",
         ),
         configured_sources=["binance_spot", "fear_greed"],
     )
@@ -228,11 +232,13 @@ def main() -> None:
 
     running = st.session_state.get("_run_in_flight", False)
     with st.form("req"):
-        c1, c2, c3, c4 = st.columns([1.5, 3.4, 1.9, 1.1])
-        # Five-asset allowlist, single-asset path. The second-asset opt-in
-        # (dual comparison) belongs to Task 12 and stays disabled until it lands.
-        asset = c1.selectbox("幣種(單幣;雙幣比較待 Task 12)", [a.value for a in Asset], index=0)
-        question = c2.text_input("題目 / 問題", placeholder="例:BTC 過去兩週表現?")
+        c1, c2, c3, c4 = st.columns([1.7, 3.2, 1.9, 1.1])
+        # Five-asset allowlist; 1–2 assets. Two assets triggers the cross-asset
+        # comparison path (S9B / Task 12) — comparison questions need this.
+        chosen = c1.multiselect(
+            "幣種(1–2;選 2 個 = 跨幣比較)", [a.value for a in Asset], default=["BTC"], max_selections=2
+        )
+        question = c2.text_input("題目 / 問題", placeholder="例:BTC 過去兩週表現?/ ETH 與 BTC 相對強弱?")
         mode = c3.selectbox("模式", _MODES, index=0)
         # Disabled while a run is in flight so one submit == one ApplicationService call.
         submitted = c4.form_submit_button("執行分析", use_container_width=True, disabled=running)
@@ -246,7 +252,11 @@ def main() -> None:
     if running:  # a submit queued while the previous run was still executing
         st.warning("上一個分析仍在進行,已忽略重複的執行請求。")
         return
+    if not chosen:
+        st.warning("請至少選一個幣種。")
+        return
 
+    assets = [Asset(a) for a in chosen]
     is_live = mode == _MODE_LIVE
     label = "即時分析中(Binance 現價 + 情緒 → 證據 → 報告)…" if is_live else "離線分析中(官方 CSV)…"
     st.session_state["_run_in_flight"] = True
@@ -254,10 +264,10 @@ def main() -> None:
         with st.status(label, expanded=True) as status:
             sink = _StreamlitProgress(status)
             if is_live:
-                summary = _run_live([Asset(asset)], question, progress=sink)
+                summary = _run_live(assets, question, progress=sink)
             else:
                 run_mode = RunMode.demo if mode == _MODE_OFFLINE_DEMO else RunMode.rehearsal
-                summary = _run_offline([Asset(asset)], question, run_mode, progress=sink)
+                summary = _run_offline(assets, question, run_mode, progress=sink)
             status.update(label="分析完成", state="complete", expanded=False)
     finally:
         st.session_state["_run_in_flight"] = False
