@@ -22,7 +22,7 @@
 Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC2。
 **每個檔的細節請看檔案地圖，本文不重列。**
 
-> ⚠️ **狀態掃描時間：2026-08-01，基準 commit `d15f6da`（`main`）。**
+> ⚠️ **狀態掃描時間：2026-08-01，基準 commit `610e900`（`main`）。**
 > 各階段的「現況」區塊記的是**真的跑過**的事實，不是計畫。
 
 ---
@@ -188,11 +188,24 @@ S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 �
 
 ### S0 — 服務可用性 preflight（含**專案史上第一次真實 Bedrock 呼叫**）
 
-> **現況：🔴 未開始 — 且這是全案最高風險項。**
-> `docs/ACTIVE_WORK.md`（2026-08-01）：**「Bedrock 實際呼叫：仍未驗證過任何一次——這是目前最大的未爆彈。」**
-> `adapters/bedrock.py` 有 371 行、`tests/contract/test_bedrock_client.py` 全綠——**但那全是對著 stub 測的。**
-> 若模型未開通、region 不對或 model ID 錯，整個 H2-Lite 是死的，S1–S10 做得再好都沒用。
-> **已實作：** 無。**待辦：** 全部。**指派：** 任務 D（UI），且不需等任何人。
+> **現況：🟡 一半完成（2026-08-01 更新）。最高風險項已大幅降級，但退出條件 #1 尚未達成。**
+>
+> **已完成（P2 驗證，非原指派的任務 D）：** 真實 Bedrock 呼叫成功。
+> `us-west-2` ／ `us.anthropic.claude-haiku-4-5-20251001-v1:0` ／ boto3 `invoke_model`，
+> 憑證用 `AWS_BEARER_TOKEN_BEDROCK`。同時驗證了本階段要求的來源可用性探測與工具版本。
+> 紀錄：`feat/p2-etl-data-evidence` 的 `p2-etl-mvp/docs/service-access-check.md`。
+> 過程踩過 `ResourceNotFoundException`（`claude-3-5-haiku-20241022` 已 EOL），換現役 Haiku 4.5 即通。
+>
+> **尚未完成：** 退出條件 #1 要求的是「一次**真實的 Converse 結構化輸出呼叫**」。
+> P2 走的是 `invoke_model` + Anthropic Messages body；`main` 的 `adapters/bedrock.py`
+> 走的是 `converse` + forced `toolConfig`（`toolChoice` 指定單一工具）。
+> **兩者不是同一條路** —— 已證明的是憑證／region／模型存取權，
+> 未證明的是強制工具呼叫的結構化輸出在這顆模型上會不會過。
+>
+> **剩餘工作（約 15 分鐘）：** 用 P2 已驗證的 model ID／region／憑證，
+> 對 `adapters/bedrock.py::converse_structured` 跑一次，證據存檔。
+> **注意：** `.env.example` 的 `AWS_REGION` 預設值是 `ap-northeast-1`，
+> 但實際驗證通過的是 `us-west-2`；照預設值跑會打錯 region。
 
 **目標**：用最小成本證明「外部服務真的可用」，並把結果記成不含秘密的紀錄。
 對應 `tasks.md` Task 0 與 ACTIVE_WORK 的任務 D 第一優先項。
@@ -230,13 +243,15 @@ S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 �
 
 ### S1 — 凍結共用契約與執行期接縫
 
-> **現況：🔴 未開始（`models.py` 不存在）。**
-> **已實作：** 無。`main` 上目前的實際契約是 `evidence/types.py` 的 provisional frozen dataclass
-> （欄位名刻意與 `evidence-contracts.md` 一致）＋ `tests/unit/reasoning/_stubs.py`。
+> **現況：🟡 一半完成（2026-08-01 更新）。已不再是全隊阻塞點。**
+> **已實作（Task 1a，PR #6 已合併）：** `src/hoya_agent/models.py`（1304 行）、
+> `tests/unit/test_models.py`（2036 行）、`pyproject.toml`。`main` 上 **381 passed + 15 subtests** 離線實跑通過。
+> **進行中（Task 1b）：** `config.py`、`clock.py`、`ports.py`、`tests/fakes.py`、`tests/conftest.py`
+> 在分支 `task/1b-runtime-seams`，尚未進 `main`。
 > **偏離：** 原計畫是「先契約、後推理」，實際是**推理層先完成**（見 S7）。這不是錯誤——
-> 它讓 P3 不必等人，代價是 S1 之後必須做一輪**機械式型別替換**並刪掉兩個臨時檔。
+> 它讓 P3 不必等人，代價是 S1 之後必須做一輪**機械式型別替換**並刪掉兩個臨時檔
+> （`evidence/types.py` 的 provisional dataclass 與 `tests/unit/reasoning/_stubs.py`，兩者仍在）。
 > **指派：** 任務 A，用 **Kiro** 從 spec 原生執行（Task 1a → 1b），作為 Kiro 使用證據。
-> **待辦：** 全部。**這是全隊唯一的真阻塞點。**
 
 **目標**：讓 `models.py` 成為所有共用契約的唯一擁有者，讓 `ports.py` 成為所有外部面的唯一 Protocol 集合，
 使四個人可以對著同一組型別各自實作。
@@ -578,9 +593,10 @@ optional 來源失敗非阻塞；重複轉載不被算成獨立來源；缺源�
 > **已實作：** `adapters/bedrock.py`（371 行）、`reasoning/{planner,research_agent,arbiter,conflict_extension,prompt_library}.py`、
 > `prompts/{planner,research-extraction,arbiter}-v1.md`、`tests/contract/test_bedrock_client.py` 與
 > `tests/unit/reasoning/`（5 檔）。已合併進 `main`（gate `fc517e7`）。
-> `main` 上 **157 passed + 15 subtests**，Python 3.12.13 離線實跑（2026-08-01）。
+> `main` 上 **381 passed + 15 subtests**，離線實跑（2026-08-01 更新，Python 3.11.9）。
 > **⚠️ 已測到的與尚未測到的：** 契約測試是對著 **Bedrock stub** 跑的。
-> **真實 Converse 呼叫仍是零次**（→ S0）。「reasoning 完成」不等於「Bedrock 可用」。
+> Bedrock 本身已被 P2 驗證可用，但**真實的 Converse + `toolConfig` 呼叫仍是零次**（→ S0）。
+> 「reasoning 完成」不等於「這條結構化輸出路徑可用」。
 > **偏離 ①：順序。** 本階段在 S1（契約凍結）**之前**完成，用 `evidence/types.py` 的 provisional dataclass
 > 與 `tests/unit/reasoning/_stubs.py` 頂著。這是刻意的（讓 P3 不必等人），代價是 S1 後要做一輪機械替換並刪 `_stubs.py`。
 > **偏離 ②：曾經有兩套 LLM 邊界。** P2 另寫了 `reasoning/llm_client.py` + `gpt_client.py`。

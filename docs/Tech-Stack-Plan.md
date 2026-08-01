@@ -72,7 +72,7 @@ message broker、向量資料庫、任何其他 orchestration 框架。
 
 這個專案的優勢是**不必猜**：repo 裡已經有三份真實產出可以反推。
 
-### 3.1 已合併進 `main` 的 reasoning 層（`task/6-bedrock-reasoning`，22 個 `.py`，157 passed）
+### 3.1 已合併進 `main` 的 reasoning 層（`task/6-bedrock-reasoning`；`main` 現為 24 個 `.py`，381 passed）
 
 實測結論：
 
@@ -226,13 +226,14 @@ UI widget / session state / 檔案下載（Streamlit）、原子 rename（`os.re
 - 只暴露 demo 需要的那個 Streamlit port；掛一個持久化的本機 artifact volume（🚫 不寫進 image layer）。
 - push immutable tag 到 ECR，EC2 用 `docker compose` 拉**確切測過的那個 tag**。
 
-> ⚠️ **目前的實況**：`pyproject.toml` **尚不存在**（屬 ④ Stage 1）。在它落地前，跑測試用臨時 venv：
+> ✅ **已更新（2026-08-01）**：`pyproject.toml` **已隨 PR #6 落地 `main`**，可直接安裝：
 > ```bash
 > uv venv --python 3.12 .venv
-> uv pip install --python .venv/Scripts/python.exe pydantic pytest pytest-asyncio boto3 httpx
-> PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest tests -q
+> uv pip install --python .venv/Scripts/python.exe -e ".[dev]"
+> ./.venv/Scripts/python.exe -m pytest tests -q
 > ```
-> **🚫 在 Stage 1 之前不要自己建 `pyproject.toml`**——那會開出第三棵樹（見 ACTIVE_WORK 的協調規則 2）。
+> 不裝套件也能跑：`PYTHONPATH=src python -m pytest tests -q`。
+> **🚫 仍然不要自己另建 `pyproject.toml`**——那會開出第三棵樹（見 ACTIVE_WORK 的協調規則 2）。
 
 ---
 
@@ -357,12 +358,15 @@ python -m pytest tests/unit tests/contract tests/integration -q
 **它一次證明了：** 契約可用 · 組裝根成立 · artifact 寫入契約成立 · 缺檔揭露契約成立 ·
 繁中 11 段模板成立 · 禁語 lint 成立 · UI↔application 邊界成立 · `rehearsal` 標示誠實。
 
-### 風險 B — Bedrock 從來沒有真的被呼叫過一次
+### 風險 B — Bedrock 的 Converse 結構化輸出路徑尚未驗證
 
-> ⚠️ `docs/ACTIVE_WORK.md`（2026-08-01）：**「Bedrock 實際呼叫 — 仍未驗證過任何一次，
-> 這是目前最大的未爆彈。」** `adapters/bedrock.py` 有 371 行、契約測試全綠——
-> **但那全是對著 stub 測的。** 若模型未開通、region 不對或 model ID 錯，
-> 整個 H2-Lite 是死的，切片 A 做得再漂亮也沒用。
+> 🟡 **已降級（2026-08-01）**：Bedrock 本身**已經成功呼叫過** ——
+> P2 在 `us-west-2` 用 `us.anthropic.claude-haiku-4-5-20251001-v1:0` 驗證通過，
+> 憑證、region、模型存取權全部 PASS（紀錄見 `p2-etl-mvp/docs/service-access-check.md`）。
+>
+> **剩下的風險窄很多**：那次走的是 `invoke_model`，而 `adapters/bedrock.py` 走的是
+> `converse` + forced `toolConfig`。契約測試全綠但**全是對著 stub 測的**，
+> 強制工具呼叫的結構化輸出在這顆模型上還沒真的跑過一次。
 
 **切片 B：一次真實的 Bedrock Converse 呼叫**
 1. 確認 region 與 `BEDROCK_PRIMARY_MODEL_ID` 已開通。

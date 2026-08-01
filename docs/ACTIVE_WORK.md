@@ -5,18 +5,18 @@
 > 更新規則：認領工作時**在自己那一節**加一行，完成時把它移到「已完成並凍結」。
 > 只改自己的區塊，不要重排別人的，這樣四條分支同時編輯也不會衝突。
 >
-> 最後更新：2026-08-01（下午：原始碼樹實掃 + Python 3.12 驗證）
+> 最後更新：2026-08-01（傍晚：Task 1a 合併、S0 Bedrock 已驗證、PR #8 待審）
 
 ## 現況快照
 
 | 項目 | 狀態 |
 |---|---|
-| `main` | ✅ **gate 已完成**（`fc517e7`）。22 個 `.py`、`src/hoya_agent/` 樹已就位。仍缺 `pyproject.toml`（屬任務 A） |
-| 測試 | `main` 上 **157 passed + 15 subtests**，Python 3.12.13 離線實跑（2026-08-01） |
-| 可執行的 Agent 程式碼 | `adapters/bedrock.py`、`reasoning/`、`evidence/{types,policies}.py` 都在 `main` 上 |
-| 共享契約 `models.py` | 尚不存在，但**已不再阻塞 B 和 C**——gate 已把兩邊共用的 `evidence/types.py` 先落地 |
-| P2 的其餘 48 個檔 | 仍在 `feat/p2-report-integration`，待任務 B 和 C 各搬一半 |
-| Bedrock 實際呼叫 | ⚠️ **仍未驗證過任何一次**——這是目前最大的未爆彈，任務 D 最優先 |
+| `main` | ✅ 24 個 `.py`，`src/hoya_agent/` 樹就位，`pyproject.toml` 已隨 PR #6 落地 |
+| 測試 | `main` 上 **381 passed + 15 subtests**，離線實跑（2026-08-01，Python 3.11.9） |
+| 可執行的 Agent 程式碼 | `adapters/bedrock.py`、`reasoning/`、`evidence/{types,policies}.py`、`models.py` 都在 `main` 上 |
+| 共享契約 `models.py` | ✅ **已落地**（1304 行，PR #6）。Task 1b 的 `config.py`／`clock.py`／`ports.py`／`tests/fakes.py` 進行中 |
+| P2 的其餘檔案 | **PR #8 `integrate/p2-into-src` 待審**（41 檔）。⚠️ 內含 5 個契約外 adapter（coingecko／derivatives／okx／reddit／google_news），合併前需裁決 |
+| Bedrock 實際呼叫 | 🟡 **已成功呼叫過**（P2，2026-08-01，`us-west-2`，Haiku 4.5，`invoke_model`）。但 `main` 走的 `converse` + `toolConfig` 路徑**尚未驗證**，S0 未關閉 |
 
 跑測試（`pyproject.toml` 落地前用這個）：
 
@@ -34,7 +34,7 @@ PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest tests -q
 
 | 分支 | `.py` 數 | 位置 | 合乎 `structure.md` canonical tree？ |
 |---|---|---|---|
-| `origin/main` | **22** | `src/hoya_agent/` | ✅ gate 已完成，157 passed |
+| `origin/main` | **24** | `src/hoya_agent/` | ✅ gate + Task 1a 已合併，381 passed |
 | `task/6-bedrock-reasoning` | 18（9 src + 9 test） | `src/hoya_agent/` | ✅ **已合併進 `main`**，此分支可關閉 |
 | `feat/p2-report-integration` | 48 | `p2-etl-mvp/` | ❌ 平行目錄，自帶 `pyproject.toml` |
 | `feat/p2-etl-data-evidence` | 47 | `p2-etl-mvp/` | ❌ 是 report-integration 的**子集**，可忽略 |
@@ -120,7 +120,7 @@ PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest tests -q
   - 分支：`task/1a-contracts-core`
   - 工具：**Kiro**，從 spec 原生執行 Task 1a
   - 佔用路徑：`src/hoya_agent/models.py`、`pyproject.toml`、`tests/unit/test_models.py`
-  - **這是全隊的阻塞點。** 完成前 P2 和 P4 都無法寫真正的實作。
+  - ✅ **已完成並合併（PR #6）**，阻塞已解除。B／C／D 可直接 import `hoya_agent.models`。
   - 完成後立刻做 `docs/ai/P3_HANDOFF.md` §5 的契約驗收（約 15 分鐘）
 - **Task 1b — 凍結執行期接縫**（`config.py`、`clock.py`、`ports.py`、`tests/fakes.py`）
   - 分支：`task/1b-runtime-seams`，等 1a 合併後開
@@ -155,7 +155,8 @@ PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest tests -q
 > 其他三份全部白做——Bedrock 到今天為止一次都沒有真的呼叫過。它也不需要等 gate。
 
 - 分支：`task/0-preflight-and-ui`
-- 最高優先的一件事：**跑出專案史上第一次真實 Bedrock Converse 呼叫**（目前是零次）。
+- 最高優先的一件事：**跑出第一次真實 Bedrock Converse + `toolConfig` 呼叫**
+  （Bedrock 本身已由 P2 於 2026-08-01 驗證可用，但那次走 `invoke_model`，不是這條路）。
 - 可直接接手 P2 已寫好的 `render_report.py` 與 HTML 模板，不必從零開始。
 
 ## 四份平行任務（2026-08-01 重新分配）
@@ -176,7 +177,7 @@ PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest tests -q
 2. 兩個跨界共用檔已就位——`evidence/types.py`、`evidence/policies.py`
    （加上 `tests/unit/evidence/test_policies.py`）。
 
-**`main` 現在 157 passed + 15 subtests**（Python 3.12.13 離線實跑）。
+**`main` 現在 381 passed + 15 subtests**（2026-08-01 離線實跑，Python 3.11.9）。
 B 和 C 開工需要的 import 已實測可用：
 
 ```python
@@ -243,8 +244,11 @@ P2 現有那 48 個檔照這個切法會裂成兩半——`data/` 與行情 adap
 **D — 呈現與交付（UI）**
 > 一句話：讓評審看得到也跑得動——Streamlit 三模式介面、繁中報告渲染、投資建議 lint、Docker 與 demo。
 
-**最高優先且不等任何人**：Bedrock 模型開通、確認模型 ID、**跑出專案史上第一次真實 Converse 呼叫**
-（目前是零次；若這件事失敗，A／B／C 三份全部白做，所以它排在所有事情前面）。
+**最高優先且不等任何人**：🟡 Bedrock 模型開通與 model ID 確認**已由 P2 完成**
+（`us-west-2` ／ `us.anthropic.claude-haiku-4-5-20251001-v1:0`）。
+剩下的是**用 `main` 的 `adapters/bedrock.py::converse_structured` 跑一次真實
+Converse + `toolConfig` 呼叫** —— P2 那次走的是 `invoke_model`，不是同一條路。
+⚠️ `.env.example` 的 `AWS_REGION` 預設 `ap-northeast-1`，實際通的是 `us-west-2`。
 接著 Streamlit 骨架先接假資料跑通三種 run mode 的標示，寫 `reporting/lint.py`
 （純字串比對，不依賴 `models.py`），再補 `Dockerfile` / `compose.yaml`。
 **可直接接手**：P2 已寫好 `p2-etl-mvp/render_report.py` 與 HTML 模板，並產出過

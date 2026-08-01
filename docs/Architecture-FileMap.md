@@ -10,7 +10,7 @@
 
 > ⚠️ **這份文件會最快腐爛。** 它記的是**現況**。檔案落地、改責任、被合併時，
 > 請當作那個檔的 definition-of-done 的一部分來更新它的 row。
-> **狀態掃描時間：2026-08-01，基準 commit `d15f6da`（`main`）。**
+> **狀態掃描時間：2026-08-01，基準 commit `610e900`（`main`）。**
 
 ## 1. Context
 
@@ -76,8 +76,8 @@
 | ○ | **計畫中**，尚未寫；括號內為 ④ 的 stage 編號 |
 | ⛔ | **明確不做 / 已裁決移除**——保留 row 當麵包屑，讓追舊參照的人不撲空 |
 
-> **現況一句話：** `main` 上 22 個 `.py`（157 passed + 15 subtests，Python 3.12.13 離線實跑）。
-> **推理層已完成**，**契約層（`models.py`）尚未存在**，**資料/證據層寫好但在別的分支**，
+> **現況一句話：** `main` 上 24 個 `.py`（381 passed + 15 subtests，2026-08-01 離線實跑）。
+> **推理層已完成**，**契約層 `models.py` 已落地（Task 1b 接縫進行中）**，**資料/證據層寫好但在 PR #8 待審**，
 > **編排、報告、UI 完全未開始**。
 
 ---
@@ -95,9 +95,10 @@
 | `ports.py` | ○ (S1) | Protocol 邊界：`Clock`、`LLMClient`、`SourceAdapter`、`MarketDataAdapter`、`ResearchSourceAdapter`、`ProgressSink`、`ArtifactStore`、`ToolRegistry`、未來 persistence port | `models.py` 的型別；被 `adapters/*` 實作、被核心模組消費 |
 | `application.py` | ○ (S2) | **組裝根**：驗證 request、凍結 `analysis_as_of`、造 `run_id`、建 run 目錄、寫首份 `run_config.json`、組裝具體相依、叫 pipeline、回 `RunSummary` | `config.Settings`、`clock`、`orchestration/pipeline.py`、`reporting/artifacts.py`、所有 `adapters/*`（唯一處） |
 
-> ⚠️ **`models.py` 是全隊唯一的真阻塞點。** 它不在時，`reasoning/` 用 `evidence/types.py` 的
-> provisional dataclass 與 `tests/unit/reasoning/_stubs.py` 頂著（欄位名刻意與契約一致，
-> 所以之後是機械式替換，不是重寫）。
+> ✅ **已解除（2026-08-01）**：`models.py` 已隨 PR #6 進 `main`（1304 行），不再是阻塞點。
+> `reasoning/` 目前仍靠 `evidence/types.py` 的 provisional dataclass 與
+> `tests/unit/reasoning/_stubs.py` 頂著——**那一輪機械式型別替換還沒做**，
+> 兩個臨時檔仍在樹上。`ports.py` 屬 Task 1b，尚未進 `main`。
 
 ### 4.2 `orchestration/` — 順序、時間、狀態
 

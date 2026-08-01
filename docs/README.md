@@ -39,23 +39,27 @@
 
 ---
 
-## 現況速覽（2026-08-01，基準 commit `d15f6da`）
+## 現況速覽（2026-08-01，基準 commit `610e900`）
 
 | 項目 | 狀態 |
 |---|---|
-| `main` 的 Python 樹 | ✅ 22 個 `.py`，**157 passed + 15 subtests**（Python 3.12.13 離線實跑） |
+| `main` 的 Python 樹 | ✅ 24 個 `.py`，**381 passed + 15 subtests**（2026-08-01 離線實跑，Python 3.11.9） |
 | 推理層（S7） | ✅ **已完成並凍結**（`adapters/bedrock.py` + `reasoning/` + `prompts/`） |
-| 共用契約 `models.py`（S1） | 🔴 **尚不存在** —— 全隊唯一的真阻塞點 |
-| 市場與證據層（S5/S6） | 🟡 已寫但在 `feat/p2-report-integration`，待收斂進 `src/hoya_agent/` |
+| 共用契約（S1） | 🟡 **一半** —— `models.py`（1304 行）與 `pyproject.toml` 已隨 PR #6 進 `main`；`config.py` / `clock.py` / `ports.py` / `tests/fakes.py`（Task 1b）進行中 |
+| 市場與證據層（S5/S6） | 🟡 已寫，**PR #8 `integrate/p2-into-src` 待審**（41 個檔移植進 `src/hoya_agent/`） |
 | 編排、報告、UI（S2/S3/S4） | 🔴 完全未開始 |
-| **真實 Bedrock 呼叫（S0）** | 🔴 **仍是零次 —— 全案最高風險項** |
+| **真實 Bedrock 呼叫（S0）** | 🟡 **一半** —— 憑證／region／模型存取權已驗證；Converse 結構化輸出尚未 |
 
 > ⚠️ **如果你只讀一段，讀這一段：**
-> `adapters/bedrock.py` 有 371 行、契約測試全綠——**但那全是對著 stub 測的。**
-> 專案至今沒有成功呼叫過一次真實的 Bedrock。若模型未開通、region 不對或 model ID 錯，
-> 整個 H2-Lite 是死的。
-> → [Implementation-Plan 的 S0](Implementation-Plan.md) 是先做的那一節，它的 **§3.2 人工檢查清單**
-> 列出這次呼叫要留下什麼紀錄。
+> **「Bedrock 一次都沒呼叫過」已經不成立了。** P2 於 2026-08-01 在 `us-west-2` 以
+> `us.anthropic.claude-haiku-4-5-20251001-v1:0` 成功呼叫，紀錄在 `feat/p2-etl-data-evidence`
+> 的 `p2-etl-mvp/docs/service-access-check.md`（憑證、region、模型存取權全部 PASS）。
+>
+> **但那次走的是 `invoke_model`，不是 `main` 上 `adapters/bedrock.py` 實際要走的
+> `converse` + forced `toolConfig`。** S0 退出條件 #1 要的正是後者，所以 S0 還沒關。
+> 剩下的未知數已經從「帳號通不通」縮小成「**強制工具呼叫的結構化輸出在這顆模型上會不會過**」——
+> 風險小很多，但沒跑過就是沒跑過。
+> → 見 [Implementation-Plan 的 S0](Implementation-Plan.md)。
 
 ---
 
