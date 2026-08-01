@@ -17,6 +17,25 @@
 | 測試 | 134 passed（Task 6 範圍），`ruff check` 乾淨 |
 | Bedrock 實際呼叫 | **尚未驗證過任何一次** |
 
+## 可用的設計輸入
+
+開工前先看有沒有現成的設計文件，別重做別人算過的東西。
+
+| 文件 | 內容 | 誰該讀 |
+|---|---|---|
+| `docs/price-data-analysis-outputs.html` | 只靠 OHLCV 能產出什麼：九個資訊類別 I1–I9、十個分析產出 A1–A10、欄位使用矩陣。數值以主辦方資料集**實算**（含五幣的 regime 標籤）。已驗證資料集 0 缺漏日、0 NaN、0 筆 OHLC 違反，因此**不需要缺口填補邏輯**；另發現每列 `open` 幾乎等於前列 `close`，`open` 不帶獨立資訊。 | P2（Task 4）、Task 11 |
+| `docs/ai/P3_CONTRACT_EXPECTATIONS.md` | reasoning 層實際 import 的欄位名清單，全部溯源 `evidence-contracts.md` | P1（Task 1a／1b） |
+| `docs/ai/P3_HANDOFF.md` | Task 6 完成範圍、兩個設計決定、明日待辦 | P1、P3 |
+
+## 待 P1 裁決
+
+- **`data/analogs.py` 不在正式樹裡。** `price-data-analysis-outputs.html` 的 A7（歷史類比基準率）
+  指名這個模組，但 `.kiro/steering/structure.md` 的 canonical tree 沒有它，而且該檔明文要求
+  「不要為單一 helper 新增檔案」。二選一：併進 `data/indicators.py`，或修改 `structure.md`。
+  不能兩邊各說各話。
+- **A1 的 regime 標籤是以 `as_of 2026-05-31` 算的示範值**，比賽當天的 `analysis_as_of` 是當天。
+  那些數字不得寫死進程式或報告。
+
 ## 已完成並凍結（不要修改）
 
 改動這些路徑會默默弄壞別人已通過的測試。真的需要動，先找 owner。
