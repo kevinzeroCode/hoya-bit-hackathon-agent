@@ -57,31 +57,55 @@
   - **Commit:** `chore: record service access preflight`
 
 - [ ] **1. Scaffold the package and freeze shared contracts**
+
+  Executed as two Kiro runs, 1a then 1b. A single run producing ~25 contract
+  types plus ports, config and fakes is where field-name drift happens, and
+  `models.py` is imported by all four owners. Do not tick this parent checkbox
+  until both halves are done.
+
+- [ ] **1a. Freeze the normative data contracts**
   - **Owner:** P1, reviewed by P2/P3/P4
   - **Wave / dependency:** Wave 0 / Task 0 may run concurrently
-  - **Spec:** 6, 7, 10.3, 13, 14
+  - **Spec:** 5, 7; `evidence-contracts.md` 1-12 and 16; Requirement 16
   - **Files:**
     - Create: `pyproject.toml`
-    - Create: `src/hoya_agent/__init__.py`
     - Create: `src/hoya_agent/models.py`
+    - Create: `tests/unit/test_models.py`
+    - (`src/hoya_agent/__init__.py` already exists as an empty package marker)
+  - [ ] Configure Python 3.12 and runtime dependencies `pydantic`, `httpx`, `pandas`, `boto3`, `streamlit`; configure dev dependencies `pytest`, `pytest-asyncio`, `pytest-cov`, `ruff` and pytest markers `integration`, `acceptance`, `live`; use a src layout that supports editable install.
+  - [ ] Define the enums `Asset`, `RunMode`, `SourceType`, `Reliability`, `Stance`, `ClaimType`, `TrustLevel`, `RegimeLabel` and `InvalidationOperator`, all `str`-backed.
+  - [ ] First write failing model tests for `AnalysisRequest`, `EvidenceItem`, `Claim`, `ClaimEvidenceLink`, `AnalysisResult` and timezone-aware UTC validation; every model uses `extra="forbid"` and rejects blank text fields.
+  - [ ] Test and implement the approved request fields, including unique `run_id`, one or two allowlisted assets, immutable `analysis_as_of`, `official|rehearsal|demo` and `enable_conditional_debate=false`.
+  - [ ] Test `EvidenceItem` fields including source identity, source/content reference, `fetched_at`, published/source time when available, `high|medium|low` reliability, independence group and cache/stale consistency; reject deprecated `fetched time`/`fetched_time` names and any stance field on `EvidenceItem`.
+  - [ ] Define `EvidenceDraft` as `EvidenceItem` minus the processor-assigned fields (`evidence_id`, `reliability`, `independence_group`, `content_hash`), retaining a reference back to its source record.
+  - [ ] Test `ClaimEvidenceLink` as the only stance owner and accept only `supports|opposes|neutral`; test the Evidence List projection fields `source`, `fetched_at`, `content_reference` and `related_claim`.
+  - [ ] Test `Claim` layering: `fact` has empty `based_on_claim_ids`; `inference` and `conclusion` do not. Test the `ev_001`/`cl_001` ID formats.
+  - [ ] Define `EvidenceLedger`, `ConflictIndicator`, `DegradationEvent`, `TimeRange` and `MarketContext`.
+  - [ ] Define the Requirement 16 types `InvalidationCondition`, `MarketRegime` and `TrustScorecard` with its five dimension sub-models; test the fixed ordinal mapping (`strong` independence requires at least three distinct groups) and the `MarketRegime` label enum with its persisted metrics and thresholds.
+  - [ ] Run `python -m pip install -e ".[dev]"`, `python -m pytest tests/unit/test_models.py -q`, `python -m pytest tests/unit tests/contract -q` and `ruff check .`.
+  - **Acceptance:** Invalid assets, naive datetimes, malformed Evidence, deprecated freshness fields, Evidence-owned stance and unsupported Link stance fail validation. Inconsistent cache metadata and a `fact` with dependencies fail validation. The existing Task 6 suite still passes, proving the new contracts did not break the downstream consumer.
+  - **Commit:** `feat: define core evidence and analysis contracts`
+
+- [ ] **1b. Freeze the runtime seams**
+  - **Owner:** P1, reviewed by P2/P3/P4
+  - **Wave / dependency:** Wave 0 / Task 1a
+  - **Spec:** 6, 10.3, 13, 14
+  - **Files:**
     - Create: `src/hoya_agent/config.py`
     - Create: `src/hoya_agent/clock.py`
     - Create: `src/hoya_agent/ports.py`
     - Create: `tests/conftest.py`
     - Create: `tests/fakes.py`
-    - Create: `tests/unit/test_models.py`
     - Create: `tests/unit/test_config.py`
-  - [ ] Configure Python 3.12 and runtime dependencies `pydantic`, `httpx`, `pandas`, `boto3`, `streamlit`; configure dev dependencies `pytest`, `pytest-asyncio`, `pytest-cov`, `ruff` and pytest markers `integration`, `acceptance`, `live`.
-  - [ ] First write failing model tests for `AnalysisRequest`, `RunContext`, `EvidenceItem`, `Claim`, `ClaimEvidenceLink`, `AnalysisResult`, `RunMode`, `Reliability`, `Stance` and timezone-aware UTC validation.
-  - [ ] Test and implement the approved request/run fields, including unique `run_id`, one or two allowlisted assets, immutable `analysis_as_of`, `official|rehearsal|demo`, cache/stale metadata and `enable_conditional_debate=false`.
-  - [ ] Test `EvidenceItem` fields including source identity, source/content reference, `fetched_at`, published/source time when available, `high|medium|low` reliability and applicable cache/stale metadata; reject deprecated `fetched time`/`fetched_time` names and any stance field on `EvidenceItem`.
-  - [ ] Test `ClaimEvidenceLink` as the only stance owner and accept only `supports|opposes|neutral`; test the Evidence List projection fields `source`, `fetched_at`, `content_reference` and `related_claim`.
+    - Modify: `src/hoya_agent/models.py`
+  - [ ] Add the remaining plumbing models to `models.py`: `RunContext`, `RawSourceRecord`, `WorkerResult`, `ExecutionEvent`, `RunConfigSnapshot`, `RunSummary`, `ResearchPlan`.
   - [ ] First write failing port tests, then define typed same-process boundaries for `Clock`, `LLMClient`, generic `SourceAdapter`, specialized `MarketDataAdapter` and `ResearchSourceAdapter`, `ProgressSink`, local `ArtifactStore` and a future persistence port for run summaries and artifact references.
   - [ ] Define `ToolRegistry` as a static configuration-backed allowlist with no runtime plugin discovery, remote registry or mutation by retrieved content.
-  - [ ] Add reusable fixed clock, fake LLM, fake adapters, local/in-memory artifact and persistence fakes, static fake tool registry and in-memory progress sink under `tests/fakes.py`.
-  - [ ] Run `python -m pytest tests/unit/test_models.py tests/unit/test_config.py -q` and `ruff check .`.
-  - **Acceptance:** Invalid assets, naive datetimes, malformed Evidence, deprecated freshness fields, Evidence-owned stance and unsupported Link stance fail validation. Official mode uses the injected UTC clock, `analysis_as_of` remains immutable, and all owners can implement against typed same-process seams without importing Streamlit or concrete providers. No database, queue, broker, remote registry, persistent implementation or independent service is introduced.
-  - **Commit:** `feat: define shared analysis contracts`
+  - [ ] Implement `config.py` with the locked env names and a sanitized snapshot that records optional-key presence as booleans, never values.
+  - [ ] Add reusable fixed clock, fake LLM, fake adapters, local/in-memory artifact and persistence fakes, static fake tool registry and in-memory progress sink under `tests/fakes.py`; move the temporary path bootstraps from `tests/contract/conftest.py` and `tests/unit/reasoning/conftest.py` into `tests/conftest.py` and delete them.
+  - [ ] Run `python -m pytest tests/unit tests/contract -q` and `ruff check .`.
+  - **Acceptance:** Official mode uses the injected UTC clock, `analysis_as_of` remains immutable, no secret value reaches a snapshot, and all owners can implement against typed same-process seams without importing Streamlit or concrete providers. No database, queue, broker, remote registry, persistent implementation or independent service is introduced.
+  - **Commit:** `feat: define shared runtime seams`
 
 - [ ] **2. Deliver the fixture vertical slice and incremental artifact contract**
   - **Owner:** P1 with P3; P2 and P4 review the interface

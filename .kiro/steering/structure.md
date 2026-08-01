@@ -1,4 +1,8 @@
-﻿# Repository Structure Steering
+---
+inclusion: always
+---
+
+# Repository Structure Steering
 
 ## Canonical Tree
 
