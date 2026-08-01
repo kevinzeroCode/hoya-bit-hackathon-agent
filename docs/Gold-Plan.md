@@ -23,17 +23,19 @@
 
 | 代號 | 工作 | Lane | 狀態 | 驗收 |
 |---|---|---|---|---|
-| **G1** | **事實接地驗證(fact-grounding)** | 證據(+reasoning 語意層) | 🟡 確定性核心已完成 | 抽出事實的數值/日期能比對原文;捏造值被標 partial 並揭露 |
-| **G2** | **跨源三角驗證** | 證據(純 P2) | 🔴 未開始 | 價格異動日 ↔ 當天具名新聞 ↔ 情緒同向,產出 deterministic「triangulated_events」 |
+| **G1** | **事實接地驗證(fact-grounding)** | 證據(+reasoning 語意層) | 🟢 確定性核心 + pipeline 揭露 + confidence gate(opt-in)已完成;語意複核待做 | 抽出事實的數值/日期能比對原文;捏造值被標 partial、揭露於 degradation,且不計入 confidence 佐證 |
+| **G2** | **跨源三角驗證** | 證據(純 P2) | 🟢 已完成(`evidence/triangulation.py` + 測) | 價格異動日 ↔ 當天具名新聞/情緒對齊,產出 `TriangulatedEvent`(跨來源類型 strength) |
 | **G3** | **信任漏斗 + TrustScorecard 上 UI** | 證據算/UI 顯示 | 🔴 未開始 | UI 首屏可見「N 筆→去重→獨立群→佐證→矛盾」漏斗 + 每 claim 的 5 維分數 |
 | **G4** | **agent 判斷可視化** | reasoning | 🔴 未開始 | Planner 依題型明顯換來源策略;execution_log 呈現查核/降級決策 |
 | **S8** | **live Silver 端到端跑通一次** | 全隊 | 🔴 gate 未過 | 真 Bedrock + baseline 來源,15 分內產四 artifact(拆最大未爆彈) |
 | **S10** | **Gold local Exit** | 全隊 | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance、run-log |
 | **S11** | **部署 + 計時彩排** | 全隊 | 🔴 | ECR/EC2 tag 逐字相同、rollback 演練、一次完整 15 分鐘彩排 |
 
-### G1 事實接地驗證(進行中)
+### G1 事實接地驗證(確定性面已完成)
 - ✅ `evidence/grounding.py`:確定性硬原子(百分比/金額/數字/日期)比對 `content_reference`;跨語言(英文原文佐證中文事實);golden 測綠。
-- ⏭ 下一步:①接進 pipeline(Research Agent 抽取後 → 進 ledger 前);②純質性事實的**語意複核**(便宜 Haiku、走 `LLMClient` port、放 reasoning 層,非 `evidence/`);③把 grounding 結果餵進 `ConfidenceSignals`(unverified 不計為獨立佐證群)。
+- ✅ **已接進 pipeline**:`ground_drafts` 在 `build_ledger` 前執行,partial 事實寫入 `degradation`(誠實揭露)。
+- ✅ **已餵進 confidence**:`confidence_signals_for_claim(require_grounding=True)` 讓未接地的 LLM 事實**不計入獨立佐證群**,捏造值無法把信心抬到 high(opt-in、確定性重算、不加欄位、不動 reliability)。
+- ⏭ 待做:純質性事實的**語意複核**(便宜 Haiku、走 `LLMClient` port、放 reasoning 層,非 `evidence/`);以及決定是否在 live pipeline 預設開啟 `require_grounding`。
 - 🚫 紅線:不動靜態 `reliability`;不加 `EvidenceItem` 欄位(除非走路線 B + 團隊簽核)。
 
 ### G2 跨源三角驗證(建議下一個做,純你 lane)

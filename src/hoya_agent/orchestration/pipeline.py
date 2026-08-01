@@ -31,6 +31,7 @@ from hoya_agent.data.market_worker import build_market_evidence
 from hoya_agent.data.price_analysis import build_comparison_evidence
 from hoya_agent.data.regime import build_regime_evidence, classify_market_regime
 from hoya_agent.data.types import MarketBar
+from hoya_agent.evidence.grounding import ground_drafts
 from hoya_agent.evidence.processor import build_ledger
 from hoya_agent.evidence.trust import build_trust_scorecards
 from hoya_agent.evidence.types import EvidenceDraft
@@ -515,6 +516,11 @@ class OrganizerCsvPipeline:
                         message=message,
                     )
                 )
+
+        # Fact-grounding disclosure: surface any LLM-extracted fact whose numbers
+        # or dates are absent from its source (contract-safe — notes only).
+        _, grounding_notes = ground_drafts(drafts)
+        degradation.extend(grounding_notes)
 
         mapped = to_contract_ledger(
             build_ledger(drafts), context=context, degradation_messages=degradation

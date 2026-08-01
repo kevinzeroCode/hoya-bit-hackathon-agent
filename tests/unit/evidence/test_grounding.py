@@ -74,6 +74,34 @@ def test_purely_qualitative_is_unverified_pending_semantic_check():
     assert v.unverified_atoms == ()
 
 
+def test_require_grounding_excludes_ungrounded_support_from_confidence():
+    from hoya_agent.evidence.ledger import confidence_signals_for_claim
+    from hoya_agent.evidence.types import EvidenceItem, EvidenceLedger
+
+    def _item(eid, fact, source, group):
+        return EvidenceItem(
+            evidence_id=eid, content_hash=eid, asset="BTC", source_type="news",
+            source_name=f"src-{eid}", source_url="https://x/y",
+            published_at=datetime(2026, 5, 20, tzinfo=UTC),
+            fetched_at=datetime(2026, 5, 21, tzinfo=UTC), query_or_parameters="q",
+            content_reference=source, normalized_fact=fact,
+            reliability="medium", independence_group=group,
+        )
+
+    grounded = _item("ev_001", "BTC 下跌 8%", "Bitcoin fell 8%.", "coindesk.com")
+    ungrounded = _item("ev_002", "BTC 下跌 8%", "Bitcoin fell sharply.", "theblock.co")  # 8% fabricated
+    ledger = EvidenceLedger(items=[grounded, ungrounded], dropped_duplicates=0)
+    ids = ["ev_001", "ev_002"]
+
+    # Without grounding: two independent groups -> could reach high.
+    assert confidence_signals_for_claim(supporting_evidence_ids=ids, ledger=ledger).supporting_groups == 2
+    # With grounding: the fabricated-value item drops out -> only one group.
+    gated = confidence_signals_for_claim(
+        supporting_evidence_ids=ids, ledger=ledger, require_grounding=True
+    )
+    assert gated.supporting_groups == 1
+
+
 def test_ground_drafts_skips_market_and_collects_notes():
     drafts = [
         _draft("BTC 收盤 73674.39", "deterministic bar", source_type="market"),

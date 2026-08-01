@@ -15,6 +15,11 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 
+from hoya_agent.evidence.grounding import (
+    LLM_EXTRACTED_SOURCE_TYPES,
+    GroundingStatus,
+    ground_fact,
+)
 from hoya_agent.evidence.policies import ConfidenceSignals, Reliability
 from hoya_agent.evidence.processor import build_ledger  # noqa: F401
 from hoya_agent.evidence.types import EvidenceItem, EvidenceLedger
@@ -158,14 +163,35 @@ def detect_material_conflict(
 # ---------------------------------------------------------------------------
 
 
+def _is_grounded(item: EvidenceItem) -> bool:
+    """Deterministically re-check that an LLM-extracted fact traces to its source.
+
+    Market/official facts are deterministic tool output and always count. For
+    news/social, a fact whose hard atoms are not in `content_reference`
+    (fabricated value) must not prop up a claim's corroboration.
+    """
+    if item.source_type not in LLM_EXTRACTED_SOURCE_TYPES:
+        return True
+    return ground_fact(item.normalized_fact, item.content_reference).status is GroundingStatus.verified
+
+
 def confidence_signals_for_claim(
     *,
     supporting_evidence_ids: Sequence[str],
     ledger: EvidenceLedger,
     has_material_conflict: bool = False,
     insufficient_data: bool = False,
+    require_grounding: bool = False,
 ) -> ConfidenceSignals:
-    """Build the deterministic ConfidenceSignals for a claim from its support."""
+    """Build the deterministic ConfidenceSignals for a claim from its support.
+
+    When ``require_grounding`` is set, an ungrounded LLM-extracted supporting item
+    (a fact whose numbers/dates are absent from its source) does not count toward
+    the independent-group corroboration or the reliability ceiling, so a fabricated
+    value can never lift a claim to high confidence. Off by default so it never
+    silently changes existing behavior; the pipeline opts in. Never mutates the
+    static `reliability` field — it only decides what counts as support.
+    """
     evidence_map: dict[str, EvidenceItem] = {
         item.evidence_id: item for item in ledger.items
     }
@@ -177,6 +203,8 @@ def confidence_signals_for_claim(
     for eid in supporting_evidence_ids:
         item = evidence_map.get(eid)
         if item is None:
+            continue
+        if require_grounding and not _is_grounded(item):
             continue
         groups.add(item.independence_group)
         reliabilities.append(item.reliability)
