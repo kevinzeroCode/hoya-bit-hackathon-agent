@@ -14,16 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from hoya_agent._provisional_seams import (
-    AnalysisPipeline,
-    EventEmitter,
-    ExecutionEvent,
-    PipelineOutcome,
-    RunContext,
-    TerminalState,
-)
 from hoya_agent.application import ApplicationService, build_request, make_run_id
-from hoya_agent.models import AnalysisResult, Asset, EvidenceLedger, Reliability, RunMode
+from hoya_agent.models import (
+    AnalysisResult, Asset, EvidenceLedger, ExecutionEvent, Reliability,
+    RunContext, RunMode, TerminalState,
+)
+from hoya_agent.orchestration.pipeline import EventEmitter, PipelineOutcome
 from hoya_agent.reporting.artifacts import (
     ARTIFACT_NAMES,
     EVIDENCE_LEDGER,

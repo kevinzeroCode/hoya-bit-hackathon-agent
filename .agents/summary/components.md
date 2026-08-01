@@ -346,3 +346,7 @@ graph TB
 **Responsibility:** H3 conditional-debate seam. MVP implementation is a **deterministic pass-through** — always routes to Arbiter, always reports disabled.
 
 **Status:** Stub only. No debate participants, no LLM calls. Exists to satisfy the interface contract for future H3 work.
+
+## 2026-08-01 component update
+
+`DeadlineAwarePipeline` owns Plan → Market/Research fork-join → Process → Arbiter ordering. `build_trust_scorecards` is a pure Evidence component; the renderer adds Trust/Regime and a dual-only comparison projection. See `s8-s9-s9b.md`.

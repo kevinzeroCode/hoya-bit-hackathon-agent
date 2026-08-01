@@ -370,3 +370,7 @@ CI 不依賴 live API。提交前另執行 formatting/lint、dependency review�
 2. 「三個獨立上游來源」以 per-run 計算，主辦方 CSV 可算一個 `independence_group`，但不得把同一原始發布者的轉載重複計數。
 
 第一手來源的內部定義包含原始資料生產者：主辦方 CSV、交易所原生市場 API 與經 allowlist 驗證的專案官方公告。若主辦方採更嚴格口徑，系統仍會保存實際分類與缺口，不會為達門檻竄改來源身份。
+
+## 2026-08-01 implementation update
+
+The local implementation now follows the six-stage H2-Lite path with a 720-second analysis hard stop, Market/Research fork-join, deterministic Trust/Regime, and one-run dual-asset comparison. The full ledger remains the artifact of record; only the Arbiter projection is quota-balanced. Live Silver acceptance remains pending. See [implementation note](S8-S9-S9B-implementation.md).

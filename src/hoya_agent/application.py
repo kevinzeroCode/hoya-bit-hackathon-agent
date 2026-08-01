@@ -11,29 +11,25 @@ traceability, and `final_report.md` is written last. When analysis is missing th
 report becomes the deterministic insufficient-data report rather than a missing
 file.
 
-Provisional import note: `_provisional_seams` stands in for the Task 1b runtime
-seams. See that module's docstring and `docs/ai/S2_CONTRACT_EXPECTATIONS.md`.
+The application consumes the canonical runtime seams from ``models`` and
+``ports``; there is no parallel provisional contract.
 """
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
-from hoya_agent._provisional_seams import (
-    AnalysisPipeline,
-    Clock,
-    ExecutionEvent,
-    ProgressSink,
-    RunConfigSnapshot,
-    RunContext,
-    RunSummary,
-    TerminalState,
-)
+from hoya_agent.clock import build_run_context
 from hoya_agent.models import AnalysisRequest, Asset, RunMode
+from hoya_agent.models import ExecutionEvent, RunConfigSnapshot, RunContext, RunSummary, TerminalState
+from hoya_agent.orchestration.pipeline import AnalysisPipeline
+from hoya_agent.ports import Clock, ProgressSink
 from hoya_agent.reporting.artifacts import (
     EVIDENCE_LEDGER,
     FINAL_REPORT,
@@ -121,10 +117,18 @@ class ApplicationService:
         # run_config.json first: it must exist before any analysis work starts.
         store.write_json(RUN_CONFIG, snapshot.model_dump(mode="json"))
 
+        progress_tasks: list[asyncio.Task[None]] = []
+
         def emit(event: ExecutionEvent) -> None:
             store.append_event(event)
             if progress is not None:
-                progress.emit(event)
+                sync_emit = getattr(progress, "emit", None)
+                if sync_emit is not None:
+                    sync_emit(event)
+                else:
+                    published = progress.publish(event)
+                    if inspect.isawaitable(published):
+                        progress_tasks.append(asyncio.create_task(published))
 
         emit(self._event(context, "run", "run_start", "ok", message="run started"))
         if request.run_mode is RunMode.official and request.analysis_as_of != context.analysis_as_of:
@@ -207,6 +211,9 @@ class ApplicationService:
         )
         store.disclose_missing(terminal_state)
 
+        if progress_tasks:
+            await asyncio.gather(*progress_tasks)
+
         return RunSummary(
             run_id=context.run_id,
             run_mode=context.run_mode,
@@ -224,19 +231,7 @@ class ApplicationService:
     # -- internals ----------------------------------------------------------
 
     def _build_context(self, request: AnalysisRequest) -> RunContext:
-        analysis_as_of = (
-            self._clock.now_utc()
-            if request.run_mode is RunMode.official
-            else request.analysis_as_of
-        )
-        return RunContext(
-            run_id=request.run_id,
-            run_mode=request.run_mode,
-            question=request.question,
-            assets=tuple(request.assets),
-            analysis_as_of=analysis_as_of,
-            deadline_seconds=request.deadline_seconds,
-        )
+        return build_run_context(request, self._clock)
 
     def _initial_snapshot(
         self, request: AnalysisRequest, context: RunContext

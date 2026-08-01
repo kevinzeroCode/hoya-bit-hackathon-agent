@@ -174,3 +174,7 @@ ruff check .
    `ApplicationService` 另外以注入 clock 覆寫 `RunContext.analysis_as_of` 並記錄 `cutoff_frozen` 事件。
    1b 若把凍結邏輯放進 `RunContext`，S2 這段就可以刪掉。
 4. **clock tolerance**（`fetched_at` 早於 `published_at` 的容許量）仍是 1b 的 deferral，S2 未使用。
+
+## 2026-08-01 handoff result
+
+The swap described above is completed on `agent/s8-s9-s9b`: production imports point to canonical `models.py` / `ports.py`, pipeline-owned types live under `orchestration/`, and `_provisional_seams.py` plus `test_s1_seam_bridge.py` are deleted.

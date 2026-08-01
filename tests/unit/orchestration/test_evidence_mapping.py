@@ -18,24 +18,31 @@ from datetime import UTC, datetime
 
 import pytest
 
-from hoya_agent._provisional_seams import RunContext
+from hoya_agent.clock import build_run_context
 from hoya_agent.evidence.types import EvidenceItem as WorkerItem
 from hoya_agent.evidence.types import EvidenceLedger as WorkerLedger
-from hoya_agent.models import Asset, Reliability, RunMode, SourceType
+from hoya_agent.models import AnalysisRequest, Asset, Reliability, RunContext, RunMode, SourceType
 from hoya_agent.orchestration.pipeline import to_contract_ledger
 
 ANALYSIS_AS_OF = datetime(2026, 5, 31, tzinfo=UTC)
 
 
 def _context(assets: tuple[Asset, ...] = (Asset.BTC,)) -> RunContext:
-    return RunContext(
+    request = AnalysisRequest(
         run_id="run_20260531_000000_map1",
         run_mode=RunMode.rehearsal,
         question="BTC 近期市場行為可以由哪些因素解釋？",
-        assets=assets,
+        assets=list(assets),
+        requested_at=ANALYSIS_AS_OF,
         analysis_as_of=ANALYSIS_AS_OF,
         deadline_seconds=900,
     )
+    class Clock:
+        def now_utc(self):
+            return ANALYSIS_AS_OF
+        def monotonic(self):
+            return 1000.0
+    return build_run_context(request, Clock())
 
 
 def _worker_item(

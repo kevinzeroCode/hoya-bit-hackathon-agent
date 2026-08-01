@@ -676,3 +676,7 @@ All runs produce exactly these 4 files:
 | `execution_log.jsonl` | JSONL (streaming) | Throughout run (append per event) |
 | `evidence.json` | JSON | After Evidence Processor completes |
 | `final_report.md` | Markdown (zh-Hant) | Last (after renderer completes) |
+
+## 2026-08-01 interface update
+
+Application/artifact consumers now use canonical `ExecutionEvent`, `RunConfigSnapshot`, `RunSummary`, `RunContext`, `Clock`, and `ProgressSink`. Pipeline outcomes live in `orchestration.pipeline`; provisional seams are deleted. See `s8-s9-s9b.md`.

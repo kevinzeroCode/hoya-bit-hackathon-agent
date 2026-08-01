@@ -661,3 +661,7 @@ The canonical Pydantic models in `models.py` (documented above) take precedence.
 | Creativity layer | 9 | MarketRegime, TrustScorecard, SourceIndependenceDimension, SourceDiversityDimension, ReliabilityMix, ConsistencyDimension, FreshnessDimension, InvalidationCondition, MarketContext |
 | Supporting | 1 | TimeRange |
 | **Total** | **40** | (excluding helper function `project_evidence_list`) |
+
+## 2026-08-01 model update
+
+Runtime artifact models now carry the normative execution-log/run-config/UI fields. `RunContext` keeps immutable request/timing state and exposes run-mode/question/assets/deadline properties. Canonical regime supports explicit `unavailable`. See `s8-s9-s9b.md`.

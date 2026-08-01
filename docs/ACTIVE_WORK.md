@@ -217,3 +217,7 @@ ruff check .
 - **ruff 87 errors**：76 在 `p2-etl-mvp/`（歷史殘留），~10 在 `src/`/`tests/`（PR #8 整合）。
   建議：將 `p2-etl-mvp/` 加入 ruff exclude 或直接刪除該目錄（其核心已搬入 `src/hoya_agent/`）。
 - `feature/crypto-data-html` 分支的 `tests/` 佔用了 Agent 測試的保留路徑，合併時會撞。
+
+## 2026-08-01 S8/S9/S9B integration branch
+
+Branch `agent/s8-s9-s9b` owns the canonical seam swap, H2-Lite orchestration, deterministic Trust/Regime, and dual-asset report path. Frozen `reasoning/` and prompts were not changed. Offline smoke is green; full pytest/Ruff and live Silver are still explicit gates. See [implementation note](S8-S9-S9B-implementation.md).

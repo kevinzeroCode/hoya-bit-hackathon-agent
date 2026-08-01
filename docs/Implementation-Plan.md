@@ -1005,3 +1005,11 @@ H3 三處都標示未實作；secret scan 通過。
 **這是 design-pipeline 的最後一份。** 無法 headless 驗證的階段（S0／S3／S11）
 其人工檢查清單在本文 [§3.2](#32-只能由人驗證的部分人工檢查清單)。
 接著要看的是 `docs/ACTIVE_WORK.md`（誰正在做什麼）與 `.kiro/specs/hoya-market-agent/tasks.md`（規範性任務）。
+
+## 2026-08-01 S8/S9/S9B implementation checkpoint
+
+- S8: core orchestration, 720-second hard stop, fork-join, progress, artifacts and deterministic degradation implemented; live Silver gate pending.
+- S9: deterministic Trust Scorecard, canonical regime/unavailable, Evidence-backed invalidation and rendering implemented offline.
+- S9B: single run/cutoff/ledger, aligned UTC comparison Evidence, balanced Arbiter projection, comparative Claim and dual-only section 12 implemented offline.
+
+Verification evidence and remaining gates are recorded in [S8-S9-S9B implementation](S8-S9-S9B-implementation.md). Full pytest/Ruff was not claimed because the current offline package cache lacks those tools.

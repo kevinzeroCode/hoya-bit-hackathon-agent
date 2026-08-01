@@ -447,3 +447,7 @@ per-coin 分支邏輯（`if asset == "BTC"`）、跨幣直接比較 base-asset v
 
 **下一步 →** [Tech-Stack-Plan.md](Tech-Stack-Plan.md)：消費本文的 §7 外部相依面來決定 port 層的厚度，
 並消費 §1–§4 的能力面來挑一個「降低風險而非追求功能數」的第一個里程碑。
+
+## 2026-08-01 capability status addendum
+
+S9 trust distillation/regime/invalidation and S9B one-run dual-asset comparison are implemented offline. S8 orchestration and deterministic degradation are implemented, but Silver success is not claimed until a schema-valid live Bedrock run traverses both designated baseline paths. See [implementation note](S8-S9-S9B-implementation.md).

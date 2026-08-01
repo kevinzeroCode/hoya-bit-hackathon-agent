@@ -45,10 +45,12 @@ src/hoya_agent/
 │   ├── prompt_library.py  # Versioned prompt loading (only version IDs reach logs)
 │   └── conflict_extension.py  # H3 stub — always disabled, routes to Arbiter
 ├── reporting/             # Deterministic output — no LLM
-│   ├── renderer.py        # 11-section zh-Hant report from AnalysisResult+Ledger
+│   ├── renderer.py        # 11-section zh-Hant report (+ dual-only section 12)
 │   └── artifacts.py       # Atomic writes (tmp+fsync+replace) for 4 fixed files
 └── orchestration/
-    └── pipeline.py        # Current: CSV-only pipeline + contract bridge
+    ├── pipeline.py        # Deadline-aware H2-Lite + CSV fallback + dual-asset projection
+    ├── deadline.py        # Monotonic stage budgets and cancellation
+    └── run_state.py       # Terminal-state derivation
 prompts/                   # planner-v1.md, research-extraction-v1.md, arbiter-v1.md
 tests/                     # unit/ contract/ integration/ acceptance/ live/ fixtures/
 ```
@@ -188,3 +190,11 @@ When making code changes that affect architecture, interfaces, data models, work
 | Kiro task finished with commit evidence | `docs/evidence/kiro/README.md` |
 
 This keeps both AI assistants and human teammates from working with stale context.
+
+## 2026-08-01 S8 / S9 / S9B integration
+
+- `_provisional_seams.py` is retired; application, artifacts, and orchestration use canonical models/ports.
+- `orchestration/deadline.py`, `orchestration/run_state.py`, and `DeadlineAwarePipeline` implement the 720-second analysis hard stop and Market/Research fork-join.
+- `evidence/trust.py` provides deterministic conclusion-only Trust Scorecards.
+- Dual-asset runs keep one run/cutoff/ledger and add report section 12; the frozen reasoning package remains unchanged.
+- Detailed implementation and verification: `docs/S8-S9-S9B-implementation.md` and `.agents/summary/s8-s9-s9b.md`.

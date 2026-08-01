@@ -107,3 +107,7 @@ hoya-bit-hackathon-agent/
 5. **Coin-agnostic:** All pipeline stages take `asset` as parameter; no per-coin special cases
 6. **Degradation-first errors:** Adapter/service failures produce partial results with disclosure, never crash
 7. **Atomic artifacts:** All file writes use tmp+rename pattern; partial runs still produce valid artifacts
+
+## 2026-08-01 S8/S9/S9B additions
+
+New canonical modules: `orchestration/deadline.py`, `orchestration/run_state.py`, `evidence/trust.py`, and the offline acceptance script. `_provisional_seams.py` has been removed. See `s8-s9-s9b.md`.

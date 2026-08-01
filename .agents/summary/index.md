@@ -231,3 +231,7 @@ Here are examples of how to use this documentation effectively:
 - **"How does config.py parse settings?"** → `components.md` (Settings) + `interfaces.md` (Settings.from_env)
 - **"What protocols must a new adapter implement?"** → `interfaces.md` (MarketDataAdapter/ResearchSourceAdapter) + `components.md` (Port Adapters)
 - **"How is the official cutoff frozen?"** → `components.md` (SystemClock) + `interfaces.md` (build_run_context)
+
+## 2026-08-01 integration update
+
+See `s8-s9-s9b.md` for the canonical seam swap, deadline-aware H2-Lite orchestration, deterministic trust/regime layer, dual-asset comparison, and remaining live Silver gate.

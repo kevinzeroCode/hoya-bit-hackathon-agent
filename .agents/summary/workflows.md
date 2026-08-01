@@ -312,3 +312,7 @@ flowchart TD
     Check -->|"780s reached"| ArtifactDeadline["All 4 artifacts MUST be on disk"]
     ArtifactDeadline --> Buffer["Remaining 120s = competition buffer"]
 ```
+
+## 2026-08-01 workflow update
+
+Analysis calls stop at 720 seconds, leaving artifact finalization budget. Market and Research execute as an independent fork-join; failures degrade honestly. Dual assets share one run/cutoff/ledger, aligned UTC bars, and a balanced Arbiter projection. See `s8-s9-s9b.md`.

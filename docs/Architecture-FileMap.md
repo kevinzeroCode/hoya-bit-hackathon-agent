@@ -426,3 +426,7 @@ renderer ─▶ ① regime headline ② per-conclusion scorecard ③ 量化 inva
 
 **下一步 →** [Implementation-Plan.md](Implementation-Plan.md)：把這些檔案排進**可獨立驗證的建置階段**，
 每個 stage 的「元件」欄位都會指回上面的 row。
+
+## 2026-08-01 S8/S9/S9B status addendum
+
+`orchestration/{pipeline,deadline,run_state}.py` now owns deadline-aware H2-Lite sequencing; `evidence/trust.py` owns deterministic scorecards; `reporting/renderer.py` owns Trust/Regime and the dual-only comparison section. `_provisional_seams.py` is retired. Details: [S8-S9-S9B implementation](S8-S9-S9B-implementation.md).

@@ -24,6 +24,7 @@ from hoya_agent.data.market_worker import WorkerResult
 from hoya_agent.data.types import MarketBar
 from hoya_agent.evidence.policies import SourceClass, reliability_for
 from hoya_agent.evidence.types import EvidenceDraft
+from hoya_agent.models import Asset, MarketRegime as ContractMarketRegime, RegimeLabel as ContractRegimeLabel
 
 UTC = timezone.utc
 RegimeLabel = Literal["trending_up", "trending_down", "range_bound", "high_volatility", "mixed"]
@@ -98,6 +99,55 @@ def classify_regime(
 
     last_date = bars_asof(bars, analysis_as_of)[-1].date
     return MarketRegime(asset, label, last_date, ret, vol_pctile, range_pos, t)
+
+
+def classify_market_regime(
+    asset: Asset,
+    bars: Sequence[MarketBar],
+    *,
+    analysis_as_of: date,
+    evidence_id: str | None = None,
+    thresholds: RegimeThresholds = DEFAULT_THRESHOLDS,
+) -> ContractMarketRegime:
+    """Return the canonical contract shape, including an honest unavailable state."""
+    computed = classify_regime(
+        asset.value,
+        bars,
+        analysis_as_of=analysis_as_of,
+        thresholds=thresholds,
+    )
+    if computed is None:
+        return ContractMarketRegime(
+            asset=asset,
+            label=ContractRegimeLabel.unavailable,
+            as_of=analysis_as_of.isoformat(),
+            window_days=max(
+                thresholds.return_window,
+                thresholds.vol_window,
+                thresholds.range_window,
+            ),
+        )
+    return ContractMarketRegime(
+        asset=asset,
+        label=ContractRegimeLabel(computed.label),
+        as_of=computed.as_of.isoformat(),
+        window_days=max(
+            thresholds.return_window,
+            thresholds.vol_window,
+            thresholds.range_window,
+        ),
+        metrics={
+            "return_window": computed.return_window_pct,
+            "realized_vol_percentile": computed.vol_percentile,
+            "range_position": computed.range_position,
+        },
+        thresholds={
+            "trend_return_abs_min": thresholds.trend_return_abs_min,
+            "range_return_abs_max": thresholds.range_return_abs_max,
+            "high_vol_pctile": thresholds.high_vol_pctile,
+        },
+        evidence_id=evidence_id,
+    )
 
 
 def build_regime_evidence(

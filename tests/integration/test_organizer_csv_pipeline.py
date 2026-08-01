@@ -20,9 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from hoya_agent._provisional_seams import ExecutionEvent, TerminalState
 from hoya_agent.application import ApplicationService, build_request
-from hoya_agent.models import Asset, EvidenceLedger, Reliability, RunMode, SourceType
+from hoya_agent.models import Asset, EvidenceLedger, ExecutionEvent, Reliability, RunMode, SourceType, TerminalState
 from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline
 from hoya_agent.reporting.artifacts import ARTIFACT_NAMES, EVIDENCE_LEDGER, FINAL_REPORT
 
