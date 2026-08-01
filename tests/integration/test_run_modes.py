@@ -90,6 +90,7 @@ async def test_demo_recorded_fallback_is_explicit_in_summary_and_run_config(tmp_
     assert summary.effective_data_mode is DataMode.recorded_fallback
     assert payload["requested_data_mode"] == "live"
     assert payload["effective_data_mode"] == "recorded_fallback"
+    assert payload["used_recorded_fallback"] is True
 
 
 async def test_official_rejects_non_live_effective_data_mode(tmp_path) -> None:
