@@ -225,6 +225,9 @@ class ApplicationService:
                 "used_cached_evidence": any(item.is_cached for item in ledger.items),
                 "has_stale_evidence": any(item.is_stale for item in ledger.items),
                 "terminal_status": terminal_state.value,
+                "effective_data_mode": (
+                    outcome.effective_data_mode or snapshot.effective_data_mode
+                ),
                 "artifact_checksums": checksums,
                 "missing_artifacts": store.missing_artifacts(),
                 "artifact_write_failures": [f.as_dict() for f in store.failures],
