@@ -37,6 +37,15 @@ Rules:
 
 - `assets` contains one or two unique supported assets.
 - `question` has a bounded configured length and is treated as untrusted input.
+  The bound is `MAX_QUESTION_LENGTH`: an integer count of Unicode code points
+  measured on the already-stripped question. Default 500; configured value must
+  be within 50..2000 inclusive. `Settings.validate_request` enforces the
+  effective configured maximum at the request boundary (Task 2); `models.py`
+  does not import configuration to enforce it dynamically.
+- `analysis_as_of` may be omitted by the caller. In `official` it is always
+  frozen from the injected clock and any supplied cutoff is ignored.
+  `rehearsal`/`demo` preserve an explicitly supplied cutoff and otherwise also
+  take the injected clock reading. The effective cutoff is immutable thereafter.
 - In `official`, omitted `analysis_as_of` is frozen to current UTC. Rehearsal/demo may supply it.
 - If question text and `assets` disagree, `assets` wins and a warning is logged.
 - In MVP, `enable_conditional_debate=true` is accepted but recorded as disabled/ignored in every run mode; execution still routes to Arbiter.
@@ -70,6 +79,12 @@ Field rules:
 - `source_url` is the direct source/API/original publisher URL, never a fabricated link.
 - `published_at` may be `null` only when the provider truly supplies no source time; the limitation must be recorded.
 - `fetched_at` is required and cannot precede a known `published_at` by more than clock tolerance.
+  The bound is `CLOCK_TOLERANCE_SECONDS`: an integer number of seconds, default
+  60, configured value within 0..300 inclusive. Task 1b parses and snapshots it;
+  the Evidence Processor (Task 5) applies
+  `fetched_at >= published_at - clock_tolerance`. `EvidenceItem`/`EvidenceDraft`
+  deliberately carry no zero-tolerance ordering validator, because the
+  admissible slack is configuration, not a model-local invariant.
 - `query_or_parameters` contains reproducibility parameters but no token, header, credential, or signed URL.
 - `content_reference` is a short quotation, metric/range, or bounded source summary. It is not an entire copyrighted article.
 - `normalized_fact` is one factual proposition. It contains no recommendation, unsupported causal inference, or stance.
@@ -271,7 +286,29 @@ Allowed event categories include run/stage/tool start/end, timeout, retry, cance
 - fallback/cache/stale states;
 - terminal status and artifact checksums.
 
-Configuration names are fixed: `BEDROCK_PRIMARY_MODEL_ID`, `BEDROCK_FALLBACK_MODEL_ID`, and `CRYPTOPANIC_API_TOKEN`.
+Configuration names are fixed: `BEDROCK_PRIMARY_MODEL_ID`,
+`BEDROCK_FALLBACK_MODEL_ID`, `CRYPTOPANIC_API_TOKEN`, `MAX_QUESTION_LENGTH`
+(§2), `CLOCK_TOLERANCE_SECONDS` (§3), and `LLM_CALL_TIMEOUT_SECONDS`
+(default 45, bounds `(0, 45]`; the Bedrock adapter owns the same hard cap).
+
+### 14.1 Data Mode Vocabulary
+
+`DataMode` is a closed enum with exactly three values:
+
+| Value | Meaning |
+|---|---|
+| `live` | Evidence came from live providers and/or the organizer CSV. |
+| `fixture` | Deterministic fixtures were used, as permitted in `rehearsal`. |
+| `recorded_fallback` | A previously recorded bundle was replayed after live failure, permitted only in `demo`. |
+
+`run_config.json` records both `requested_data_mode` and `effective_data_mode`;
+`RunSummary` reports `effective_data_mode` using the same enum. Data mode is
+distinct from run mode and must not be conflated with it.
+
+Cache, stale, partial, and degraded conditions are **separate** fields and
+states. They are never additional `DataMode` labels, because a run can be
+`live` while still serving cached or stale evidence, and that distinction has to
+survive into the artifact.
 
 ## 15. Market Metric Contracts
 

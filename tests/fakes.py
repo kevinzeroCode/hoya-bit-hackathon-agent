@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel
 
-from hoya_agent.models import ExecutionEvent, RawSourceRecord, RunSummary
+from hoya_agent.models import (
+    ExecutionEvent,
+    RawSourceRecord,
+    RunSummary,
+    SourceResult,
+    SourceStatus,
+)
 from hoya_agent.ports import StaticToolRegistry
 
 
@@ -26,8 +32,13 @@ class FixedClock:
         return self._monotonic
 
     def advance(self, seconds: float) -> None:
-        from datetime import timedelta
+        """Move both readings forward without sleeping.
 
+        Rejects a negative step so the monotonic reading can never go backwards,
+        which would let a deadline test pass against impossible behaviour.
+        """
+        if seconds < 0:
+            raise ValueError("FixedClock.advance() requires a non-negative step")
         self._now += timedelta(seconds=seconds)
         self._monotonic += seconds
 
@@ -47,35 +58,93 @@ class FakeLLM:
         return response
 
 
+def _envelope(
+    source_name: str,
+    status: SourceStatus,
+    data: object,
+    fetched_at: datetime,
+) -> SourceResult[Any]:
+    """Build a normalized envelope, carrying failure as status rather than data."""
+    failed = status is not SourceStatus.ok
+    return SourceResult[Any](
+        source_name=source_name,
+        status=status,
+        fetched_at=fetched_at,
+        data=None if failed else data,
+        error_category=status.value if failed else None,
+    )
+
+
 class FakeSourceAdapter:
-    def __init__(self, result: object) -> None:
+    """Generic adapter fake returning a configurable SourceResult envelope."""
+
+    def __init__(
+        self,
+        result: object = None,
+        status: SourceStatus = SourceStatus.ok,
+        fetched_at: datetime | None = None,
+        source_name: str = "fake-source",
+    ) -> None:
         self.result = result
+        self.status = status
+        self.source_name = source_name
+        self.fetched_at = fetched_at or datetime(2026, 8, 1, tzinfo=UTC)
         self.calls: list[dict[str, object]] = []
 
-    async def fetch(self, **params: object) -> object:
+    async def fetch(self, **params: object) -> SourceResult[Any]:
         self.calls.append(params)
-        return self.result
+        return _envelope(self.source_name, self.status, self.result, self.fetched_at)
 
 
 class FakeResearchSourceAdapter(FakeSourceAdapter):
-    async def fetch(self, **params: object) -> list[RawSourceRecord]:
-        result = await super().fetch(**params)
-        return list(result)  # type: ignore[arg-type]
+    """Research adapter fake yielding raw records inside the envelope."""
+
+    def __init__(
+        self,
+        records: list[RawSourceRecord] | None = None,
+        status: SourceStatus = SourceStatus.ok,
+        fetched_at: datetime | None = None,
+    ) -> None:
+        super().__init__(
+            result=list(records or []),
+            status=status,
+            fetched_at=fetched_at,
+            source_name="fake-research",
+        )
+
+    async def fetch(self, **params: object) -> SourceResult[list[RawSourceRecord]]:
+        self.calls.append(params)
+        return _envelope(
+            self.source_name, self.status, list(self.result or []), self.fetched_at
+        )
 
 
 class FakeMarketDataAdapter:
-    def __init__(self, bars: object = None, snapshot: object = None) -> None:
-        self.bars = bars
+    """Market adapter fake exposing both named operations and the generic seam."""
+
+    def __init__(
+        self,
+        bars: object = None,
+        snapshot: object = None,
+        status: SourceStatus = SourceStatus.ok,
+        fetched_at: datetime | None = None,
+    ) -> None:
+        self.bars = bars if bars is not None else []
         self.snapshot = snapshot
+        self.status = status
+        self.fetched_at = fetched_at or datetime(2026, 8, 1, tzinfo=UTC)
         self.calls: list[tuple[str, dict[str, object]]] = []
 
-    async def fetch_daily_bars(self, **params: object) -> object:
+    async def fetch_daily_bars(self, **params: object) -> SourceResult[Any]:
         self.calls.append(("fetch_daily_bars", params))
-        return self.bars
+        return _envelope("fake-market", self.status, self.bars, self.fetched_at)
 
-    async def fetch_snapshot(self, **params: object) -> object:
+    async def fetch_snapshot(self, **params: object) -> SourceResult[Any]:
         self.calls.append(("fetch_snapshot", params))
-        return self.snapshot
+        return _envelope("fake-market", self.status, self.snapshot, self.fetched_at)
+
+    async def fetch(self, **params: object) -> SourceResult[Any]:
+        return await self.fetch_daily_bars(**params)
 
 
 class InMemoryProgressSink:

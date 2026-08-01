@@ -50,6 +50,7 @@ import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from enum import Enum
+from typing import Generic, TypeVar
 
 from pydantic import (
     BaseModel,
@@ -57,9 +58,14 @@ from pydantic import (
     Field,
     HttpUrl,
     TypeAdapter,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
+
+#: Payload a SourceResult carries. Concrete payload models (market bars,
+#: snapshots) belong to their owning task; the envelope stays generic.
+SourcePayloadT = TypeVar("SourcePayloadT")
 
 # ---------------------------------------------------------------------------
 # Enums (all str-backed for direct serialization)
@@ -153,6 +159,44 @@ class TerminalState(str, Enum):
     degraded = "degraded"
     failed = "failed"
     cancelled = "cancelled"
+
+
+class DataMode(str, Enum):
+    """Where a run's evidence actually came from (evidence-contracts.md §14.1).
+
+    Distinct from ``RunMode``. Cache, stale, partial and degraded conditions are
+    separate fields, never additional labels here: a run can be ``live`` while
+    still serving cached or stale evidence, and that distinction has to survive
+    into the artifact.
+    """
+
+    live = "live"
+    fixture = "fixture"
+    recorded_fallback = "recorded_fallback"
+
+
+class SourceStatus(str, Enum):
+    """Normalized adapter outcome (design.md §8.7).
+
+    Provider-specific error payloads stop at the adapter boundary; core modules
+    only ever see one of these categories.
+    """
+
+    ok = "ok"
+    empty = "empty"
+    timeout = "timeout"
+    http_error = "http_error"
+    malformed = "malformed"
+    rejected = "rejected"
+
+
+#: The only artifact filenames the system may write (competition-rules).
+ARTIFACT_FILENAMES: tuple[str, ...] = (
+    "final_report.md",
+    "evidence.json",
+    "execution_log.jsonl",
+    "run_config.json",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +300,7 @@ class AnalysisRequest(BaseModel):
     question: str
     assets: list[Asset]
     requested_at: datetime
-    analysis_as_of: datetime
+    analysis_as_of: datetime | None = None
     deadline_seconds: int = 900
     run_mode: RunMode
     enable_conditional_debate: bool = False
@@ -283,8 +327,10 @@ class AnalysisRequest(BaseModel):
 
     @field_validator("analysis_as_of")
     @classmethod
-    def _analysis_as_of_utc(cls, v: datetime) -> datetime:
-        return _validate_utc(v, "analysis_as_of")
+    def _analysis_as_of_utc(cls, v: datetime | None) -> datetime | None:
+        # May be omitted (evidence-contracts.md §2). When supplied it must still
+        # be strict UTC; build_run_context decides whether it survives.
+        return None if v is None else _validate_utc(v, "analysis_as_of")
 
     @field_validator("deadline_seconds")
     @classmethod
@@ -942,14 +988,30 @@ class WorkerResult(BaseModel):
 
 
 class ExecutionEvent(BaseModel):
+    """One ``execution_log.jsonl`` line (evidence-contracts.md §13).
+
+    Deliberately carries no prompt text, chain-of-thought, credential, or
+    authorization field. ``parameters`` holds sanitized reproducibility values
+    only; adapters strip tokens and signed URLs before they reach here.
+    """
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    run_id: str
-    stage: str
-    state: StageState
+    schema_version: str = "1.0"
     timestamp: datetime
+    run_id: str
+    run_mode: RunMode
+    stage: str
+    event_type: str
+    status: str
+    duration_ms: int | None = None
+    provider_or_model: str | None = None
+    parameters: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    attempt: int | None = None
+    input_count: int | None = None
+    output_count: int | None = None
+    error_category: str | None = None
     message: str | None = None
-    details: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
 
     @field_validator("run_id")
     @classmethod
@@ -958,36 +1020,92 @@ class ExecutionEvent(BaseModel):
             raise ValueError("run_id must match format run_YYYYMMDD_HHMMSS_<suffix>")
         return v
 
-    @field_validator("stage")
+    @field_validator("schema_version", "stage", "event_type", "status")
     @classmethod
-    def _stage_nonblank(cls, v: str) -> str:
-        return _strip_non_empty(v, "stage")
+    def _required_text(cls, v: str, info: ValidationInfo) -> str:
+        return _strip_non_empty(v, info.field_name or "field")
 
-    @field_validator("message")
+    @field_validator("provider_or_model", "error_category", "message")
     @classmethod
-    def _message_nonblank(cls, v: str | None) -> str | None:
-        return _strip_optional_non_empty(v, "message")
+    def _optional_text(cls, v: str | None, info: ValidationInfo) -> str | None:
+        return _strip_optional_non_empty(v, info.field_name or "field")
 
     @field_validator("timestamp")
     @classmethod
     def _timestamp_utc(cls, v: datetime) -> datetime:
         return _validate_utc(v, "timestamp")
 
+    @field_validator("duration_ms", "attempt", "input_count", "output_count")
+    @classmethod
+    def _non_negative(cls, v: int | None, info: ValidationInfo) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError(f"{info.field_name} must not be negative")
+        return v
+
 
 class RunConfigSnapshot(BaseModel):
-    """Sanitized configuration persisted in ``run_config.json``."""
+    """Sanitized configuration persisted in ``run_config.json``.
+
+    Complete against evidence-contracts.md §14. Two rules shape it:
+
+    - optional credentials and the optional fallback model ID appear only in
+      ``optional_key_presence`` as booleans, never by value, and there is
+      deliberately no field able to hold a token, header, or credential;
+    - every other non-secret operational setting is recorded by value, because
+      a judge must be able to reproduce the run from the artifact alone.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    # Versions
+    schema_version: str = "1.0"
+    policy_version: str = "1.0"
+    prompt_versions: dict[str, str] = Field(default_factory=dict)
+
+    # Sanitized request and immutable cutoff
     run_id: str
-    run_mode: RunMode
+    question: str
+    assets: list[Asset]
     analysis_as_of: datetime
+    deadline_seconds: int
+
+    # Requested vs effective modes
+    requested_run_mode: RunMode
+    effective_run_mode: RunMode
+    requested_data_mode: DataMode
+    effective_data_mode: DataMode
+
+    # Timing
+    stage_durations_ms: dict[str, int] = Field(default_factory=dict)
+
+    # Configured identifiers
     aws_region: str
     bedrock_primary_model_id: str
     artifact_root: str
+    source_identifiers: list[str] = Field(default_factory=list)
+
+    # Non-secret operational settings needed for reproducibility
+    http_connect_timeout_seconds: float
+    http_read_timeout_seconds: float
+    max_evidence_for_arbiter: int
+    llm_call_timeout_seconds: float
+    allow_recorded_demo_fallback: bool
+    log_level: str
     max_question_length: int
-    clock_tolerance_seconds: float
-    optional_key_presence: dict[str, bool]
+    clock_tolerance_seconds: int
+
+    # Presence booleans only, never values
+    optional_key_presence: dict[str, bool] = Field(default_factory=dict)
+
+    # Degradation states, kept separate from DataMode
+    used_llm_fallback_model: bool = False
+    used_cache: bool = False
+    has_stale_evidence: bool = False
+    used_recorded_demo_fallback: bool = False
+
+    # Outcome
+    terminal_status: TerminalState | None = None
+    artifact_checksums: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("run_id")
     @classmethod
@@ -1001,10 +1119,69 @@ class RunConfigSnapshot(BaseModel):
     def _analysis_as_of_utc(cls, v: datetime) -> datetime:
         return _validate_utc(v, "analysis_as_of")
 
-    @field_validator("aws_region", "bedrock_primary_model_id", "artifact_root")
+    @field_validator(
+        "schema_version",
+        "policy_version",
+        "question",
+        "aws_region",
+        "bedrock_primary_model_id",
+        "artifact_root",
+        "log_level",
+    )
     @classmethod
-    def _required_text(cls, v: str) -> str:
-        return _strip_non_empty(v, "run config field")
+    def _required_text(cls, v: str, info: ValidationInfo) -> str:
+        return _strip_non_empty(v, info.field_name or "run config field")
+
+    @field_validator("assets")
+    @classmethod
+    def _assets_valid(cls, v: list[Asset]) -> list[Asset]:
+        if not (1 <= len(v) <= 2):
+            raise ValueError("assets must contain 1 or 2 items")
+        if len(v) != len(set(v)):
+            raise ValueError("assets must be unique")
+        return v
+
+    @field_validator("stage_durations_ms")
+    @classmethod
+    def _durations_non_negative(cls, v: dict[str, int]) -> dict[str, int]:
+        cleaned: dict[str, int] = {}
+        for stage, duration in v.items():
+            name = _strip_non_empty(stage, "stage name")
+            if duration < 0:
+                raise ValueError(f"stage duration for {name} must not be negative")
+            cleaned[name] = duration
+        return cleaned
+
+    @field_validator("source_identifiers")
+    @classmethod
+    def _source_identifiers_unique(cls, v: list[str]) -> list[str]:
+        cleaned = _validate_non_blank_list(v, "source_identifiers")
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("source_identifiers must be unique")
+        return cleaned
+
+    @field_validator("artifact_checksums")
+    @classmethod
+    def _checksums_valid(cls, v: dict[str, str]) -> dict[str, str]:
+        unknown = set(v) - set(ARTIFACT_FILENAMES)
+        if unknown:
+            raise ValueError(
+                f"artifact_checksums may only name fixed artifacts, got {sorted(unknown)}"
+            )
+        return {
+            name: _strip_non_empty(checksum, f"checksum for {name}")
+            for name, checksum in v.items()
+        }
+
+    @field_validator("prompt_versions")
+    @classmethod
+    def _prompt_versions_nonblank(cls, v: dict[str, str]) -> dict[str, str]:
+        return {
+            _strip_non_empty(name, "prompt name"): _strip_non_empty(
+                version, f"prompt version for {name}"
+            )
+            for name, version in v.items()
+        }
 
 
 class RunSummary(BaseModel):
@@ -1013,6 +1190,7 @@ class RunSummary(BaseModel):
     run_id: str
     terminal_state: TerminalState
     effective_run_mode: RunMode
+    effective_data_mode: DataMode
     artifact_paths: dict[str, str] = Field(default_factory=dict)
     stage_statuses: dict[str, StageState] = Field(default_factory=dict)
     degradation_notes: list[str] = Field(default_factory=list)
@@ -1600,4 +1778,79 @@ class AnalysisResult(BaseModel):
                     f"trust_scorecard {sc.claim_id} must reference a "
                     "conclusion claim"
                 )
+        return self
+
+
+
+# ---------------------------------------------------------------------------
+# Adapter result envelope (design.md §8.7)
+# ---------------------------------------------------------------------------
+
+
+class SourceResult(BaseModel, Generic[SourcePayloadT]):
+    """Uniform envelope every adapter returns.
+
+    An expected provider failure is carried as ``status`` rather than raised, so
+    one failing source degrades a branch instead of killing the run.
+
+    ``query_or_parameters`` holds reproducibility values with secrets already
+    removed, and there is deliberately no field able to carry a header, token,
+    or signed URL. ``fetched_at`` is the actual retrieval time and must never be
+    used to imply the content is newer than its ``published_at``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_name: str
+    status: SourceStatus
+    fetched_at: datetime
+    source_url: str | None = None
+    published_at: datetime | None = None
+    query_or_parameters: str | None = None
+    content_reference: str | None = None
+    data: SourcePayloadT | None = None
+    is_cached: bool = False
+    cache_time: datetime | None = None
+    is_stale: bool = False
+    latency_ms: int | None = None
+    error_category: str | None = None
+
+    @field_validator("source_name")
+    @classmethod
+    def _source_name_nonblank(cls, v: str) -> str:
+        return _strip_non_empty(v, "source_name")
+
+    @field_validator("query_or_parameters", "content_reference", "error_category")
+    @classmethod
+    def _optional_text(cls, v: str | None, info: ValidationInfo) -> str | None:
+        return _strip_optional_non_empty(v, info.field_name or "field")
+
+    @field_validator("source_url")
+    @classmethod
+    def _url_valid(cls, v: str | None) -> str | None:
+        return _validate_optional_http_url(v, "source_url")
+
+    @field_validator("fetched_at")
+    @classmethod
+    def _fetched_at_utc(cls, v: datetime) -> datetime:
+        return _validate_utc(v, "fetched_at")
+
+    @field_validator("published_at", "cache_time")
+    @classmethod
+    def _optional_utc(cls, v: datetime | None, info: ValidationInfo) -> datetime | None:
+        return None if v is None else _validate_utc(v, info.field_name or "timestamp")
+
+    @field_validator("latency_ms")
+    @classmethod
+    def _latency_non_negative(cls, v: int | None) -> int | None:
+        if v is not None and v < 0:
+            raise ValueError("latency_ms must not be negative")
+        return v
+
+    @model_validator(mode="after")
+    def _cache_consistency(self) -> "SourceResult[SourcePayloadT]":
+        if self.is_cached and self.cache_time is None:
+            raise ValueError("is_cached=True requires cache_time")
+        if not self.is_cached and self.cache_time is not None:
+            raise ValueError("is_cached=False requires cache_time=None")
         return self

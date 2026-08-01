@@ -464,7 +464,10 @@ Optional keys:
 - `CRYPTOPANIC_API_TOKEN`
 - `HTTP_CONNECT_TIMEOUT_SECONDS`
 - `HTTP_READ_TIMEOUT_SECONDS`
-- `MAX_EVIDENCE_FOR_ARBITER` (hard maximum 30)
+- `MAX_EVIDENCE_FOR_ARBITER` (default 30, configured bounds 20..30 inclusive, per AC 6.5)
+- `MAX_QUESTION_LENGTH` (integer Unicode code points on the stripped question; default 500, bounds 50..2000 inclusive)
+- `CLOCK_TOLERANCE_SECONDS` (integer seconds; default 60, bounds 0..300 inclusive; applied by the Evidence Processor)
+- `LLM_CALL_TIMEOUT_SECONDS` (default 45, bounds `(0, 45]`; the Bedrock adapter enforces the same hard cap)
 - `ALLOW_RECORDED_DEMO_FALLBACK`
 - `LOG_LEVEL`
 

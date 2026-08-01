@@ -19,6 +19,7 @@ from hoya_agent.models import (
     RawSourceRecord,
     RunContext,
     RunSummary,
+    SourceResult,
 )
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -47,11 +48,28 @@ class LLMClient(Protocol):
     ) -> ModelT: ...
 
 
+@runtime_checkable
 class SourceAdapter(Protocol[SourceT]):
-    async def fetch(self, *, context: RunContext, **params: object) -> SourceT: ...
+    """Generic external-source boundary (design.md §4.4, §8.7).
+
+    Every adapter returns the normalized :class:`SourceResult` envelope rather
+    than a bare payload, so an expected provider failure travels as data and one
+    failing source degrades a branch instead of killing the run.
+    """
+
+    async def fetch(
+        self, *, context: RunContext, **params: object
+    ) -> SourceResult[SourceT]: ...
 
 
+@runtime_checkable
 class MarketDataAdapter(Protocol):
+    """Deterministic market-data boundary; a ``SourceAdapter`` specialization.
+
+    The bar/snapshot payload models belong to the market-data task, so the
+    envelope payload stays open here rather than pre-empting that owner.
+    """
+
     async def fetch_daily_bars(
         self,
         *,
@@ -59,19 +77,27 @@ class MarketDataAdapter(Protocol):
         start: date,
         end: date,
         context: RunContext,
-    ) -> object: ...
+    ) -> SourceResult[object]: ...
 
-    async def fetch_snapshot(self, *, asset: Asset, context: RunContext) -> object: ...
+    async def fetch_snapshot(
+        self, *, asset: Asset, context: RunContext
+    ) -> SourceResult[object]: ...
+
+    async def fetch(
+        self, *, context: RunContext, **params: object
+    ) -> SourceResult[object]: ...
 
 
+@runtime_checkable
 class ResearchSourceAdapter(Protocol):
+    """Research boundary; a ``SourceAdapter`` specialization over raw records."""
+
     async def fetch(
         self,
         *,
-        operation: str,
         context: RunContext,
         **params: object,
-    ) -> list[RawSourceRecord]: ...
+    ) -> SourceResult[list[RawSourceRecord]]: ...
 
 
 class ProgressSink(Protocol):

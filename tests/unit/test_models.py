@@ -2034,3 +2034,495 @@ class TestAnalysisResult:
                     trust_scorecards=[sc],
                 )
             )
+
+
+
+# ===========================================================================
+# Corrective regression tests: aligning the merged runtime seams with the
+# authoritative contracts.
+#
+# Findings A (optional cutoff), D (RunConfigSnapshot completeness),
+# E (ExecutionEvent §13), F (SourceResult envelope), G (RunSummary DataMode).
+# ===========================================================================
+
+from hoya_agent.models import (  # noqa: E402  (grouped with the corrective block)
+    ARTIFACT_FILENAMES,
+    DataMode,
+    ExecutionEvent,
+    RunConfigSnapshot,
+    RunSummary,
+    SourceResult,
+    SourceStatus,
+    StageState,
+    TerminalState,
+)
+
+_C_UTC = timezone.utc
+_C_NOW = datetime(2026, 8, 1, 6, 0, 0, tzinfo=_C_UTC)
+_C_RUN_ID = "run_20260801_060000_ab12"
+
+
+# --- Finding A: AnalysisRequest.analysis_as_of may be omitted --------------
+
+
+def test_analysis_request_allows_omitted_analysis_as_of() -> None:
+    """evidence-contracts.md §2: the caller may omit the cutoff entirely."""
+    request = AnalysisRequest(
+        question="市場近期發生什麼變化？",
+        assets=[Asset.BTC],
+        requested_at=_C_NOW,
+        run_mode=RunMode.official,
+        run_id=_C_RUN_ID,
+    )
+
+    assert request.analysis_as_of is None
+
+
+def test_analysis_request_still_validates_a_supplied_cutoff_as_utc() -> None:
+    with pytest.raises(ValidationError):
+        AnalysisRequest(
+            question="q",
+            assets=[Asset.BTC],
+            requested_at=_C_NOW,
+            analysis_as_of=datetime(2026, 8, 1, 6, 0, 0),
+            run_mode=RunMode.rehearsal,
+            run_id=_C_RUN_ID,
+        )
+
+
+# --- Finding G: DataMode vocabulary ---------------------------------------
+
+
+def test_data_mode_has_exactly_three_values() -> None:
+    assert {mode.value for mode in DataMode} == {"live", "fixture", "recorded_fallback"}
+
+
+def test_data_mode_does_not_absorb_cache_or_degraded_states() -> None:
+    """§14.1: cache/stale/degraded are separate fields, not DataMode labels."""
+    values = {mode.value for mode in DataMode}
+    for leaked in ("cached", "stale", "partial", "degraded"):
+        assert leaked not in values
+
+
+def test_run_summary_reports_effective_data_mode() -> None:
+    summary = RunSummary(
+        run_id=_C_RUN_ID,
+        terminal_state=TerminalState.completed,
+        effective_run_mode=RunMode.rehearsal,
+        effective_data_mode=DataMode.fixture,
+        completed_at=_C_NOW,
+    )
+
+    assert summary.effective_data_mode is DataMode.fixture
+
+
+def test_run_summary_rejects_a_non_data_mode_value() -> None:
+    with pytest.raises(ValidationError):
+        RunSummary(
+            run_id=_C_RUN_ID,
+            terminal_state=TerminalState.completed,
+            effective_run_mode=RunMode.official,
+            effective_data_mode="degraded",
+            completed_at=_C_NOW,
+        )
+
+
+def test_run_summary_remains_frozen() -> None:
+    summary = RunSummary(
+        run_id=_C_RUN_ID,
+        terminal_state=TerminalState.completed,
+        effective_run_mode=RunMode.official,
+        effective_data_mode=DataMode.live,
+        completed_at=_C_NOW,
+    )
+
+    with pytest.raises(ValidationError):
+        summary.effective_data_mode = DataMode.fixture
+
+
+def test_run_summary_retains_paths_states_and_notes() -> None:
+    summary = RunSummary(
+        run_id=_C_RUN_ID,
+        terminal_state=TerminalState.degraded,
+        effective_run_mode=RunMode.official,
+        effective_data_mode=DataMode.live,
+        completed_at=_C_NOW,
+        artifact_paths={"final_report.md": "artifacts/r/final_report.md"},
+        stage_statuses={"acquisition": StageState.degraded},
+        degradation_notes=["news source timed out"],
+    )
+
+    assert summary.artifact_paths["final_report.md"].endswith("final_report.md")
+    assert summary.stage_statuses["acquisition"] is StageState.degraded
+    assert summary.degradation_notes == ["news source timed out"]
+
+
+# --- Finding E: ExecutionEvent implements §13 -----------------------------
+
+
+def _c_event(**overrides: object) -> ExecutionEvent:
+    payload: dict[str, object] = {
+        "timestamp": _C_NOW,
+        "run_id": _C_RUN_ID,
+        "run_mode": RunMode.official,
+        "stage": "acquisition",
+        "event_type": "stage_end",
+        "status": "ok",
+    }
+    payload.update(overrides)
+    return ExecutionEvent(**payload)
+
+
+def test_execution_event_exposes_the_section_13_fields() -> None:
+    expected = {
+        "schema_version",
+        "timestamp",
+        "run_id",
+        "run_mode",
+        "stage",
+        "event_type",
+        "status",
+        "duration_ms",
+        "provider_or_model",
+        "parameters",
+        "attempt",
+        "input_count",
+        "output_count",
+        "error_category",
+        "message",
+    }
+
+    assert expected == set(ExecutionEvent.model_fields)
+
+
+def test_execution_event_accepts_a_full_section_13_payload() -> None:
+    event = _c_event(
+        duration_ms=1200,
+        provider_or_model="public_market_data",
+        parameters={"symbol": "BTCUSDT"},
+        attempt=1,
+        input_count=3,
+        output_count=2,
+    )
+
+    assert event.schema_version == "1.0"
+    assert event.duration_ms == 1200
+    assert event.error_category is None
+
+
+def test_execution_event_rejects_naive_timestamp() -> None:
+    with pytest.raises(ValidationError):
+        _c_event(timestamp=datetime(2026, 8, 1, 6, 0, 0))
+
+
+def test_execution_event_rejects_bad_run_id() -> None:
+    with pytest.raises(ValidationError):
+        _c_event(run_id="nope")
+
+
+def test_execution_event_rejects_blank_required_text() -> None:
+    for field in ("stage", "event_type", "status"):
+        with pytest.raises(ValidationError):
+            _c_event(**{field: "   "})
+
+
+@pytest.mark.parametrize(
+    "field", ["duration_ms", "attempt", "input_count", "output_count"]
+)
+def test_execution_event_rejects_negative_counters(field: str) -> None:
+    with pytest.raises(ValidationError):
+        _c_event(**{field: -1})
+
+
+def test_execution_event_cannot_persist_prompts_or_credentials() -> None:
+    """§13 forbids prompt text, chain-of-thought and authorization data."""
+    forbidden = {
+        "prompt",
+        "prompt_text",
+        "messages",
+        "chain_of_thought",
+        "reasoning",
+        "authorization",
+        "credentials",
+        "headers",
+        "token",
+        "details",
+        "state",
+    }
+
+    assert forbidden.isdisjoint(ExecutionEvent.model_fields)
+
+
+# --- Finding D: RunConfigSnapshot implements §14 --------------------------
+
+
+def _c_snapshot(**overrides: object) -> RunConfigSnapshot:
+    payload: dict[str, object] = {
+        "run_id": _C_RUN_ID,
+        "question": "市場近期發生什麼變化？",
+        "assets": [Asset.BTC],
+        "analysis_as_of": _C_NOW,
+        "requested_run_mode": RunMode.official,
+        "effective_run_mode": RunMode.official,
+        "requested_data_mode": DataMode.live,
+        "effective_data_mode": DataMode.live,
+        "deadline_seconds": 900,
+        "aws_region": "us-east-1",
+        "bedrock_primary_model_id": "model-primary",
+        "artifact_root": "artifacts",
+        "http_connect_timeout_seconds": 5.0,
+        "http_read_timeout_seconds": 20.0,
+        "max_evidence_for_arbiter": 30,
+        "llm_call_timeout_seconds": 45.0,
+        "allow_recorded_demo_fallback": False,
+        "log_level": "INFO",
+        "max_question_length": 500,
+        "clock_tolerance_seconds": 60,
+        "optional_key_presence": {"CRYPTOPANIC_API_TOKEN": False},
+    }
+    payload.update(overrides)
+    return RunConfigSnapshot(**payload)
+
+
+def test_run_config_snapshot_records_both_run_modes_and_data_modes() -> None:
+    snapshot = _c_snapshot(
+        requested_run_mode=RunMode.official,
+        effective_run_mode=RunMode.demo,
+        requested_data_mode=DataMode.live,
+        effective_data_mode=DataMode.recorded_fallback,
+    )
+
+    assert snapshot.requested_run_mode is RunMode.official
+    assert snapshot.effective_run_mode is RunMode.demo
+    assert snapshot.requested_data_mode is DataMode.live
+    assert snapshot.effective_data_mode is DataMode.recorded_fallback
+
+
+def test_run_config_snapshot_records_versions_and_reproducibility_settings() -> None:
+    snapshot = _c_snapshot(
+        schema_version="1.0",
+        policy_version="1.0",
+        prompt_versions={"arbiter": "arbiter-v1"},
+    )
+
+    assert snapshot.prompt_versions["arbiter"] == "arbiter-v1"
+    assert snapshot.max_question_length == 500
+    assert snapshot.clock_tolerance_seconds == 60
+    assert snapshot.llm_call_timeout_seconds == 45.0
+
+
+def test_run_config_snapshot_records_fallback_cache_and_stale_flags() -> None:
+    snapshot = _c_snapshot(
+        used_llm_fallback_model=True,
+        used_cache=True,
+        has_stale_evidence=True,
+        used_recorded_demo_fallback=True,
+    )
+
+    assert snapshot.used_llm_fallback_model is True
+    assert snapshot.used_cache is True
+    assert snapshot.has_stale_evidence is True
+    assert snapshot.used_recorded_demo_fallback is True
+
+
+def test_run_config_snapshot_records_terminal_status() -> None:
+    assert _c_snapshot(terminal_status=TerminalState.degraded).terminal_status is (
+        TerminalState.degraded
+    )
+
+
+def test_run_config_snapshot_defaults_terminal_status_to_none() -> None:
+    assert _c_snapshot().terminal_status is None
+
+
+def test_run_config_snapshot_rejects_negative_stage_duration() -> None:
+    with pytest.raises(ValidationError):
+        _c_snapshot(stage_durations_ms={"acquisition": -1})
+
+
+def test_run_config_snapshot_accepts_zero_stage_duration() -> None:
+    assert _c_snapshot(stage_durations_ms={"acquisition": 0}).stage_durations_ms == {
+        "acquisition": 0
+    }
+
+
+def test_run_config_snapshot_rejects_duplicate_source_identifiers() -> None:
+    with pytest.raises(ValidationError):
+        _c_snapshot(source_identifiers=["binance.com", "binance.com"])
+
+
+def test_run_config_snapshot_rejects_blank_source_identifier() -> None:
+    with pytest.raises(ValidationError):
+        _c_snapshot(source_identifiers=["binance.com", "  "])
+
+
+def test_run_config_snapshot_strips_source_identifiers() -> None:
+    assert _c_snapshot(source_identifiers=["  binance.com  "]).source_identifiers == [
+        "binance.com"
+    ]
+
+
+def test_run_config_snapshot_rejects_unknown_artifact_checksum_name() -> None:
+    with pytest.raises(ValidationError):
+        _c_snapshot(artifact_checksums={"summary.pdf": "a" * 64})
+
+
+def test_run_config_snapshot_rejects_blank_checksum_value() -> None:
+    with pytest.raises(ValidationError):
+        _c_snapshot(artifact_checksums={"evidence.json": "   "})
+
+
+def test_run_config_snapshot_accepts_the_four_fixed_checksum_names() -> None:
+    checksums = {name: "a" * 64 for name in ARTIFACT_FILENAMES}
+
+    assert set(_c_snapshot(artifact_checksums=checksums).artifact_checksums) == set(
+        ARTIFACT_FILENAMES
+    )
+
+
+def test_run_config_snapshot_rejects_blank_artifact_path_value() -> None:
+    with pytest.raises(ValidationError):
+        RunSummary(
+            run_id=_C_RUN_ID,
+            terminal_state=TerminalState.completed,
+            effective_run_mode=RunMode.official,
+            effective_data_mode=DataMode.live,
+            completed_at=_C_NOW,
+            artifact_paths={"evidence.json": "   "},
+        )
+
+
+def test_run_config_snapshot_has_no_secret_bearing_field() -> None:
+    forbidden = {
+        "cryptopanic_api_token",
+        "token",
+        "credentials",
+        "headers",
+        "authorization",
+        "aws_access_key_id",
+        "aws_secret_access_key",
+    }
+
+    assert forbidden.isdisjoint(RunConfigSnapshot.model_fields)
+
+
+def test_run_config_snapshot_is_immutable() -> None:
+    snapshot = _c_snapshot()
+
+    with pytest.raises(ValidationError):
+        snapshot.analysis_as_of = datetime(2026, 9, 1, tzinfo=_C_UTC)
+
+
+def test_run_config_snapshot_keeps_sanitized_request_fields() -> None:
+    snapshot = _c_snapshot()
+
+    assert snapshot.question == "市場近期發生什麼變化？"
+    assert snapshot.assets == [Asset.BTC]
+    assert snapshot.deadline_seconds == 900
+
+
+def test_artifact_filenames_are_the_four_fixed_names() -> None:
+    assert set(ARTIFACT_FILENAMES) == {
+        "final_report.md",
+        "evidence.json",
+        "execution_log.jsonl",
+        "run_config.json",
+    }
+
+
+# --- Finding F: SourceResult envelope (design.md §8.7) -------------------
+
+
+def test_source_status_covers_the_normalized_categories() -> None:
+    assert {status.value for status in SourceStatus} >= {
+        "ok",
+        "empty",
+        "timeout",
+        "http_error",
+        "malformed",
+        "rejected",
+    }
+
+
+def test_source_result_carries_identity_status_and_payload() -> None:
+    result: SourceResult[list[int]] = SourceResult(
+        source_name="Binance Spot",
+        status=SourceStatus.ok,
+        fetched_at=_C_NOW,
+        source_url="https://api.binance.com/api/v3/klines",
+        query_or_parameters="symbol=BTCUSDT; credentials removed",
+        content_reference="2026-07-16 UTC close",
+        latency_ms=120,
+        data=[1, 2, 3],
+    )
+
+    assert result.status is SourceStatus.ok
+    assert result.data == [1, 2, 3]
+    assert result.error_category is None
+
+
+def test_source_result_rejects_naive_fetched_at() -> None:
+    with pytest.raises(ValidationError):
+        SourceResult(
+            source_name="s", status=SourceStatus.ok, fetched_at=datetime(2026, 8, 1)
+        )
+
+
+def test_source_result_rejects_negative_latency() -> None:
+    with pytest.raises(ValidationError):
+        SourceResult(
+            source_name="s", status=SourceStatus.ok, fetched_at=_C_NOW, latency_ms=-1
+        )
+
+
+def test_source_result_requires_cache_time_when_cached() -> None:
+    with pytest.raises(ValidationError):
+        SourceResult(
+            source_name="s", status=SourceStatus.ok, fetched_at=_C_NOW, is_cached=True
+        )
+
+
+def test_source_result_rejects_cache_time_when_not_cached() -> None:
+    with pytest.raises(ValidationError):
+        SourceResult(
+            source_name="s",
+            status=SourceStatus.ok,
+            fetched_at=_C_NOW,
+            is_cached=False,
+            cache_time=_C_NOW,
+        )
+
+
+def test_source_result_accepts_consistent_cache_metadata() -> None:
+    result = SourceResult(
+        source_name="s",
+        status=SourceStatus.ok,
+        fetched_at=_C_NOW,
+        is_cached=True,
+        cache_time=_C_NOW,
+        is_stale=True,
+    )
+
+    assert result.is_cached is True
+    assert result.is_stale is True
+
+
+def test_source_result_has_no_secret_bearing_field() -> None:
+    forbidden = {"headers", "authorization", "token", "api_key", "credentials"}
+
+    assert forbidden.isdisjoint(SourceResult.model_fields)
+
+
+def test_source_result_rejects_blank_source_name() -> None:
+    with pytest.raises(ValidationError):
+        SourceResult(source_name="   ", status=SourceStatus.ok, fetched_at=_C_NOW)
+
+
+def test_source_result_rejects_extra_fields() -> None:
+    with pytest.raises(ValidationError):
+        SourceResult(
+            source_name="s",
+            status=SourceStatus.ok,
+            fetched_at=_C_NOW,
+            unexpected="nope",
+        )

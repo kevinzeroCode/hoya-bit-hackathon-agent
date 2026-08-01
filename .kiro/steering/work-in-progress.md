@@ -54,9 +54,22 @@ Record every resolution here so the next session does not re-litigate it.
   362 unit+contract tests passed, ruff clean, zero invalid-payload probe
   failures).
 
-  Deferrals recorded by the corrective commit's disposition table (still open):
-  - Clock-freeze of official `analysis_as_of` → Task 1b (RunContext + Clock).
-  - Configured clock tolerance for fetched-vs-published slack → Task 1b.
+  Deferrals recorded by the corrective commit's disposition table:
+  - Clock-freeze of official `analysis_as_of` → **resolved** by
+    `clock.build_run_context` + `RunContext` (Task 1b).
+  - Configured clock tolerance for fetched-vs-published slack → **Settings
+    portion resolved** (Task 1b): `CLOCK_TOLERANCE_SECONDS`, integer seconds,
+    default 60, bounds 0..300 inclusive, parsed by `Settings.from_env` and
+    recorded in the run-config snapshot. **Task 5 still owns enforcement** of
+    `fetched_at >= published_at - clock_tolerance` in the Evidence Processor;
+    `EvidenceItem`/`EvidenceDraft` must not regain a zero-tolerance ordering
+    validator.
+  - Configured maximum `question` length → **Settings portion resolved**
+    (Task 1b): `MAX_QUESTION_LENGTH`, integer Unicode code points on the
+    already-stripped question, default 500, bounds 50..2000 inclusive, exposed
+    through `Settings.validate_request`. **Task 2 still owns enforcement** at the
+    ApplicationService/request boundary. `models.py` must not import
+    configuration to enforce this dynamically.
   - Ledger `published_at <= analysis_as_of` cutoff → Task 5 (Evidence Processor).
   - Cross-artifact evidence-ID resolution (Link/Scorecard/InvalidationCondition
     against the ledger) → Task 5 / Task 8 (integration wiring).
@@ -64,7 +77,6 @@ Record every resolution here so the next session does not re-litigate it.
     (Arbiter/Renderer).
   - Confidence caps requiring ledger/conflict inputs (material conflict,
     independence-group count, stale-cache-only) → Task 5 / Task 6.
-  - Configured maximum `question` length → Task 1b (Settings).
 
   Downstream stand-in contracts in `tests/unit/reasoning/_stubs.py` remain
   frozen. Swapping `_stubs.py` for the real models is still a later task and
