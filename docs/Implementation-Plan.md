@@ -22,8 +22,30 @@
 Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC2。
 **每個檔的細節請看檔案地圖，本文不重列。**
 
-> ⚠️ **狀態掃描時間：2026-08-01，基準 commit `d15f6da`（`main`）。**
+> ⚠️ **狀態掃描時間：2026-08-01（下午重掃），基準 commit `1377673`（`main`）。**
 > 各階段的「現況」區塊記的是**真的跑過**的事實，不是計畫。
+
+### 1.1 現況快照（2026-08-01 下午）
+
+半天之內 S0、S1、S5 全部落地，S6 大部分落地。**原本「四個人三個在等契約」的局面已經解除。**
+
+| 階段 | 狀態 | 一句話 |
+|---|---|---|
+| **S0** preflight | ✅ | Bedrock 真的通了（Haiku 4.5 @ us-west-2），最高風險已拆除 |
+| **S1** 契約與接縫 | ✅ | `models.py`＋`config/clock/ports/fakes` 都在 `main`，契約驗收零落差 |
+| **S5** 市場證據 | ✅ | `data/` 與行情 adapters 已整合進 `src/hoya_agent/` |
+| **S6** 研究與 Evidence | 🟡 | 大部分已整合；缺 `research_extractor` 合併、`ledger.py`、`official.py` |
+| **S7** bounded reasoning | ✅ | 早於 S1 完成並凍結 |
+| **S9** 創意層 | 🟡 | `regime.py` 已在 `main`；`trust.py` 未寫 |
+| **S2 / S3 / S4 / S8 / S9B / S10 / S11** | 🔴 | 未開始 |
+
+**`main` 目前：501 passed。** 但 **`ruff check .` 有 87 個錯誤**（PR #8 整合大量 P2 程式碼後出現），
+違反 §3.3 的 Definition-of-Done「`ruff check .` 乾淨」。48 個可自動修。
+**這是目前唯一的紅字，建議在下一個階段開工前清掉**，否則之後每個人都會踩到既有噪音、
+分不清哪些是自己引入的。
+
+**下一個關鍵路徑是 S2**（fixture 垂直切片）——它擋住 S3 Bronze 與 S4 編排，
+而 S0／S1／S5 已經不擋任何人。
 
 ---
 
@@ -175,8 +197,9 @@ S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 �
                                   └─▶ S6 ─┘                    └─▶ S9B ─┘
 ```
 
-- **S0 與 S1 可並行**（S0 不依賴契約）。
-- **S4 / S5 / S6 可三路並行**（路徑互不重疊，見 §2.5）。
+- ~~**S0 與 S1 可並行**~~ — **兩者皆已完成（2026-08-01），不再是排程因素。**
+- **S4 / S5 / S6 可三路並行**（路徑互不重疊，見 §2.5）；**S5 已完成**。
+- **現在的關鍵路徑是 S2 → S3 ★Bronze**。S2 未完成前，S3 與 S4 都動不了。
 - **S7 已經完成**，且是在 S1 之前完成的——這是本專案最大的一個順序偏離，見 S7 的現況區塊。
 - **S9（創意層）與 S9B（雙幣比較）互不相依、可並行**，兩者都在 S8 之後、S10 之前的 additive 窗口。
   兩者都對 Bronze 與 Silver 非阻塞，但都必須在 S10 觸發 Feature Freeze 前完成，
@@ -188,11 +211,22 @@ S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 �
 
 ### S0 — 服務可用性 preflight（含**專案史上第一次真實 Bedrock 呼叫**）
 
-> **現況：🔴 未開始 — 且這是全案最高風險項。**
-> `docs/ACTIVE_WORK.md`（2026-08-01）：**「Bedrock 實際呼叫：仍未驗證過任何一次——這是目前最大的未爆彈。」**
-> `adapters/bedrock.py` 有 371 行、`tests/contract/test_bedrock_client.py` 全綠——**但那全是對著 stub 測的。**
-> 若模型未開通、region 不對或 model ID 錯，整個 H2-Lite 是死的，S1–S10 做得再好都沒用。
-> **已實作：** 無。**待辦：** 全部。**指派：** 任務 D（UI），且不需等任何人。
+> **現況：✅ 已完成（2026-08-01，由 P2 驗證，非原指派的任務 D）。**
+> **全案最高風險項已拆除。** 紀錄在 `p2-etl-mvp/docs/service-access-check.md`。
+> **實測結果：** `us.anthropic.claude-haiku-4-5-20251001-v1:0` @ `us-west-2`，
+> boto3 `bedrock-runtime` `invoke_model`，`python bedrock_smoke.py` → `[OK]`；
+> `python run_agent.py BTC` → 10 篇新聞抽出 30 筆結構化事實。
+> **踩過的坑（有價值，別重踩）：** ① 舊 `claude-3-5-haiku-20241022` 已下架，
+> 回 `ResourceNotFoundException: model version has reached end of life`，改用現役 Haiku 4.5 即通；
+> ② 部分模型需 inference profile，model id 要加 `us.` 前綴；
+> ③ 模型回應被 markdown 圍欄包住會導致抽取 0 筆（commit `6ee4b3e` 修）。
+> **來源可用性：** 主辦 CSV、Binance/OKX spot、資金費率、九家第一手新聞 RSS、Google News、
+> Alternative.me 全部 ✅；Reddit Atom 住宅 IP 可、資料中心 IP 403（降級揭露）；
+> CryptoPanic ⏸ 需 token。
+> **designated baseline research source 已指定：** 第一手新聞 RSS + Google News 依幣種搜尋
+> （免 key、五幣覆蓋、已驗證）；CryptoPanic 取得 token 後可升為主。
+> **剩餘尾巴：** `.env.example` 正式位置待團隊統一（目前根目錄與 `p2-etl-mvp/` 各一份）；
+> S0 紀錄尚未搬進計畫原訂的 `docs/rehearsals/service-access-check.md`。
 
 **目標**：用最小成本證明「外部服務真的可用」，並把結果記成不含秘密的紀錄。
 對應 `tasks.md` Task 0 與 ACTIVE_WORK 的任務 D 第一優先項。
@@ -230,13 +264,19 @@ S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 �
 
 ### S1 — 凍結共用契約與執行期接縫
 
-> **現況：🔴 未開始（`models.py` 不存在）。**
-> **已實作：** 無。`main` 上目前的實際契約是 `evidence/types.py` 的 provisional frozen dataclass
-> （欄位名刻意與 `evidence-contracts.md` 一致）＋ `tests/unit/reasoning/_stubs.py`。
-> **偏離：** 原計畫是「先契約、後推理」，實際是**推理層先完成**（見 S7）。這不是錯誤——
-> 它讓 P3 不必等人，代價是 S1 之後必須做一輪**機械式型別替換**並刪掉兩個臨時檔。
-> **指派：** 任務 A，用 **Kiro** 從 spec 原生執行（Task 1a → 1b），作為 Kiro 使用證據。
-> **待辦：** 全部。**這是全隊唯一的真阻塞點。**
+> **現況：✅ 已完成（2026-08-01）。1a 與 1b 都已合併進 `main`。**
+> **已實作：** `pyproject.toml`、`models.py`、`config.py`、`clock.py`、`ports.py`、
+> `tests/fakes.py`、`tests/conftest.py`（PR #6 契約、PR #11 執行期接縫）。
+> **Kiro 使用證據：** Task 1a 由 Kiro 從 spec 原生執行，ledger 記在
+> `docs/evidence/kiro/README.md`（含兩輪 Codex 契約審查與誠實記錄的三項流程偏離）。
+> **契約驗收已完成，🚫 不要重做：** 八組下游替身 ↔ 正式契約逐欄比對，
+> **零個欄位在下游存在而契約沒有，且沒有任何改名**。差異全是單向的（契約多出
+> `run_id`／`run_mode`／`analysis_as_of`／`time_range` 等），細節見
+> `.kiro/steering/work-in-progress.md`。
+> **偏離：** 原計畫是「先契約、後推理」，實際是**推理層先完成**（見 S7）。
+> 代價是 `tests/unit/reasoning/_stubs.py` 仍是替身，尚未換成真 `models.py`——
+> 那一輪機械替換仍待排，且該路徑凍結，需 owner 同意。
+> **待辦：** 只剩 `_stubs.py` 替換與 `evidence/types.py` 退場。**已不再阻塞任何人。**
 
 **目標**：讓 `models.py` 成為所有共用契約的唯一擁有者，讓 `ports.py` 成為所有外部面的唯一 Protocol 集合，
 使四個人可以對著同一組型別各自實作。
@@ -369,11 +409,14 @@ class ApplicationService(Protocol):
 
 ### S3 — Streamlit Bronze 檢查點 + 禁語 lint + 容器殼 ★ **Bronze Exit**
 
-> **現況：🔴 未開始。**
-> **已實作：** 無（`ui/`、`streamlit_app.py`、`reporting/lint.py` 都不存在）。
-> **注意：** `reporting/lint.py` 是純字串比對、**不依賴 `models.py`**，所以它可以**先寫**，
-> 不必等 S1。這是任務 D 在等待期間最值得做的事。
-> **指派：** 任務 D。
+> **現況：🔴 canonical 樹未開始，但 `p2-etl-mvp/` 有一份可運作的原型可接手。**
+> **canonical 樹缺：** `ui/`、`streamlit_app.py`、`reporting/`（整個目錄）都不存在。
+> **可接手的既有產出（`p2-etl-mvp/`，已在 `main`）：** `app.py`（Streamlit 前端，支援 1–2 幣）、
+> `Dockerfile`（`python:3.12-slim`）、`render/report_template.html`、
+> `run_agent.py`／`run_live.py` 統一入口。**這不是重寫，是搬遷 + 改輸出格式。**
+> **注意兩件事：** ① 原型輸出 HTML，MVP artifact 必須是 **Markdown** 的 `final_report.md`；
+> ② `reporting/lint.py`（禁語 lint）是純字串比對、不依賴任何契約，**可以最先寫**。
+> **指派：** 任務 D。**相依：** S2（但 lint 與容器殼不必等）。
 
 **目標**：讓評審能在瀏覽器裡完成一次完整的離線 run 並下載四份 artifacts。**這是 Bronze 驗收閘門。**
 
@@ -463,13 +506,14 @@ terminal state 由編排層決定並輸出，**🚫 不由 UI 推斷**。
 
 ### S5 — Deterministic 市場證據層
 
-> **現況：🟡 已寫但在別的分支。**
-> `feat/p2-report-integration` 上有 `data/{indicators,market_series,market_worker,price_analysis,regime}.py`
-> 與 `adapters/{organizer_csv,binance,okx}.py`，122 passed（Python 3.12）。
-> **未認領的是「收斂」而非「重寫」**——搬進 `src/hoya_agent/`、把 import 從頂層平面式改成
-> `from hoya_agent.data.x import ...`、測試分流。**先不動型別**，等 S1 後另開一輪機械替換。
-> **待裁決（見 [檔案地圖 §7](Architecture-FileMap.md)）：** `price_analysis.py`、`analogs.py` 不在 canonical tree；
-> `okx.py` 與「單一 baseline live market source」的核准決定衝突（預設不搬）。
+> **現況：✅ 已整合進 `main`（2026-08-01，PR #8）。**
+> **已實作：** `src/hoya_agent/data/{indicators,market_series,market_worker,price_analysis,regime,text_clean,types}.py`
+> 與 `src/hoya_agent/adapters/{organizer_csv,binance}.py`，import 已改成 `from hoya_agent.…`。
+> **兩項待裁決已定案：** `price_analysis.py` 保留為獨立模組並入 canonical tree；
+> `okx.py`、`reddit.py`、`coingecko.py`、`derivatives.py`、`google_news.py` **不搬**
+> （PR #8 移除超出 MVP 的五個來源共十個檔，對齊 `evidence-contracts.md`）。
+> **待辦：** 型別仍是 `data/types.py` 的 provisional dataclass，尚未換成 `models.py`；
+> 這一輪機械替換與 `evidence/types.py` 退場要一起做。
 > **指派：** 任務 B。
 
 **目標**：把 OHLCV 變成可回溯的數字。
@@ -515,13 +559,15 @@ CSV↔live 切換點被明確表示且帶 `fetched_at`；`market_worker` 無 LLM
 
 ### S6 — 研究 adapters 與 Evidence Processor
 
-> **現況：🟡 部分在 `main`，其餘在別的分支。**
-> **已在 `main`：** `evidence/policies.py`（123 行，靜態 reliability 表 + independence group + confidence 上限）
-> 與 `evidence/types.py`（78 行 provisional 契約），`tests/unit/evidence/test_policies.py` 綠。
-> **在 `feat/p2-report-integration`：** `evidence/processor.py`、
-> `adapters/{_assets,cryptopanic,reddit,rss,alternative_me}.py`、`data/text_clean.py`。
-> **待辦：** `evidence/ledger.py`、`adapters/official.py` 完全未寫；`reddit.py` 不在 canonical tree（須裁決）。
-> **指派：** 任務 C。**相依：** S1、S5。
+> **現況：🟡 大部分已整合進 `main`（PR #8），仍缺三塊。**
+> **已在 `main`：** `evidence/{policies,types,processor,evidence_json}.py`、
+> `adapters/{_assets,cryptopanic,rss,alternative_me}.py`、`data/text_clean.py`。
+> **仍缺：** ① `reasoning/research_extractor.py` **尚未搬進 `src/`**——多事實抽取
+> （relevance filtering、一篇文章 → 多個 EvidenceDraft）目前只存在於 `p2-etl-mvp/`，
+> 而 `src/hoya_agent/reasoning/research_agent.py` 是 S7 的另一套實作，**兩者尚未合併**；
+> ② `evidence/ledger.py` 未寫；③ `adapters/official.py` 未寫。
+> **`reddit.py` 已定案不搬**（PR #8 一併移除）。
+> **指派：** 任務 C。**相依：** S1 ✅、S5 ✅（皆已滿足，可立即開工）。
 
 **目標**：把新聞與社群的雜訊變成無立場、可查證、去重過的證據。
 
@@ -678,8 +724,8 @@ Bronze 仍綠；一次單幣 live run 經兩條 baseline 路徑產出 schema-val
 
 ### S9 — 創意層：信任提煉與市場洞察（Requirement 16）
 
-> **現況：🟡 部分已寫但在別的分支。**
-> `feat/p2-report-integration` 上已有 `data/regime.py`；
+> **現況：🟡 regime 已在 `main`，Trust Scorecard 未寫。**
+> `src/hoya_agent/data/regime.py` 已隨 PR #8 整合進正式樹；
 > `docs/price-data-analysis-outputs.html` 已用主辦方資料集**實算過**五幣的 regime 標籤，
 > 證明這個判定可行。**`evidence/trust.py` 完全未寫。**
 > ⚠️ 那份 HTML 的 regime 值是以 `as_of 2026-05-31` 算的**示範值**，
@@ -932,10 +978,12 @@ H3 三處都標示未實作；secret scan 通過。
 
 | # | 未決事項 | 必須在何時裁決 | 目前傾向 |
 |---|---|---|---|
-| 1 | `data/price_analysis.py`、`data/analogs.py` 不在 canonical tree | **S5 搬檔之前** | 併進 `data/indicators.py` / `market_worker.py`；否則就正式修改 `structure.md`。🚫 不得兩邊各說各話 |
-| 2 | `adapters/okx.py`、`adapters/reddit.py` 不在 canonical tree | **S5 / S6 搬檔之前** | 預設不搬（`okx` 與「單一 baseline live market source」的核准決定衝突） |
-| 3 | `evidence/types.py` 的退場時機 | **S1 之後、S6 完成之前** | 明確排一次機械替換 + 刪檔，避免兩套契約長期並存 |
-| 4 | designated baseline **research** source 是哪一個 | **S8 Silver 驗收之前**（S0 就要記下） | 由 S0 preflight 的實測可用性決定 |
+| ~~1~~ | ~~`price_analysis.py`、`analogs.py` 不在 canonical tree~~ | ~~S5 搬檔之前~~ | ✅ **已定案（PR #8）**：`price_analysis.py` 保留為獨立模組並納入 canonical tree；`analogs.py` 未建立 |
+| ~~2~~ | ~~`okx.py`、`reddit.py` 不在 canonical tree~~ | ~~S5 / S6 搬檔之前~~ | ✅ **已定案（PR #8）**：`okx`、`reddit`、`coingecko`、`derivatives`、`google_news` 五個來源共十個檔**不搬**，對齊 `evidence-contracts.md` |
+| 3 | `evidence/types.py` 的退場時機 | **S6 完成之前**（S1 已完成） | 仍未排。現在 `main` 上同時有 `models.py`、`evidence/types.py`、`data/types.py` 三套型別——**拖越久越貴** |
+| ~~4~~ | ~~designated baseline **research** source 是哪一個~~ | ~~S8 Silver 驗收之前~~ | ✅ **已定案（S0 實測）**：第一手新聞 RSS + Google News 依幣種搜尋（免 key、五幣覆蓋）；CryptoPanic 取得 token 後可升為主 |
+| 8 | `p2-etl-mvp/` 的退場時機 | **S3 完成之前** | 新增項。PR #8 已把核心搬進 `src/`，但 `p2-etl-mvp/` 71 個檔仍留在 `main`，與原訂「這個目錄永不進 `main`」相反。S3 接手 `app.py`／`Dockerfile` 後應整個刪除，避免兩套並存 |
+| 9 | `ruff check .` 的 87 個錯誤 | **下一階段開工前** | 新增項。違反 §3.3 的 DoD。48 個可 `--fix`，其餘多為既有程式碼與新 lint 設定的落差 |
 | 8 | `reasoning/arbiter.py` 的 `select_evidence()` 需加 per-asset 配額，但它是**凍結路徑** | **S9B 動工之前** | 需原 P3（該檔 owner）同意；🚫 不得逕行修改。這是正確性修復，不是調參 |
 | 5 | 15 分鐘是否含題目輸入與評審檢視時間 | 主辦方確認前不阻塞 | 實作一律**從 run 開始**計時 |
 | 6 | 主辦方 CSV 算不算一個獨立 `independence_group` | 同上 | 暫計為一個（`organizer-public-market-data`） |
