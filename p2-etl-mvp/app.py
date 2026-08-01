@@ -53,7 +53,7 @@ with st.spinner(f"蒐集 {asset} 多源證據並產生報告中…"):
     values = build_values({
         "asset": bundle.asset, "as_of": bundle.as_of, "bars": bundle.bars,
         "regime": bundle.regime, "ledger": bundle.ledger,
-        "notes": bundle.notes, "live_ok": bundle.live_ok,
+        "notes": bundle.notes, "live_ok": bundle.live_ok, "question": question,
     })
     report_html = render(values, _TEMPLATE.read_text(encoding="utf-8"))
 
