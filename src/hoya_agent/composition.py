@@ -114,6 +114,9 @@ def build_live_pipeline(
         market_source_name="binance_spot",
         market_independence_group="binance",
         market_source_url=_BINANCE_URL,
+        # The Arbiter runs downstream in the DeadlineAwarePipeline, so the market
+        # branch must not emit the misleading "no Arbiter" note.
+        emit_no_arbiter_note=False,
     )
     # Cap output so a full analysis finishes inside the 45s single-call limit
     # (default 8000 tokens can overrun → DeadlineExceeded → fallback).

@@ -573,10 +573,14 @@ class OrganizerCsvPipeline:
         market_source_name: str | None = None,
         market_independence_group: str | None = None,
         market_source_url: str | None = None,
+        emit_no_arbiter_note: bool = True,
     ) -> None:
         self._data_dir = data_dir
         self._load_bars = load_bars
         self._analysis_date = analysis_date
+        # When this pipeline is the market branch of a pipeline that DOES run an
+        # Arbiter, the "no Arbiter" note is false and must be suppressed.
+        self._emit_no_arbiter_note = emit_no_arbiter_note
         # Injected callable for additional deterministic sources (e.g. live Fear &
         # Greed). It owns any HTTP so this module keeps its no-httpx boundary.
         self._extra_drafts = extra_drafts
@@ -702,7 +706,7 @@ class OrganizerCsvPipeline:
         result = _dual_asset_result(context, mapped, bars_by_asset, as_of)
         ledger, result, conflict_notes = finalize_analysis(mapped.ledger, result)
         notes = list(conflict_notes)
-        if result is None:
+        if result is None and self._emit_no_arbiter_note:
             notes.append(
                 "Arbiter 尚未接線，本次僅產出 deterministic 市場證據，未產出經驗證的推論或結論。"
             )
