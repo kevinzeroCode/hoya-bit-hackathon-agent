@@ -82,7 +82,7 @@ core modules → ports → adapters 實作
 6. **material conflict** 只在「同一 claim 有不同 independence group、reliability≥medium 的 supports 與 opposes」時成立；成立則保留雙方並把該結論 confidence 壓到 low。
 7. **Run mode 誠實**：`official` 禁 fixture/舊報告；`rehearsal`/`demo` 必須明顯標示。三模式在 UI、log、`run_config.json` 都可辨識。fixture 不得偽裝成 live official。
 8. **Deadline**：900 秒硬限；`time.monotonic()` 算 budget，UTC 只用於落盤時間戳。單一 call ≤45 秒、最多 retry 1 次、共用 stage deadline。第 12 分鐘取消所有非必要外部呼叫。跳過順序：H3 → optional context adapter → 反方訊號二次搜尋。
-9. **報告**：繁體中文，deterministic Renderer 產生（**不讓 LLM 寫全文**），含 spec 的 11 個段落。**禁止**買/賣/加倉/減倉/做多/做空/配置等投資建議 — Renderer 用字串 lint 當最後防線。confidence 只用 high/medium/low + 理由，不得包裝成精確機率。
+9. **報告**：繁體中文，deterministic Renderer 產生（**不讓 LLM 寫全文**），含 spec 的 11 個段落；雙幣 run 另加「跨幣比較」段落（Requirement 17）。**禁止**買/賣/加倉/減倉/做多/做空/配置等投資建議 — Renderer 用字串 lint 當最後防線。confidence 只用 high/medium/low + 理由，不得包裝成精確機率。
 10. **Secrets**：`.env`、API key、AWS 憑證、CryptoPanic token、prompt 全文，**不得**進 UI/log/artifact/repo/截圖。commit 前跑 secret scan。
 11. **schema**：所有跨模組 payload 用 Pydantic v2 + `extra="forbid"`；欄位名在 Python/JSON/prompt/fixture/test 之間完全一致。LLM 輸出須先驗證通過才進 core。
 
@@ -105,7 +105,9 @@ core modules → ports → adapters 實作
 
 ## MVP 明確排除（未經 H2-Lite 全綠不得動）
 
-H3 Bull/Bear/Judge 實作、鏈上/宏觀/額外社群 adapter、S3/CloudWatch/ECS、近似去重、動態 reliability、自由 agent loop、自建 token 計數器、PDF/HTML、五幣完整驗證矩陣、雙幣比較。不得引入 LangGraph / Strands / FastAPI / Celery / Redis / 向量 DB / message broker。
+H3 Bull/Bear/Judge 實作、鏈上/宏觀/額外社群 adapter、S3/CloudWatch/ECS、近似去重、動態 reliability、自由 agent loop、自建 token 計數器、PDF/HTML、五幣完整驗證矩陣。不得引入 LangGraph / Strands / FastAPI / Celery / Redis / 向量 DB / message broker。
+
+**雙幣比較已於 2026-08-01 移出本清單**，改為承諾能力（Requirement 17 / Task 12）：Silver 之後、Feature Freeze 之前，單一 run 完成，不得延遲 Gold／部署／彩排／提交。
 
 ---
 

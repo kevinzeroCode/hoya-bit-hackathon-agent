@@ -145,7 +145,7 @@ Claim graph、Bedrock structured output、prompt version 與 deterministic
 fallback 契約，列出需要 P1 凍結的介面。不要產生實作。
 ```
 
-Task 1 merged 後，P3 與 P1 在 `task/2-fixture-vertical-slice` 結對；P3 專注 fixture `AnalysisResult`、11 個報告段落、Evidence 回溯與 renderer review，branch 仍由 P1 操作。
+Task 1 merged 後，P3 與 P1 在 `task/2-fixture-vertical-slice` 結對；P3 專注 fixture `AnalysisResult`、11 個報告段落（雙幣另加「跨幣比較」段落）、Evidence 回溯與 renderer review，branch 仍由 P1 操作。
 
 Task 2 merged 後開始 Task 6：
 
@@ -224,7 +224,7 @@ git push -u origin task/<number>-<short-name>
 | Task 2 | 一個 BTC rehearsal request 可產生四個正確命名 artifacts |
 | Tasks 3-7 | 每位 owner 提供 focused test command/result 與 PR SHA |
 | Task 8 | 完整 H2-Lite fixture run；partial/fallback 行為可見 |
-| Task 9 | 五幣、雙幣防呆、failure injection、deadline gates 全過 |
+| Task 9 | 五幣、雙幣比較 run、failure injection、deadline gates 全過 |
 | Task 10 | EC2 可達、四個 downloads、recorded fallback 誠實標示、三次 timed rehearsal |
 
 卡住 20 分鐘就找 interface owner 結對，不要私自繞過契約。可刪工作依序為 H3、optional AWS sinks、optional adapters、UI polish；deterministic fallback 與四項 artifacts 不得刪。

@@ -5,12 +5,13 @@
 > 與 `.kiro/steering/`（尤其 `evidence-contracts.md`）。
 > **若本組任一文件與 `.kiro/` 衝突，以 `.kiro/` 為準**，並回報以便修正本組文件。
 
-這是用 **design-pipeline** 方法產出的五份互相咬合的上游設計文件。
+這是用 **design-pipeline** 方法產出的四份互相咬合的上游設計文件。
 `.kiro` 已經把「需求、契約、任務」寫得很完整；這一組補上它缺的三件事：
 
 1. **檔案級地圖** —— 每個檔做什麼、跟誰互動、**現在存不存在**；
 2. **分階段建置順序** —— 每階段可獨立驗證，帶會持續更新的現況區塊；
-3. **逐階段人工測試指南** —— 那些無法 headless 驗證的部分該怎麼驗、誰簽核。
+3. **人工檢查清單** —— 那些無法 headless 驗證的部分該怎麼驗、誰簽核；
+   直接內嵌在 ④ 的 [§3.2](Implementation-Plan.md) 與各階段的「測試」欄，不另開文件。
 
 ---
 
@@ -21,8 +22,7 @@
 | ① | **[Features.md](Features.md)** | 這個產品**做得到什麼**？契約詞彙表在哪？ | 能力面 + **§7 外部相依面** + §5 契約詞彙表 |
 | ② | **[Tech-Stack-Plan.md](Tech-Stack-Plan.md)** | 動工前必須鎖死什麼？橫切關注點怎麼設計？第一刀切哪裡？ | 分層佈局 + 只准向內的依賴規則 + **風險導向的第一個里程碑** |
 | ③ | **[Architecture-FileMap.md](Architecture-FileMap.md)** | 每個檔做什麼、跟誰互動、**現在存不存在**？ | 具體檔名（④ 的「元件」欄位直接指回來） |
-| ④ | **[Implementation-Plan.md](Implementation-Plan.md)** | 什麼時候建什麼？每階段怎麼算完成？現在做到哪？ | 每個 GUI/外部世界階段的人工檢查清單 |
-| ⑤ | **[Stage3 — Streamlit Bronze 測試指南](Stage3-Streamlit-Bronze-Testing-Guide.md)**<br>**[Stage11 — Live、部署與計時彩排測試指南](Stage11-Live-Deploy-Rehearsal-Testing-Guide.md)** | 無法 headless 驗證的部分怎麼驗？誰簽核？ | 簽核結論回寫進 ④ 的現況區塊 |
+| ④ | **[Implementation-Plan.md](Implementation-Plan.md)** | 什麼時候建什麼？每階段怎麼算完成？現在做到哪？無法 headless 驗證的怎麼簽核？ | 現況與簽核結論回寫進自己的階段區塊 |
 
 ```text
 產品命題 + 主辦方資料集
@@ -31,11 +31,10 @@
   ① Features ──(能力面 + 外部相依面 + 契約詞彙表)──▶
   ② Tech-Stack-Plan ──(分層 + 依賴規則 + 橫切設計 + 第一里程碑)──▶
   ③ Architecture-FileMap ──(檔案級職責 + 依賴 + 流程 + 現況)──▶
-  ④ Implementation-Plan ──(階段 + 現況 + 每階段的人工檢查清單)──▶
-  ⑤ 兩份手動測試指南
+  ④ Implementation-Plan ──(階段 + 現況 + Definition-of-Done + 人工檢查清單)
         │
         ▼
-  隨設計與程式碼演進，五份保持同步
+  隨設計與程式碼演進，四份保持同步
 ```
 
 ---
@@ -55,7 +54,8 @@
 > `adapters/bedrock.py` 有 371 行、契約測試全綠——**但那全是對著 stub 測的。**
 > 專案至今沒有成功呼叫過一次真實的 Bedrock。若模型未開通、region 不對或 model ID 錯，
 > 整個 H2-Lite 是死的。
-> → [Stage11 測試指南](Stage11-Live-Deploy-Rehearsal-Testing-Guide.md) 的 **§3 Bedrock preflight** 是先做的那一節。
+> → [Implementation-Plan 的 S0](Implementation-Plan.md) 是先做的那一節，它的 **§3.2 人工檢查清單**
+> 列出這次呼叫要留下什麼紀錄。
 
 ---
 
@@ -79,7 +79,7 @@
 |---|---|
 | 第一天加入、想搞懂全貌 | ① → ③（然後看 `docs/ACTIVE_WORK.md` 認領工作） |
 | 要開始寫某個模組 | ③ 找到你的檔案 row → ④ 找到對應的階段 |
-| 要驗收某個階段 | ④ 的該階段 → 若是 S3/S11 就用 ⑤ 的指南 |
+| 要驗收某個階段 | ④ 的該階段 → 若是 S0/S3/S11 再看 ④ 的 §3.2 人工檢查清單 |
 | 要知道「現在做到哪」 | 本頁的現況速覽 → ④ 各階段的現況區塊 |
 | 要知道「誰正在改哪個檔」 | **`docs/ACTIVE_WORK.md`**（那是它的職責，不是這一組的） |
 | 要知道欄位的精確語意 | **`.kiro/steering/evidence-contracts.md`**（規範性擁有者） |
@@ -95,8 +95,7 @@
 | 能力清單、契約詞彙表、外部相依面 | ① Features.md（其中欄位語意再上溯 `evidence-contracts.md`） |
 | 技術棧、授權姿態、分層佈局、依賴規則、橫切設計、第一里程碑 | ② Tech-Stack-Plan.md（規範性再上溯 `tech.md` / `structure.md`） |
 | 每個檔的職責、互動對象、**存在狀態** | ③ Architecture-FileMap.md |
-| 階段順序、每階段現況、Definition-of-Done、可追溯性 | ④ Implementation-Plan.md（任務規範性再上溯 `tasks.md`） |
-| 人工測試案例、嚴重度、簽核條件 | ⑤ 兩份測試指南 |
+| 階段順序、每階段現況、Definition-of-Done、可追溯性、人工檢查清單與簽核條件 | ④ Implementation-Plan.md（任務規範性再上溯 `tasks.md`） |
 | 誰正在做什麼、哪些路徑已凍結 | **`docs/ACTIVE_WORK.md`**（不在本組） |
 
 **下游文件只「指向」上游，🚫 不重新決定。**
@@ -113,9 +112,10 @@
   （例：S7 在 S1 之前完成——這已記在 ④ 的 S7 現況區塊）。
 - **被折進別處的檔案留麵包屑**，🚫 不要靜默刪除 row —— 追舊參照的人需要那條線索。
 - **名稱要跨文件一致**：④ 的元件必須是 ③ 的 row；③ 的流程必須用 ① 的能力；
-  ④/⑤ 的步驟必須引用 ① 的契約詞彙表。
+  ④ 的步驟與人工檢查項必須引用 ① 的契約詞彙表。
 
 ---
 
 *本組文件由 design-pipeline（feature-specification → tech-stack-plan → architecture-file-map →
-implementation-roadmap → testing-guide）依序產出，並在完成後跑過整組一致性檢查。*
+implementation-roadmap）依序產出，並在完成後跑過整組一致性檢查。
+人工驗證原先規劃為第五份 testing-guide，已合併進 ④ §3.2 與各階段的「測試」欄，不另立文件。*

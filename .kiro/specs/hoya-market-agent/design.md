@@ -356,6 +356,8 @@ Evidence Processor performs this deterministic sequence:
 
 Arbiter receives no more than 30 evidence items. The selection first preserves all high-reliability evidence, then material-conflict pairs, then fills remaining slots while maximizing distinct independence groups. The prompt receives IDs and normalized facts, not unbounded raw pages.
 
+When `assets` carries two assets, selection additionally applies a per-asset quota so that each asset reaches the payload (Requirement 17 item 4). Market evidence is uniformly `high` reliability, so an unquota'd selection can let one asset's deterministic metrics consume every slot before the other asset or any news evidence is reached. Market-wide items with `asset = null`, such as Fear & Greed, are charged to neither quota.
+
 Arbiter output is accepted only if it validates as `AnalysisResult`, all evidence and claim references resolve, claim dependencies are acyclic, and confidence obeys the caps. One structured repair call may receive validation errors and the previous JSON. If it still fails, deterministic fallback runs.
 
 ## 10. H3 Extension Interface
@@ -436,7 +438,9 @@ Never log API tokens, AWS credentials, authorization headers, full prompt text, 
 The first screen is the working analysis interface, not a landing page. It contains:
 
 - question input;
-- one- or two-asset selector restricted to the five supported assets;
+- one- or two-asset selector restricted to the five supported assets, defaulting to
+  one asset; the second asset appears only when the user explicitly adds it
+  (Requirement 4 item 4, Requirement 17);
 - visible run-mode selector;
 - run button disabled while a run is active;
 - stable progress rows for Planner, Market Worker, Research Agent, Evidence Processor, Arbiter, and Renderer;
@@ -614,7 +618,7 @@ This mapping changes runtime composition and acceptance sequencing only. It does
 |---|---|
 | Bronze | Complete an entirely offline single-asset path using deterministic fixtures or local test data. Bronze requires no AWS credentials, Bedrock access, live provider, or network access and produces the four fixed artifacts with deterministic validation and honest `rehearsal` or `demo` labelling. |
 | Silver | Use one designated baseline live market source and one designated baseline research source for a single-asset run. Record two independent checks: at least one schema-valid live Bedrock success using both baseline paths, and a separate deterministic fallback/degradation acceptance. Fallback-only execution does not satisfy Silver. Additional providers are optional and non-blocking. |
-| Gold | Validate two different assets as separate single-asset runs, without requiring dual-asset comparison. Exercise required source and Bedrock degradation paths. Complete Gold delivery also includes Docker build/runtime acceptance, ECR/EC2 deployment acceptance, and one complete timed judged-flow rehearsal. |
+| Gold | Validate two different assets as separate single-asset runs, which does not by itself satisfy Requirement 17 dual-asset comparison. Exercise required source and Bedrock degradation paths. Complete Gold delivery also includes Docker build/runtime acceptance, ECR/EC2 deployment acceptance, and one complete timed judged-flow rehearsal. |
 | Gold local Exit | This is the pre-deployment local gate. Silver has passed; the two required single-asset Gold runs, required degradation checks, and deterministic artifact checks have passed locally. It excludes Docker build/runtime acceptance, ECR deployment, EC2 deployment, the complete timed judged-flow rehearsal, and submission verification. |
 | Feature Freeze | Begins at Gold local Exit or Day 2 midday, whichever occurs first. After freeze, only bug fixes, reliability fixes, deployment, rehearsal, documentation, rollback preparation, and submission verification are allowed. New features, providers, artifact formats, PDF/HTML MVP requirements, additional visualizations, the five-coin matrix, Platinum capabilities, and H3 implementation are prohibited. |
 | Platinum | Post-hackathon Future Work only. It is outside formal two-day Acceptance and cannot block Bronze, Silver, Gold, deployment, rehearsal, or submission. |
@@ -722,3 +726,78 @@ by the existing Evidence Processor and Arbiter contracts.
   and `prompts/arbiter-v1.md` (reference deterministic thresholds; never mint numbers).
 - Dependency direction is unchanged: `evidence/` and `data/` stay deterministic
   and never call Bedrock; `reasoning/` still owns no artifact writes.
+
+## 20. Dual-Asset Comparison (Requirement 17)
+
+Committed capability, scheduled after Silver and before Feature Freeze. It reuses
+the existing contracts rather than adding any: `AnalysisRequest.assets` and
+`Claim.assets` already accept one or two assets, Requirement 13 already fixes the
+comparable scales, and the run stays one `run_id` with one frozen
+`analysis_as_of`, one ledger, one `AnalysisResult`, and the same four artifact
+filenames.
+
+### 20.1 Why a single run
+
+A comparison can only be produced where both assets' evidence share one Arbiter
+payload. Two separate runs would additionally break three frozen invariants:
+evidence IDs are run-local so `ev_007` would be ambiguous across runs, each run
+freezes its own `analysis_as_of` so the comparison would have no single cutoff,
+and a cross-run comparison product would require a fifth artifact or a new
+filename. Two-run comparison is therefore rejected by design, not merely
+deprioritized. This is distinct from the Gold asset gate, which deliberately
+runs two *independent single-asset* runs to prove coin-agnosticism.
+
+### 20.2 Deterministic comparison inputs (`data/`)
+
+- `data/market_series.py` gains a multi-asset load path returning per-asset bar
+  series aligned on a shared UTC `date` index; misaligned or missing bars make the
+  affected comparison `unavailable` rather than forward-filled.
+- `data/indicators.py` gains comparable cross-asset functions operating only on
+  Requirement 13 scales: window-return spread, realized-volatility comparison by
+  each asset's own percentile, relative-strength ratio and its own-history
+  percentile, and same-provider quote-volume comparison. Correlation and beta are
+  optional and, if emitted, declare their window.
+- `data/market_worker.py` emits per-asset metric drafts plus comparison drafts.
+  Every comparison draft records both assets, the shared `time_range`, the scale
+  used, and its parameters, and is `reliability=high`, `source_type=market`.
+- Base-asset `volume` is never compared across assets. Cross-asset liquidity uses
+  same-provider, same-period quote volume or is declared `unavailable`.
+
+### 20.3 Reasoning and evidence
+
+- `reasoning/arbiter.py` `select_evidence()` applies the per-asset quota in §9.
+  This file is a frozen path; the change requires its owner's agreement.
+- Comparative claims carry `assets` with both assets and resolve to comparison
+  evidence IDs. Confidence caps and the material-conflict rule are unchanged and
+  apply per claim exactly as before.
+- Market Regime stays per asset. Two assets produce two labels; they are never
+  merged into one.
+
+### 20.4 Rendering
+
+`reporting/renderer.py` emits an additional 跨幣比較 section only when `assets`
+holds two assets. It states both assets, the shared `time_range`, each scale
+used, the comparison result, the Evidence IDs behind every number, and any source
+or period discrepancy. It renders from validated claims and the ledger only and
+adds no new facts. The prohibited-advice lint still runs last, and a comparison
+must not become a relative buy/sell recommendation.
+
+### 20.5 Degradation
+
+- One asset missing baseline market evidence: comparison is `unavailable`, the gap
+  is disclosed, the available asset still receives a full single-asset analysis,
+  and all four artifacts are still produced.
+- Capability not complete before Feature Freeze: the UI disables the second-asset
+  selector, only single-asset requests are accepted, and the undelivered
+  capability is disclosed in documentation and the presentation. A half-finished
+  comparison path is never shipped.
+- The capability must not delay Gold local Exit, deployment, the timed rehearsal,
+  or submission verification.
+
+### 20.6 Module and contract impact
+
+- Modified: `data/{market_series,indicators,market_worker}.py`,
+  `reasoning/arbiter.py` (frozen path — owner agreement required),
+  `reporting/renderer.py`, `ui/presenter.py`, `streamlit_app.py`.
+- No new model, no new artifact, no new filename, no change to `run_id` semantics,
+  and no change to the Evidence or Claim field sets.

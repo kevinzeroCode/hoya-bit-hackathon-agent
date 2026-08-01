@@ -12,13 +12,13 @@ MVP 唯一承諾為 H2-Lite：`Planner -> Market Worker + Research Agent -> Evid
 
 ### Staged Acceptance — Approved D1–D8
 
-This section defines layer-level gates. Requirements 1–15 define the detailed behavioral acceptance criteria; overlapping wording is a traceability mapping, and the more specific Requirement controls without weakening the applicable stage gate.
+This section defines layer-level gates. Requirements 1–17 define the detailed behavioral acceptance criteria; overlapping wording is a traceability mapping, and the more specific Requirement controls without weakening the applicable stage gate.
 
 1. `WHEN` Bronze acceptance is evaluated, `THE SYSTEM SHALL` complete an entirely offline single-asset run from deterministic request, Evidence, and `AnalysisResult` fixtures through Streamlit and the deterministic Renderer, produce the four fixed artifacts, require no live HTTP, Bedrock, AWS credentials, or network access, and label the run honestly as `rehearsal` or `demo` rather than `official`.
 2. `WHEN` Silver acceptance is evaluated, `THE SYSTEM SHALL` complete one single-asset end-to-end run using the Organizer CSV, one designated baseline live market source, one designated baseline research source, normalized and validated Evidence, at least one successful schema-valid Bedrock result, the deterministic Renderer, and all four fixed artifacts.
 3. `THE SYSTEM SHALL` successfully complete a separate deterministic fallback test for Silver; a `fallback-only` execution does not satisfy the Silver success gate, and any Bedrock or external-source failure must produce honestly labelled partial or degraded output when useful Evidence remains.
 4. `THE SYSTEM SHALL` treat additional Silver sources as optional and non-blocking, without an exactly-one maximum; failure of an optional source shall not fail Silver.
-5. `WHEN` Gold acceptance is evaluated, `THE SYSTEM SHALL` validate two different assets as separate single-asset runs, exercise required source and Bedrock degradation paths, meet Docker build/runtime and ECR/EC2 deployment acceptance, and complete one timed rehearsal of the full judged flow. Dual-asset comparison and additional asset runs are optional and non-blocking.
+5. `WHEN` Gold acceptance is evaluated, `THE SYSTEM SHALL` validate two different assets as separate single-asset runs, exercise required source and Bedrock degradation paths, meet Docker build/runtime and ECR/EC2 deployment acceptance, and complete one timed rehearsal of the full judged flow. Additional asset runs are optional and non-blocking. Dual-asset comparison is a committed post-Silver capability under Requirement 17; it is not part of the Gold asset gate, but because Feature Freeze begins at Gold local Exit, it must land before that trigger or be disabled under Requirement 17 item 8.
 
 `Gold local Exit` means the pre-deployment local gate at which Silver has passed and the two required single-asset Gold runs, required degradation checks, and deterministic artifact checks have passed locally. Docker/ECR/EC2 deployment and the complete timed judged-flow rehearsal remain Gold delivery requirements that may be completed after Feature Freeze under item 7.
 
@@ -34,7 +34,7 @@ This section defines layer-level gates. Requirements 1–15 define the detailed 
 1. `WHEN` 使用者提交自然語言問題與一至兩個支援資產，`THE SYSTEM SHALL` 建立唯一 `run_id` 並保留原始問題、`assets`、`requested_at`、`deadline_seconds`、`run_mode` 與 H3 feature flag。
 2. `THE SYSTEM SHALL` 將支援資產限制為 BTC、ETH、SOL、BNB、XRP，且內部資料契約使用 `assets: string[]` 接受一至兩個資產。
 3. `WHEN` 題目文字提及的幣種與 `assets` 不一致，`THE SYSTEM SHALL` 以 `assets` 為準，並在 Execution Log 記錄 warning。
-4. `WHEN` UI 建立一般單幣分析，`THE SYSTEM SHALL` 預設只選擇一個幣種；雙幣能力只需保留契約與比較題相容性。
+4. `WHEN` UI 建立分析請求，`THE SYSTEM SHALL` 預設只選擇一個幣種；第二個幣種只在使用者明確加選時才進入 `assets`，並依 Requirement 17 執行雙幣比較。`THE SYSTEM SHALL NOT` 在使用者未明確加選第二幣時自行推斷或補上第二幣。
 
 ### Requirement 2: 維持時間基準與 Run Mode 誠實性
 
@@ -187,6 +187,7 @@ CoinGecko live adapter、完整 five-asset validation matrix，以及 BTC、ETH�
 #### Acceptance Criteria
 
 1. `WHEN` 產生 Final Report，`THE SYSTEM SHALL` 使用繁體中文並包含：直接回答、市場狀況與時間範圍、已確認事實、主要支持證據、主要反方或矛盾證據、推論、結論、信心與原因、限制與資料缺口、invalidation conditions、後續觀察重點。
+   `WHEN` `assets` 含兩個資產，`THE SYSTEM SHALL` 另外輸出一個「跨幣比較」段落（依 Requirement 17）；單幣 run 不得輸出該段落。
 2. `THE SYSTEM SHALL` 在報告中明確區分 fact、inference 與 conclusion，且所有市場數值都可對應 deterministic tool output。
 3. `THE SYSTEM SHALL` 使用 `high|medium|low` 與理由表達 confidence，不得將其包裝成未經可驗證校準的精確機率。
 4. `THE SYSTEM SHALL` 禁止明確買入、賣出、加倉、減倉、資產配置或個人化投資建議，Renderer 必須以字串 lint 作最後防線。
@@ -213,8 +214,11 @@ CoinGecko live adapter、完整 five-asset validation matrix，以及 BTC、ETH�
 
 1. `WHEN` 請求包含兩個資產，`THE SYSTEM SHALL` 讓相關 Claim 的 `assets` 與 `time_range` 明確標示比較適用範圍。
 2. `THE SYSTEM SHALL` 禁止直接比較不同幣種以各自 base asset 計量的 `volume`。
-3. `WHEN` 執行跨幣比較，`THE SYSTEM SHALL` 使用報酬、波動、相對變化、各自 rolling z-score，或 live API 的 quote volume 等可比較尺度。
+3. `WHEN` 執行跨幣比較，`THE SYSTEM SHALL` 使用報酬、波動、相對變化、各自 rolling z-score／百分位，或同一 provider、同一期間的 quote volume 等可比較尺度。
 4. `WHEN` 跨幣資料來自不同來源或時間截點，`THE SYSTEM SHALL` 在 Evidence 與報告揭露來源與時間範圍，不得暗示為同質資料。
+5. `IF` 某個跨幣尺度無法以可比較口徑取得，`THE SYSTEM SHALL` 將該項比較標為 `unavailable` 並揭露原因，`SHALL NOT` 改用不可比較的尺度湊出結論。
+
+本 Requirement 定義跨幣比較的**安全口徑**；比較的**產出義務**定義於 Requirement 17。
 
 ### Requirement 14: 保留但不誇大 H3 Extension
 
@@ -237,7 +241,7 @@ CoinGecko live adapter、完整 five-asset validation matrix，以及 BTC、ETH�
 
 1. `THE SYSTEM SHALL` 能以單一 Docker image 部署至 ECR 與單一 EC2，並以 docker compose 啟動；S3、CloudWatch 與 ECS 不列入 MVP 驗收。
 2. `THE SYSTEM SHALL` 將 artifacts 儲存在本機檔案，並將 structured JSONL 同步輸出至 stdout。
-3. `WHEN` 執行 Gold 資產驗收，`THE SYSTEM SHALL` 以 two different assets 各自完成一個 independent single-asset run；額外資產為 optional、non-blocking，且 dual-asset comparison 不屬於 Gold 必要條件。
+3. `WHEN` 執行 Gold 資產驗收，`THE SYSTEM SHALL` 以 two different assets 各自完成一個 independent single-asset run；額外資產為 optional、non-blocking。dual-asset comparison 有自己的驗收（Requirement 17），不併入本項資產閘門，也不得以本項代替。
 4. `WHEN` 執行 resilience 驗收，`THE SYSTEM SHALL` 覆蓋取證分支 timeout、外部來源全失效、schema error、Arbiter failure fallback 與 H3 flag 關閉情境。
 5. `BEFORE` 競賽提交，`THE SYSTEM SHALL` 完成 Bronze fixture gate 與一次完整、計時、模擬評審流程的 Gold rehearsal，並在第 13 分鐘前產出四項 artifacts；額外 rehearsals 為 optional，且不得延遲 deployment、submission 或 Feature Freeze。
 6. `BEFORE` repository 提交，`THE SYSTEM SHALL` 完成 secret scan，且 repository 應包含 source、config example、執行說明與 Kiro spec/steering/task history。
@@ -260,10 +264,28 @@ CoinGecko live adapter、完整 five-asset validation matrix，以及 BTC、ETH�
 7. `THE SYSTEM SHALL NOT` 讓本層任何產出構成買賣、加減倉、資產配置或個人化投資建議；Renderer 的禁語 lint 仍為最後防線。
 8. `IF` 資料不足以計算某面向、標籤或量化門檻，`THE SYSTEM SHALL` 明確標示該項為 `unavailable` 並揭露原因，`SHALL NOT` 編造數值，且不得因此阻塞四項 artifacts、Bronze 或 Silver 核心。
 
+### Requirement 17: 雙幣比較（Dual-Asset Comparison）
+
+**User Story:** 身為評審，我希望在指定兩個幣種時，系統能真的回答「這兩個幣相比如何」，而不是把兩份單幣分析並排放，以便驗證系統理解的是比較關係本身，而不只是重複執行單幣流程。
+
+命題文件的題型明確包含跨幣比較，因此本 Requirement 是**已承諾的 MVP 能力**，排在 Silver 之後、Feature Freeze 之前執行。它建立在既有契約上：`AnalysisRequest.assets` 與 `Claim.assets` 本來就接受一至兩個資產，Requirement 13 已定義安全口徑，故本 Requirement 不新增 artifact、不新增檔名、不改 `run_id` 語意。
+
+#### Acceptance Criteria
+
+1. `WHEN` `assets` 含兩個資產，`THE SYSTEM SHALL` 以**單一 run** 完成比較：一個 `run_id`、一個凍結的 `analysis_as_of`、一份 Evidence Ledger、一份 `AnalysisResult`、四項固定 artifacts。`THE SYSTEM SHALL NOT` 為比較另開第二個 run、第五項 artifact 或跨 run 的 evidence 參照。
+2. `WHEN` 兩個資產的 baseline 市場證據均可取得，`THE SYSTEM SHALL` 至少產生一個 `assets` 同時含兩個資產的比較型 Claim，且其數值全部來自 deterministic tool output 並可回溯至 Evidence ID。
+3. `THE SYSTEM SHALL` 僅使用 Requirement 13 允許的可比較尺度；`THE SYSTEM SHALL NOT` 比較不同幣種的 base-asset `volume`。
+4. `WHEN` Evidence 進入 Arbiter，`THE SYSTEM SHALL` 依資產配額截斷，使兩個資產各自都有 Evidence 進入 payload；`THE SYSTEM SHALL NOT` 讓單一資產或單一 source type 佔滿 `MAX_EVIDENCE_FOR_ARBITER` 上限而使另一資產無證據可用。
+5. `WHEN` 產生 Final Report，`THE SYSTEM SHALL` 輸出「跨幣比較」段落，載明兩個資產、共同 `time_range`、所用尺度、比較結果與各自的 Evidence ID，並揭露任何來源或期間口徑差異。
+6. `WHEN` 兩個資產的 Market Regime 均可判定，`THE SYSTEM SHALL` 分別呈現各自標籤，`SHALL NOT` 將兩個資產合併為單一標籤。
+7. `IF` 其中一個資產缺少 baseline 市場證據，`THE SYSTEM SHALL` 將比較標為 `unavailable`、揭露缺口、仍完成可得資產的單幣分析與四項 artifacts，`SHALL NOT` 以單幣結果冒稱比較結果。
+8. `IF` 本能力無法在 Feature Freeze 前完成，`THE SYSTEM SHALL` 在 UI 停用第二幣加選並只接受單幣請求，且在文件與簡報揭露該能力未交付；`SHALL NOT` 交付半完成或未驗證的比較路徑。
+9. `THE SYSTEM SHALL NOT` 因本能力延遲 Gold local Exit、部署、計時彩排或提交驗證。
+
 ## 3. Scope Guard
 
-- MVP：Bronze、Silver 與 Gold 的 Staged Acceptance、Requirements 1 至 13、Requirement 14 的預設關閉 stub 行為、Requirement 15 的 core 部署與驗收，以及 Requirement 16 的 deterministic creativity layer（非阻塞、可誠實降級，建立在既有資料之上）。
+- MVP：Bronze、Silver 與 Gold 的 Staged Acceptance、Requirements 1 至 13、Requirement 14 的預設關閉 stub 行為、Requirement 15 的 core 部署與驗收、Requirement 16 的 deterministic creativity layer（非阻塞、可誠實降級，建立在既有資料之上），以及 Requirement 17 的 dual-asset comparison（Silver 之後、Feature Freeze 之前，不得延遲 Gold／部署／彩排／提交）。
 - Compatibility seams：typed `SourceAdapter`、static-allowlisted `ToolRegistry`、Artifact Store protocol、progress sink/contract、future persistence port，以及 same-process async `ApplicationService` boundary。MVP implementations 使用 local filesystem、in-memory state、同一 Python process 與 bounded `asyncio`；這些是 typed boundaries，不是完整 infrastructure requirements。
-- Post-hackathon Future Work：Platinum、CoinGecko live adapter、完整 five-asset validation matrix 與 calibration、額外 provider integration、PDF/HTML、額外 visualization、dual-asset comparison，以及 H3 實際 Bull/Bear/Judge 流程。
+- Post-hackathon Future Work：Platinum、CoinGecko live adapter、完整 five-asset validation matrix 與 calibration、額外 provider integration、PDF/HTML、額外 visualization，以及 H3 實際 Bull/Bear/Judge 流程。（dual-asset comparison 已於 2026-08-01 移出本清單，改為 Requirement 17 的承諾能力。）
 - 非 MVP Production Infrastructure：Database、Queue、broker、Job API、independent service/worker fleet、polling、SSE、WebSocket、DLQ、scheduler、authentication service、horizontal scaling、S3、CloudWatch 與 ECS。任何 Bronze、Silver 或 Gold Acceptance Criteria 均不得要求這些項目。
 - H3 與其他 Future Work 條款只約束未來擴充方式，不表示本次兩天開發承諾實作，也不表示任何功能或驗證已完成。

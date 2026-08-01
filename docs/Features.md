@@ -1,12 +1,16 @@
 # HOYA Market Agent — 功能規格（能力目錄）
 
-> **① of ⑤ — design-pipeline 第一份產出。**
-> 下一份：[Tech-Stack-Plan.md](Tech-Stack-Plan.md)｜索引：[README.md](README.md)
+> **① of ④ — design-pipeline 第一份產出，也是這一組文件的入口。**
+> 下一份：[Tech-Stack-Plan.md](Tech-Stack-Plan.md)
+>
+> 閱讀順序：① Features → ② [Tech-Stack-Plan](Tech-Stack-Plan.md) → ③ [Architecture-FileMap](Architecture-FileMap.md)
+> → ④ [Implementation-Plan](Implementation-Plan.md)（無法 headless 驗證的人工檢查清單在其 §3.2）。
+> 「誰正在做什麼、哪些路徑已凍結」不屬本組，見 [`docs/ACTIVE_WORK.md`](ACTIVE_WORK.md)。
 
 > **這份文件是衍生視圖，不是新的真相來源。**
 > 規範性權威仍是 `.kiro/specs/hoya-market-agent/`（requirements / design / tasks）與 `.kiro/steering/`
 > （尤其 `evidence-contracts.md`）。本文只把散落在那些文件裡的**能力面**收攏成一份可勾選的目錄，
-> 供 ②–⑤ 引用。**若本文與 `.kiro/` 衝突，以 `.kiro/` 為準**，並回報以便修正本文。
+> 供 ②–④ 引用。**若本文與 `.kiro/` 衝突，以 `.kiro/` 為準**，並回報以便修正本文。
 
 HOYA Market Agent 是一個**競賽導向、Evidence-first 的加密市場分析 agent**：在競賽現場接收臨時公布的
 自然語言題目與指定幣種（BTC / ETH / SOL / BNB / XRP 之一至二），在 **15 分鐘硬性時限**內整合多源資料，
@@ -23,7 +27,7 @@ HOYA Market Agent 是一個**競賽導向、Evidence-first 的加密市場分析
 - **這裡不決定技術選型**，也不決定「兩天內做到哪一層」——前者屬 ②，後者屬 ④ 的 Bronze / Silver / Gold 分階。
   本文只在必要處以「MVP 未實作」標記既成事實（那是 `.kiro` 已核准的決定，不是本文新增的裁決）。
 - **這裡不重新定義任何欄位值**。§5 的契約詞彙表是 `evidence-contracts.md` 的**引用視圖**，
-  用途是讓 ③④⑤ 有一個穩定的地方可以指。欄位語意有疑問時看 `evidence-contracts.md`。
+  用途是讓 ③④ 有一個穩定的地方可以指。欄位語意有疑問時看 `evidence-contracts.md`。
 
 ### 資料來源（本文的每一條都可回溯到這裡）
 
@@ -45,7 +49,8 @@ HOYA Market Agent 是一個**競賽導向、Evidence-first 的加密市場分析
 
 HOYA Market Agent 有**四項主要功能**：**取證（Evidence Acquisition）**、
 **推理與裁決（Bounded Reasoning）**、**交付與揭露（Delivery & Disclosure）**、
-**信任提煉（Trust Distillation，創意加值層）**。
+**信任提煉（Trust Distillation，創意加值層）**，
+外加一項在明確加選第二幣時啟動的 **雙幣比較（Dual-Asset Comparison，§4.5）**。
 
 ---
 
@@ -55,7 +60,7 @@ HOYA Market Agent 有**四項主要功能**：**取證（Evidence Acquisition）
 
 **建立分析請求**
 - 接受一段自然語言題目（視為 untrusted input，長度上限由設定決定）。
-- 接受一至二個支援資產；內部契約為 `assets: string[]`，UI 預設單幣。
+- 接受一至二個支援資產；內部契約為 `assets: string[]`，UI 預設單幣，第二幣須明確加選（§4.5）。
 - 每個 run 產生唯一 `run_id`，並保留原始題目、`assets`、`requested_at`、`deadline_seconds`、`run_mode`、H3 flag。
 - 題目文字提到的幣與 `assets` 不一致時，**以 `assets` 為準**並在 execution log 記 warning。
 - run 開始時把 `analysis_as_of` **凍結**；`official` 模式一律凍結為當下 UTC 且不接受使用者自訂。
@@ -167,6 +172,7 @@ HOYA Market Agent 有**四項主要功能**：**取證（Evidence Acquisition）
 - 報告由**模板**從 `AnalysisResult` + Ledger 產生；🚫 不讓 LLM 直接寫全文，🚫 不讓 LLM 事後改寫。
 - 固定 11 個段落：直接回答／市場狀況與時間範圍／已確認事實／主要支持證據／主要反方或矛盾證據／
   推論／結論／信心與原因／限制與資料缺口／invalidation conditions／後續觀察重點。
+  **雙幣 run 另加第 12 個段落「跨幣比較」**（見 §4.5 與 Requirement 17）；單幣 run 不得出現該段落。
 - 明確區分 fact / inference / conclusion；所有市場數值都能對應到 deterministic tool output 與 Evidence ID。
 - 至少呈現一個反方訊號；沒有就列出查詢過的來源與該限制。
 - 🚫 禁止「買入／賣出／加倉／減倉／做多／做空／資產配置」等指示性投資用語 —
@@ -243,9 +249,42 @@ HOYA Market Agent 有**四項主要功能**：**取證（Evidence Acquisition）
 
 ---
 
+## 4.5 雙幣比較（Requirement 17）⭐
+
+當使用者明確加選第二個幣種時，系統要真的回答「這兩個幣相比如何」，而不是把兩份單幣分析並排。
+**這是承諾能力**（命題題型明確包含跨幣比較），排在 Silver 之後、Feature Freeze 之前，
+且不得延遲 Gold、部署、彩排或提交。
+
+**單一 run 完成**
+- 一個 `run_id`、一個凍結 `analysis_as_of`、一份 Evidence Ledger、一份 `AnalysisResult`、四項固定 artifacts。
+- 🚫 不為比較另開第二個 run、🚫 不新增第五項 artifact、🚫 不做跨 run 的 evidence 參照。
+- 理由：比較只有在兩個資產的證據進入同一個 Arbiter payload 時才存在；而且 Evidence ID 是 run-local、
+  `analysis_as_of` 各 run 各自凍結、artifact 檔名固定四個——拆兩個 run 會同時破壞這三條。
+
+**只用可比較尺度**（Requirement 13）
+- 區間報酬差、以各自百分位表達的波動比較、相對強弱比值與其自身歷史百分位、
+  同一 provider 同一期間的 quote volume。
+- 🚫 **永遠不比較不同幣的 base-asset `volume`。** 無可比較口徑時標 `unavailable`。
+
+**證據配額**
+- 兩個資產各自都必須有 Evidence 進入 Arbiter payload；
+  🚫 單一資產或單一 source type 不得佔滿 30 筆上限。
+- `asset=null` 的全市場項目（如 Fear & Greed）不計入任一資產配額。
+
+**呈現與降級**
+- 報告加一個「跨幣比較」段落：兩個資產、共同 `time_range`、所用尺度、比較結果、每個數字的 Evidence ID，
+  以及任何來源或期間口徑差異。單幣 run 不得出現此段落。
+- Market Regime 維持每資產一個標籤，🚫 不合併。
+- 任一資產缺 baseline 市場證據 → 比較標 `unavailable`、揭露缺口、
+  仍完成可得資產的單幣分析與四項 artifacts；🚫 不以單幣結果冒稱比較。
+- 🚫 比較不得成為相對買賣建議；禁語 lint 仍最後把關。
+- Freeze 前未完成 → UI 停用第二幣加選、只收單幣、誠實揭露未交付；🚫 不交付半完成路徑。
+
+---
+
 ## 5. 契約詞彙（權威參考表）
 
-這一節是本 doc set 的**指名點**：③④⑤ 需要提到列舉值、檔名或預算時，一律指回這裡，不各自重列。
+這一節是本 doc set 的**指名點**：③④ 需要提到列舉值、檔名或預算時，一律指回這裡，不各自重列。
 **欄位語意的規範性擁有者是 `.kiro/steering/evidence-contracts.md`**；下表是它的引用視圖。
 
 ### 5.1 輸入契約（`AnalysisRequest` 情境）
@@ -362,7 +401,7 @@ deadline 較短時，`DeadlineManager` 依比例縮放各 stage，並保留最�
 ## 7. 外部相依面（Portability Note）
 
 以下是**必須放在 port / adapter 抽象之後**的外部世界接觸點。這份清單就是 ② 決定分層邊界、
-③ 畫依賴方向、⑤ 決定「哪些只能人工測」的種子。
+③ 畫依賴方向、④ §3.2 決定「哪些只能人工測」的種子。
 
 | 外部面 | 抽象邊界 | 為什麼要抽象 |
 |---|---|---|
@@ -387,7 +426,10 @@ claim 驗證、renderer、lint、trust scorecard、regime 判定——全部是�
 ## 8. 明確排除（`.kiro` 已核准，列此供下游知道「不要做」）
 
 **Post-hackathon Future Work：** Platinum、CoinGecko live adapter、五幣完整驗證/校準矩陣、
-額外 provider、PDF/HTML、額外視覺化、雙幣比較、H3 實際 Bull/Bear/Judge 流程。
+額外 provider、PDF/HTML、額外視覺化、H3 實際 Bull/Bear/Judge 流程。
+
+> ⚠️ **雙幣比較已於 2026-08-01 移出本清單。** 它現在是承諾能力（Requirement 17，見 §4.5），
+> 排在 Silver 之後、Feature Freeze 之前。
 
 **非 MVP 基礎設施：** database、queue、broker、Job API、獨立 service/worker fleet、polling、SSE、
 WebSocket、DLQ、scheduler、authentication service、水平擴展、S3、CloudWatch、ECS。

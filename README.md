@@ -10,6 +10,10 @@
 |---|---|
 | **開工前先看**：誰正在做什麼、哪些路徑已凍結、下一個可認領的工作 | [Active Work](docs/ACTIVE_WORK.md) |
 | 快速了解 FR、NFR、API、HLD、時序、AWS 與 failure design | [System Design](docs/system-design.md) |
+| 這個產品做得到什麼、契約詞彙表在哪 | [Features](docs/Features.md)（design-pipeline ① 入口，②–④ 由此串接） |
+| 動工前必須鎖死的技術決定、依賴規則、第一個里程碑 | [Tech-Stack-Plan](docs/Tech-Stack-Plan.md) |
+| 每個檔做什麼、跟誰互動、**現在存不存在** | [Architecture-FileMap](docs/Architecture-FileMap.md) |
+| 分階段建置順序、每階段現況與 Definition-of-Done | [Implementation-Plan](docs/Implementation-Plan.md) |
 | 四人現在怎麼開 branch、怎麼用 Kiro、怎麼交接 | [Kiro Team Playbook](docs/kiro-team-playbook.md) |
 | 核准產品邊界與競賽策略 | [Product Spec](docs/superpowers/specs/2026-07-17-hoya-bit-hackathon-agent-design.md) |
 | Functional requirements / acceptance criteria | [Kiro Requirements](.kiro/specs/hoya-market-agent/requirements.md) |

@@ -172,7 +172,7 @@ Platinum is post-freeze and outside the two-day required delivery scope. It is p
 1. One additional research source.
 2. CoinGecko live market fallback.
 3. Complete five-asset verification.
-4. Dual-asset comparison using comparable measures only.
+4. ~~Dual-asset comparison using comparable measures only.~~ **Removed from Platinum 2026-08-01** — promoted to a committed capability (Requirement 17 / Task 12), scheduled after Silver and before Feature Freeze.
 5. Evidence visualization.
 6. PDF and/or HTML export derived from deterministic Markdown.
 7. UI polish.
@@ -306,7 +306,7 @@ Not allowed after freeze:
 
 - Add a new provider, framework, output format, Agent role, or infrastructure service.
 - Change shared schemas for convenience rather than a blocking correctness defect.
-- Start H3, PDF/HTML, evidence visualization, dual-asset UI, or visual polish.
+- Start H3, PDF/HTML, evidence visualization, or visual polish. (Dual-asset comparison is no longer in this list — as of 2026-08-01 it is committed Requirement 17 work that must land *before* freeze, not after it.)
 - Replace deterministic policy with model judgment.
 
 P1 is the freeze owner and may stop optional work whenever artifacts, integration, deployment, or rehearsal is at risk.
@@ -362,7 +362,7 @@ These delivery-scope adjustments remain proposals until explicitly applied throu
 - Replace the current 10 required + 2 optional top-level Tasks with the eight-task sequence in Section 10.
 - Move service preflight into Task 1 rather than keeping it as a separate implementation wave.
 - Make the first executable result Bronze, not a partial scaffold waiting for later components.
-- Treat two-asset verification as two separate single-asset Gold cases; keep dual comparison in Platinum.
+- Treat two-asset verification as two separate single-asset Gold cases. ~~keep dual comparison in Platinum~~ — **superseded 2026-08-01:** dual-asset comparison is now committed Requirement 17 / Task 12 work, executed after Silver and before Feature Freeze. The two separate Gold cases remain, and neither substitutes for the other.
 - Move CoinGecko, five-asset full matrix, extra research source, PDF/HTML, visualization, polish, and H3 out of required tasks.
 - Keep per-owner subtasks, exact verification commands, and Kiro task-to-commit evidence, but do not use Kiro “Run all Tasks”.
 

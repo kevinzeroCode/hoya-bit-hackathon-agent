@@ -263,8 +263,8 @@
     - Create: `.dockerignore`
     - Create: `compose.yaml`
   - [ ] Write presenter tests for stage progress, successful/failed sources, degradation notes, terminal state, run-mode labels, H3-unimplemented status and recorded-fallback warning.
-  - [ ] Build one Streamlit screen for question, one- or two-asset selection, run mode, progress, report/evidence/log tabs and four artifact download controls; call `application.py` in the same process.
-  - [ ] Keep the five-asset input allowlist and one- or two-asset request contract, but do not add a five-coin matrix, calibration workflow, dual-asset comparison or complex multi-asset UI.
+  - [ ] Build one Streamlit screen for question, asset selection defaulting to one asset with an explicit opt-in second asset, run mode, progress, report/evidence/log tabs and four artifact download controls; call `application.py` in the same process.
+  - [ ] Keep the five-asset input allowlist and one- or two-asset request contract, but do not add a five-coin matrix or calibration workflow. Dual-asset comparison behavior belongs to Task 12, not to this task; until Task 12 lands, the second-asset control stays disabled.
   - [ ] Ensure `official|rehearsal|demo` are visibly distinct, fixtures never appear live, fallback-only never appears as Silver success, and no trading controls or investment-advice copy exists.
   - [ ] Before container work, run the UI/application contract with network, Bedrock and AWS credentials unavailable and verify the deterministic fixture pipeline produces the four fixed artifacts with an honest `rehearsal` or `demo` label; this is the Bronze Exit checkpoint.
   - [ ] After Bronze passes, containerize the same process with a non-root user, environment-based secrets and a Streamlit healthcheck; do not add FastAPI.
@@ -309,7 +309,7 @@
     - Create: `tests/acceptance/test_artifact_contract.py`
     - Create: `scripts/run_acceptance.py`
     - Create: `docs/rehearsals/run-log.md`
-  - [ ] Select two different assets for which the designated baseline paths can produce complete Evidence and run each as an independent single-asset Gold validation; do not combine them into a dual-asset comparison.
+  - [ ] Select two different assets for which the designated baseline paths can produce complete Evidence and run each as an independent single-asset Gold validation; keep them separate runs, because this gate proves coin-agnosticism and is not a substitute for the Task 12 dual-asset comparison.
   - [ ] Retain BTC, ETH, SOL, BNB and XRP request-allowlist tests, but do not require the complete five-coin validation matrix or five-asset calibration.
   - [ ] For each required Gold asset run, verify the four fixed artifacts, shared `run_id`, Evidence provenance, deterministic rendering, terminal state and explicit limitations.
   - [ ] Exercise required baseline-source and Bedrock degradation cases locally and verify honest partial/degraded behavior without an unimplemented provider fallback.
@@ -367,6 +367,28 @@
   - **Acceptance:** Scorecard, regime, and quantified invalidation are deterministic, coin-agnostic, consistent with confidence, contain no LLM-minted numbers, carry no investment advice, use no uncalibrated precise probability, and degrade to explicit `unavailable` without blocking core artifacts or gates.
   - **Commit:** `feat: add deterministic trust distillation and market insight`
 
+- [ ] **12. Deliver dual-asset comparison**
+  - **Owner:** data owner for comparison inputs; reasoning owner for the Arbiter quota (frozen path — needs that owner's agreement); reporting/UI owner for the report section and the second-asset opt-in. Reviewed by P1.
+  - **Wave / dependency:** Wave 4, after Task 8 H2-Lite integration; same additive window as Task 11. Must land before Feature Freeze and must not delay Gold local Exit, deployment, the timed rehearsal or submission.
+  - **Spec:** Requirement 17; Requirement 13 for the permitted scales; design.md §20; §9 for the per-asset Arbiter quota
+  - **Files:**
+    - Modify: `src/hoya_agent/data/{market_series,indicators,market_worker}.py`
+    - Modify: `src/hoya_agent/reasoning/arbiter.py` (frozen path)
+    - Modify: `src/hoya_agent/reporting/renderer.py`, `src/hoya_agent/ui/presenter.py`, `streamlit_app.py`
+    - Create: `tests/unit/data/test_cross_asset.py`, `tests/unit/reporting/test_comparison_render.py`, `tests/integration/test_dual_asset_run.py`
+  - [ ] Write a failing integration test asserting that one request with two assets produces exactly one `run_id`, one frozen `analysis_as_of`, one ledger, one `AnalysisResult` and the four fixed artifact filenames — no second run and no fifth artifact.
+  - [ ] Write failing golden tests for the comparable cross-asset scales on hand-computable fixtures: window-return spread, realized volatility compared by each asset's own percentile, relative-strength ratio and its own-history percentile, and same-provider quote-volume comparison.
+  - [ ] Write a failing test that rejects any cross-asset comparison of base-asset `volume` and that declares a scale `unavailable` when a comparable basis is missing.
+  - [ ] Write a failing `select_evidence` test proving that with two assets each asset reaches the Arbiter payload, that neither asset nor a single source type can consume the whole `MAX_EVIDENCE_FOR_ARBITER` budget, and that `asset = null` market-wide items are charged to neither quota.
+  - [ ] Write a failing renderer test asserting the 跨幣比較 section appears only for two-asset runs, names both assets, the shared `time_range`, each scale used and the Evidence ID behind every number, and that the prohibited-advice lint still runs last and rejects relative buy/sell phrasing.
+  - [ ] Run `python -m pytest tests/unit/data/test_cross_asset.py tests/unit/reporting/test_comparison_render.py tests/integration/test_dual_asset_run.py -vv`; expected FAIL.
+  - [ ] Implement the multi-asset aligned load path, the comparable indicator functions, comparison `EvidenceDraft`s carrying both assets plus the shared range, scale and parameters, the per-asset Arbiter quota, the report section, and the explicit second-asset opt-in in the UI.
+  - [ ] Verify degradation: one asset lacking baseline market evidence marks the comparison `unavailable`, discloses the gap, still completes the available asset's single-asset analysis and still writes four artifacts; two assets keep two separate Market Regime labels.
+  - [ ] Run `python -m pytest tests/unit tests/contract tests/integration -q` and `ruff check .`; confirm every previously passing single-asset test is still green.
+  - **Acceptance:** A single two-asset run produces at least one comparative Claim whose `assets` holds both assets and whose every number resolves to Evidence, uses only Requirement 13 scales, never compares base-asset volume, gives both assets Arbiter representation, renders the 跨幣比較 section, and degrades to a disclosed `unavailable` comparison rather than passing a single-asset result off as a comparison.
+  - **If it cannot land before Feature Freeze:** disable the second-asset control, accept single-asset requests only, and disclose the undelivered capability in the documents and the presentation. Do not ship a partial comparison path.
+  - **Commit:** `feat: add dual-asset comparison`
+
 ## Post-Hackathon Future Work — Not Executable During Two-Day Delivery
 
 The following entries preserve architecture intent only. They are not checkable implementation tasks, have no two-day entry gate, are prohibited after Feature Freeze and cannot block Bronze, Silver, Gold, deployment, rehearsal or submission.
@@ -377,7 +399,7 @@ A separately approved post-hackathon implementation may use the deterministic ma
 
 ### Future Reference 12: Production and Platinum Extensions
 
-CoinGecko, the complete five-asset validation/calibration matrix, additional providers, dual-asset comparison, PDF/HTML, additional visualization, S3 artifact mirroring, CloudWatch integration and other Platinum or Production Architecture capabilities remain post-hackathon Future Work. No implementation file, dependency, test, deployment configuration or acceptance gate for these capabilities belongs to the formal two-day task sequence.
+CoinGecko, the complete five-asset validation/calibration matrix, additional providers, PDF/HTML, additional visualization, S3 artifact mirroring, CloudWatch integration and other Platinum or Production Architecture capabilities remain post-hackathon Future Work. No implementation file, dependency, test, deployment configuration or acceptance gate for these capabilities belongs to the formal two-day task sequence. Dual-asset comparison was moved out of this list on 2026-08-01 and is now required Task 12.
 
 ## Final Required Gate
 

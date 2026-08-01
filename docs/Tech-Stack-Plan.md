@@ -1,7 +1,7 @@
 # HOYA Market Agent — 技術棧、架構與可回溯性基礎計畫
 
-> **② of ⑤ — design-pipeline 第二份產出。**
-> 上一份：[Features.md](Features.md)｜下一份：[Architecture-FileMap.md](Architecture-FileMap.md)｜索引：[README.md](README.md)
+> **② of ④ — design-pipeline 第二份產出。**
+> 上一份：[Features.md](Features.md)｜下一份：[Architecture-FileMap.md](Architecture-FileMap.md)
 
 > **這份文件是衍生視圖，不是新的真相來源。**
 > 規範性權威仍是 `.kiro/specs/hoya-market-agent/` 與 `.kiro/steering/`（技術棧的規範性擁有者是

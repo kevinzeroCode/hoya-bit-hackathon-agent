@@ -60,6 +60,15 @@ PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest tests -q
 
 ## 待 P1 裁決
 
+- **`reasoning/arbiter.py` 的 `select_evidence()` 需加 per-asset 配額——但它是凍結路徑（2026-08-01 新增）。**
+  雙幣比較已成為承諾能力（Requirement 17 / Task 12 / S9B）。實際讀過 `arbiter.py:82` 後確認：
+  該函式**完全沒有資產概念**——先無上限收下**所有** high-reliability 項目，再收 conflict pair，
+  最後才按 `independence_group` round-robin。而市場證據**全都是** `high`，
+  所以雙幣 run 很可能在碰到任何新聞證據之前就用完 30 個名額，且不保證兩個資產各拿到多少。
+  這是**正確性問題**，不是調參。
+  **需要原 P3（該檔 owner）同意才能修**；在同意之前 🚫 不得逕行修改該檔。
+  `asset=null` 的全市場項目不計入任一資產配額。
+
 - **P2 與 P3 各寫了一套 LLM 邊界與研究抽取（最嚴重的一條，2026-08-01 發現）。**
   兩邊都建了 `reasoning/`，且都實作了同樣兩個接縫：
 

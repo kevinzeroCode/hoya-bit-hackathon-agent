@@ -63,7 +63,7 @@ H3 Conditional Debate 只保留 disabled extension interface，不屬於 MVP 實
 | FR-10 | 增量產生 artifacts | 固定產生 `run_config.json`、`execution_log.jsonl`、`evidence.json`、`final_report.md` |
 | FR-11 | 顯示與下載 | Streamlit 顯示 stage、來源狀態、降級狀態、報告與四項下載 |
 | FR-12 | 誠實降級 | 單一 branch、所有 live sources 或 Arbiter 失敗時仍產生 partial/fallback result |
-| FR-13 | 安全跨幣比較 | 禁止直接比較 base-asset volume；只用可比較的報酬、波動、z-score 或 quote volume |
+| FR-13 | 安全跨幣比較與雙幣比較產出 | 禁止直接比較 base-asset volume；只用可比較的報酬、波動、z-score/百分位或同 provider quote volume。雙幣 run 以單一 run 產出比較型 Claim 與「跨幣比較」段落（Requirement 17） |
 | FR-14 | 保留 H3 邊界 | Debate extension 預設 disabled，flag 不改變 H2-Lite route；material conflict 仍保留 |
 | FR-15 | 部署與驗收 | Docker -> ECR -> EC2 Compose；五幣 fixture、故障矩陣與三次 timed rehearsal |
 
@@ -345,7 +345,7 @@ MVP 是單一 container、單一 EC2 與本機 artifact volume。ECR 保存 immu
 | Contract | Fake adapters、fake clock、Bedrock Stubber、timeouts、typed gaps | 不連 live network |
 | Integration | Fixture vertical slice：request -> Evidence -> AnalysisResult -> 四項 artifacts | Task 2 後所有人共同 baseline |
 | Failure injection | Market/Research timeout、all sources down、Arbiter invalid twice、deadline skip、unwritable artifacts | 降級結果與揭露可驗證 |
-| Acceptance | 五幣 fixture、雙幣防呆、13 分鐘 artifact gate、UI download | P1 merge gate |
+| Acceptance | 五幣 fixture、雙幣比較 run、13 分鐘 artifact gate、UI download | P1 merge gate |
 | Live rehearsal | 真實來源、Bedrock、CSV/Binance overlap、EC2 smoke | 競賽前手動執行至少三次 |
 
 CI 不依賴 live API。提交前另執行 formatting/lint、dependency review、secret scan 與 Docker Compose config validation。上述都是實作驗收目標；目前尚未有 runtime 測試結果。

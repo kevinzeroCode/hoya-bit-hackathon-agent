@@ -1,12 +1,13 @@
 # HOYA Market Agent — 實作路線圖（分階段建置計畫）
 
-> **④ of ⑤ — design-pipeline 第四份產出。**
-> 上一份：[Architecture-FileMap.md](Architecture-FileMap.md)｜下一份：[Stage3 測試指南](Stage3-Streamlit-Bronze-Testing-Guide.md) · [Stage11 測試指南](Stage11-Live-Deploy-Rehearsal-Testing-Guide.md)｜索引：[README.md](README.md)
+> **④ of ④ — design-pipeline 最後一份產出。**
+> 上一份：[Architecture-FileMap.md](Architecture-FileMap.md)｜索引：[README.md](README.md)
+> 無法 headless 驗證的部分收在本文 §3.2，不另立測試指南文件。
 
 > **這份文件是衍生視圖，不是新的真相來源。**
 > 任務清單與驗收條件的規範性擁有者是 `.kiro/specs/hoya-market-agent/tasks.md`；
 > 「誰正在做什麼、哪些路徑已凍結」的擁有者是 `docs/ACTIVE_WORK.md`。
-> 本文把 `tasks.md` 的 11 個 task 重排成**可獨立驗證的建置階段**，每階段都用同一個模板，
+> 本文把 `tasks.md` 的 task 重排成**可獨立驗證的建置階段**，每階段都用同一個模板，
 > 並帶一個會持續更新的**現況區塊**。**若本文與 `.kiro/` 或 `ACTIVE_WORK.md` 衝突，以它們為準。**
 
 ## 1. Context
@@ -107,17 +108,48 @@ streamlit_app.py  →  ApplicationService.run(request, progress)  →  DeadlineA
 **預設的 `python -m pytest` 絕對不能碰外網。** Live test 必須同時具備 `@pytest.mark.live`
 **與** `RUN_LIVE_TESTS=1`，缺任一條件就 skip。
 
-### 3.2 只能由人驗證的部分（→ ⑤ 手動測試指南）
+### 3.2 只能由人驗證的部分（人工檢查清單）
 
-以下無法 headless 驗證，各自有一份獨立的手動指南：
+以下無法 headless 驗證。清單直接寫在這裡，S0／S3／S11 的 Definition-of-Done 就以它們為簽核依據；
+🚫 不另開測試指南文件。每一項只有兩種結果：**pass** 或 **fail + 一句實際觀察**，
+🚫 不接受「應該可以」。簽核結論寫回該階段的現況區塊。
 
-| 階段 | 為什麼不能 headless | 指南 |
-|---|---|---|
-| **S3** Streamlit Bronze | 瀏覽器渲染、下載鈕、三模式視覺辨識、進度列即時性、run 中停用按鈕 | [Stage3-Streamlit-Bronze-Testing-Guide.md](Stage3-Streamlit-Bronze-Testing-Guide.md) |
-| **S11** 部署 + 計時彩排 | 真實 Bedrock 延遲、真實 provider schema 漂移、EC2 網路、15 分鐘牆鐘、recorded fallback 視覺標示 | [Stage11-Live-Deploy-Rehearsal-Testing-Guide.md](Stage11-Live-Deploy-Rehearsal-Testing-Guide.md) |
+**S0 — 服務可用性 preflight（產出是紀錄，不是測試案例）**
 
-**S0** 的 Bedrock preflight 也是人工的，但它的產出是一份紀錄檔而非一組測試案例，
-所以併進 S11 指南的 §3 一起處理。
+- [ ] `aws bedrock list-foundation-models` 在目標 region 實際列出可用 model ID（🚫 不憑印象填 ID）。
+- [ ] 以最小、不含敏感內容的 prompt 完成**一次真實 Converse 結構化輸出**呼叫並取回結果。
+- [ ] optional fallback 模型獨立探測一次；不可用**不阻塞** Bronze 或 Silver。
+- [ ] 研究來源候選只探測可用性；designated baseline research source 已指定。
+- [ ] `docs/rehearsals/service-access-check.md` 記下時間戳／region／model ID／pass-fail
+      與 Python 3.12、Docker、AWS CLI 版本；🚫 不記 token、憑證、response header。
+- [ ] `git ls-files` 不含任何憑證。
+
+**S3 — Streamlit Bronze（瀏覽器與人眼才看得到的部分）**
+
+- [ ] 在**斷網、無 AWS 憑證**的環境 `streamlit run streamlit_app.py` 能開起來且無 console error。
+- [ ] 題目輸入 + 一至二幣選擇只接受五幣；run mode 選擇器可見。
+- [ ] 送出後 run 按鈕**立即停用**；重複點擊不會產生第二次 `ApplicationService` 呼叫。
+- [ ] 六列進度（Planner／Market／Research／Evidence／Arbiter／Renderer）依事件推進，
+      🚫 不是用「經過多久」假裝的動畫。
+- [ ] `official`／`rehearsal`／`demo` 三種模式在畫面上**一眼可辨**；recorded fallback 有常駐警示。
+- [ ] Report／Evidence／Execution Log 三個分頁都能渲染。
+- [ ] 四個下載鈕各自下載到正確檔名的檔案，且四份的 `run_id` 與畫面顯示一致。
+- [ ] H3 在 UI 上標示為**未實作**。
+- [ ] 報告內文抽樣：無買賣／加減倉／配置用語；confidence 只出現 `high|medium|low`。
+
+**S11 — 部署與計時彩排（真實延遲、真實網路、真實牆鐘）**
+
+- [ ] `docker compose up -d` 後 `curl -f http://<host>:<port>/_stcore/health` 通過。
+- [ ] 推上 ECR 的 immutable tag 與 EC2 實際啟動的 tag **逐字相同**。
+- [ ] Binance／CSV 重疊區間（2026-05-01～05-31）五幣 close 差異檢查已跑並留存結果；
+      🚫 不得暗示 CSV 來自 Binance。
+- [ ] 一次**完整 15 分鐘計時**的評審流程彩排：輸入題目 → 觀察進度 → 檢視三分頁 →
+      下載四項 artifacts；記下 run ID、模式、時長、來源缺口與 artifact 路徑。
+- [ ] 第 13 分鐘前四項 artifacts 齊全（實際看時間，不是推論）。
+- [ ] 真實 provider schema 漂移檢查：live rehearsal 中沒有 adapter 因欄位變動而靜默回空。
+- [ ] recorded fallback run 在 UI 與報告都顯示 `run_mode=demo` 與原始取得時間。
+- [ ] rollback 指令實際執行過一次（或明確記錄未驗證）。
+- [ ] secret scan 通過；截圖與錄影不含 `.env`、憑證、API key。
 
 ### 3.3 每階段的 Definition-of-Done（統一標準）
 
@@ -128,7 +160,7 @@ streamlit_app.py  →  ApplicationService.run(request, progress)  →  DeadlineA
 - [ ] `ruff check .` 乾淨；
 - [ ] §2.3 的四條邊界閘門乾淨；
 - [ ] 本階段引入的任何 artifact/log 欄位都能在真實輸出中看到；
-- [ ] 若該階段有人工檢查項，其 checklist 已勾完（S3/S11 用 ⑤ 的指南）；
+- [ ] 若該階段有人工檢查項，其 checklist 已勾完（S0/S3/S11 用 §3.2 的清單）；
 - [ ] 該階段的**現況區塊已更新**，包含任何刻意的偏離；
 - [ ] `tasks.md` 對應 checkbox 已在同一個 commit 更新。
 
@@ -138,15 +170,17 @@ streamlit_app.py  →  ApplicationService.run(request, progress)  →  DeadlineA
 
 ```text
 S0 ──┐                    （S0 不依賴任何人，卻能否決所有人 → 排最前）
-     ├─▶ S1 ─▶ S2 ─▶ S3 ★Bronze ─┬─▶ S4 ─┐
-S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 ★Silver ─▶ S9 ─▶ S10 ★Gold local Exit ─▶ S11
-                                  └─▶ S6 ─┘
+     ├─▶ S1 ─▶ S2 ─▶ S3 ★Bronze ─┬─▶ S4 ─┐                    ┌─▶ S9  ─┐
+S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 ★Silver ─────┤        ├─▶ S10 ★Gold local Exit ─▶ S11
+                                  └─▶ S6 ─┘                    └─▶ S9B ─┘
 ```
 
 - **S0 與 S1 可並行**（S0 不依賴契約）。
 - **S4 / S5 / S6 可三路並行**（路徑互不重疊，見 §2.5）。
 - **S7 已經完成**，且是在 S1 之前完成的——這是本專案最大的一個順序偏離，見 S7 的現況區塊。
-- **S9（創意層）對 Bronze 與 Silver 非阻塞**，可在 S8 之後任何時間插入，但必須在 S10 之前。
+- **S9（創意層）與 S9B（雙幣比較）互不相依、可並行**，兩者都在 S8 之後、S10 之前的 additive 窗口。
+  兩者都對 Bronze 與 Silver 非阻塞，但都必須在 S10 觸發 Feature Freeze 前完成，
+  否則各自走自己的退場／降級條款。
 
 ---
 
@@ -181,7 +215,7 @@ S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 �
 
 **測試**
 - 自動：無（本階段的產出是紀錄，不是測試）。
-- 人工：見 [Stage11 指南 §3](Stage11-Live-Deploy-Rehearsal-Testing-Guide.md)。
+- 人工：見 [§3.2 的 S0 清單](#32-只能由人驗證的部分人工檢查清單)。
 
 **退出條件**
 1. 至少一個 Bedrock 模型完成過一次**真實**的 Converse 結構化輸出呼叫，證據已存檔；
@@ -314,6 +348,7 @@ class ApplicationService(Protocol):
   - 目錄完全不可寫 → stdout 列出全部四個缺檔檔名、寫入失敗與 terminal state。
     **🚫 系統絕不宣稱某個沒寫出來的 artifact 存在。**
 - 報告的 11 個段落見 [Features.md §3](Features.md)；🚫 renderer 不得加入 fixture 以外的事實。
+  本階段是單幣 fixture，所以只有 11 段；雙幣的第 12 段「跨幣比較」屬 S9B。
 
 **測試**
 - 自動：
@@ -360,7 +395,8 @@ class ApplicationService(Protocol):
 - 禁語表至少涵蓋：建議買入、建議賣出、加倉、減倉、做多、做空、資產配置、下單、
   以及它們的常見變體。**lint 永遠最後跑**，即使前面全部通過。
 - UI 只從 `ProgressSink` 事件取狀態，🚫 不得用「經過多久」推斷成功，🚫 不得檢視內部 task 物件。
-- 五幣輸入 allowlist 與一至二幣契約要保留，但 🚫 不做五幣矩陣、不做校準流程、不做雙幣比較 UI。
+- 五幣輸入 allowlist 與一至二幣契約要保留，但 🚫 不做五幣矩陣、不做校準流程。
+  **第二幣的加選控制在此階段先停用**——雙幣比較的行為屬 S9B，Bronze 只驗單幣路徑。
 
 **測試**
 - 自動：
@@ -368,7 +404,7 @@ class ApplicationService(Protocol):
   python -m pytest tests/unit/ui tests/integration/test_ui_application_contract.py -q
   docker compose config
   ```
-- **人工（必要）：** [Stage3-Streamlit-Bronze-Testing-Guide.md](Stage3-Streamlit-Bronze-Testing-Guide.md)。
+- **人工（必要）：** [§3.2 的 S3 清單](#32-只能由人驗證的部分人工檢查清單)。
   瀏覽器渲染、下載鈕、三模式視覺辨識、進度列即時性、重複提交防護都只能人工驗。
 
 **退出條件（★ Bronze Exit）**
@@ -468,7 +504,7 @@ terminal state 由編排層決定並輸出，**🚫 不由 UI 推斷**。
   ```
   golden fixture 必須是**可手算**的 close/volume 序列 + 明確 expected value；
   浮點用 `pytest.approx` 並指定容許誤差。另含跨幣 base-volume 比較的**拒絕**測試。
-- 人工：CSV/Binance overlap 校準（2026-05-01～05-31 收盤差異）屬 live rehearsal，見 S11 指南。
+- 人工：CSV/Binance overlap 校準（2026-05-01～05-31 收盤差異）屬 live rehearsal，見 §3.2 的 S11 清單。
 
 **退出條件**：golden 值與 UTC 界線通過；baseline 失敗回 typed partial/degraded；
 CSV↔live 切換點被明確表示且帶 `fetched_at`；`market_worker` 無 LLM 路徑。
@@ -629,7 +665,7 @@ ruff check .
 # 另外手動跑（opt-in）：
 python -m pytest tests/live/test_live_sources.py tests/live/test_bedrock_access.py -m live -q
 ```
-- 人工：live Silver 的部分見 [Stage11 指南](Stage11-Live-Deploy-Rehearsal-Testing-Guide.md) §4。
+- 人工：live Silver 的部分見 [§3.2 的 S11 清單](#32-只能由人驗證的部分人工檢查清單)。
 
 **退出條件（★ Silver Exit）**
 Bronze 仍綠；一次單幣 live run 經兩條 baseline 路徑產出 schema-valid Bedrock 結果；
@@ -698,6 +734,85 @@ golden 測試要用**可手算**的 OHLCV fixture；驗證 coin-agnostic（門�
 
 ---
 
+### S9B — 雙幣比較（Requirement 17）
+
+> **現況：🔴 未開始。**
+> **執行窗口：** S8（Silver）之後、S10 觸發 Feature Freeze 之前，與 S9 同一個 additive 窗口，
+> 兩者互不相依、可並行。編號用 B 是為了不動既有的 S9–S11 引用。
+> **這是承諾能力，不是 Future Work**——命題題型明確包含跨幣比較，2026-08-01 由 product owner 決定納入。
+> 它**不列入 Gold 閘門條件**，但因為 Feature Freeze 在 Gold local Exit 觸發，
+> 所以實際上必須在 S10 之前完成，否則走 §退場條款。
+> **指派：** 比較指標 → 任務 B；Arbiter 配額 → 原 P3（**凍結路徑，需 owner 同意**）；
+> 報告段落與 UI → 任務 D。
+
+**目標**：讓一次雙幣 run 真的回答「這兩個幣相比如何」，而不是把兩份單幣分析並排。
+
+**為什麼是單一 run**（這一點決定了整個階段的形狀）
+比較只有在兩個資產的證據進入**同一個 Arbiter payload** 時才可能存在。拆成兩個 run 還會同時破壞三條已凍結的不變量：
+Evidence ID 是 **run-local**，所以 `ev_007` 會有兩種意思；每個 run 各自凍結 `analysis_as_of`，
+比較本身就沒有單一 cutoff；跨 run 的比較產物需要第五項 artifact 或新檔名，兩者都被禁。
+所以雙 run 是**被契約否決**，不是被排序延後。
+
+**元件與職責**（→ [檔案地圖 §4.3](Architecture-FileMap.md)、[§4.6](Architecture-FileMap.md)、[§4.7](Architecture-FileMap.md)、[§4.8](Architecture-FileMap.md)）
+- `data/market_series.py` — 多資產載入路徑，回傳對齊同一 UTC `date` 索引的各資產序列；
+  對不齊或缺 bar → 該比較 `unavailable`，🚫 不 forward-fill。
+- `data/indicators.py` — 只用 Requirement 13 允許的尺度：區間報酬差、以**各自百分位**表達的波動比較、
+  相對強弱比值與其自身歷史百分位、同 provider 同期間的 quote volume 比較。
+  相關性／beta 為 optional，若輸出必須宣告 window。
+- `data/market_worker.py` — 除各資產指標外，另發比較型 `EvidenceDraft`，
+  每筆記錄兩個資產、共同 `time_range`、所用尺度與參數；`reliability=high`、`source_type=market`。
+- `reasoning/arbiter.py` — `select_evidence()` 加**per-asset 配額**。
+  ⚠️ **凍結路徑**，動之前必須取得 owner 同意（見下方「已知技術阻塞」）。
+- `reporting/renderer.py` — 只在 `assets` 有兩個資產時輸出「跨幣比較」段落。
+- `ui/presenter.py`、`streamlit_app.py` — 第二幣為**明確加選**，預設仍是單幣。
+
+**本階段處理的契約詞彙**：[Features.md §5.1](Features.md)（`assets` 一至二）、
+[§5.2](Features.md)（`Asset`）、[§5.5](Features.md)（四項 artifacts 不變）；
+規範性定義在 `requirements.md` Requirement 17 與 Requirement 13、`design.md §20`。
+
+**已知技術阻塞（動工前先解決）**
+`select_evidence()` 目前**完全沒有資產概念**：它先無上限地收下**所有** high-reliability 項目，
+再收 conflict pair，最後才按 `independence_group` round-robin。而市場證據**全都是** `high`——
+所以雙幣 run 很可能在還沒碰到任何新聞證據之前就把 30 個名額用完，
+而且不保證兩個資產各拿到多少。這是**必須修的正確性問題**，不是調參。
+`asset=null` 的全市場項目（如 Fear & Greed）不計入任一資產配額。
+
+**演算法與注意**
+- **🚫 永遠不比較不同幣的 base-asset `volume`。** 跨幣流動性只用同 provider、同期間的 quote volume，
+  否則標 `unavailable`。這條是三份文件的硬規則，也是讓比較誠實的那條線。
+- 比較型 Claim 的 `assets` 必須同時含兩個資產；數值全部來自 deterministic tool output 且可回溯 Evidence ID。
+- **Market Regime 維持每個資產各一個標籤**，🚫 不得合併成單一標籤。
+- confidence 上限與 material conflict 規則**完全不變**，照 claim 逐一套用。
+- **🚫 比較不得變成相對買賣建議**（例如「A 優於 B 所以換倉」）；禁語 lint 仍最後跑。
+- 取證預算：兩個資產在**同一個 270 秒**窗口內約兩倍工作量，per-call timeout 仍是 45 秒。
+  預算吸收不了時依既有跳過順序處理，🚫 不得延長 stage。
+
+**測試**
+```bash
+python -m pytest tests/unit/data/test_cross_asset.py \
+                tests/unit/reporting/test_comparison_render.py \
+                tests/integration/test_dual_asset_run.py -q
+python -m pytest tests/unit tests/contract tests/integration -q   # 單幣路徑不得退化
+ruff check .
+```
+必含：單一 `run_id`／單一 cutoff／一份 Ledger／四項 artifacts（🚫 無第二個 run、🚫 無第五項 artifact）；
+可手算的跨幣 golden 值；base-volume 比較被**拒絕**；兩個資產都進得了 Arbiter payload；
+段落只在雙幣 run 出現；缺一個資產時比較標 `unavailable` 且四項 artifacts 仍齊全。
+
+**退出條件**
+一次雙幣 run 產出至少一個 `assets` 含兩個資產的比較型 Claim，其每個數字都可回溯 Evidence；
+只用 Requirement 13 的尺度；兩個資產都有 Evidence 進入 Arbiter；「跨幣比較」段落正確渲染；
+單幣路徑的既有測試全部仍綠。
+
+**退場條款（Feature Freeze 前未完成時）**
+UI 停用第二幣加選、只接受單幣請求，並在文件與簡報揭露此能力未交付。
+**🚫 不得交付半完成或未驗證的比較路徑，🚫 不得以單幣結果冒稱比較結果。**
+
+**明確不做**：新 model 欄位、新 artifact、新檔名、改 `run_id` 語意、
+為比較另開第二個 run、雙幣的視覺化 polish。
+
+---
+
 ### S10 — Gold local Exit：兩個資產各跑一次獨立單幣 run
 
 > **現況：🔴 未開始。相依 S8（Silver）。**
@@ -713,7 +828,8 @@ golden 測試要用**可手算**的 OHLCV fixture；驗證 coin-agnostic（門�
 
 **演算法與注意**
 - 選兩個 baseline 路徑能產出完整 Evidence 的資產，**各跑一次獨立單幣 run**；
-  **🚫 不要合併成雙幣比較**（雙幣比較不是 Gold 必要條件）。
+  **🚫 不要合併成雙幣比較**——這個閘門證明的是「流程幣種無關」，
+  雙幣比較有自己的階段與驗收（S9B / Requirement 17），兩者不得互相代替。
 - 保留五幣**請求 allowlist** 測試，但 🚫 不要求五幣完整驗證矩陣或五幣校準。
 - fake-clock deadline 驗收：證明第 12 分鐘取消非必要呼叫、finalize 在保留期之前開始。
 - 把兩個 run 的 run ID、資產、模式、時長、降級結果與 artifact 路徑記進 `docs/rehearsals/run-log.md`。
@@ -762,7 +878,7 @@ ruff check .
 docker compose config
 git status --short
 ```
-- **人工（必要）：** [Stage11-Live-Deploy-Rehearsal-Testing-Guide.md](Stage11-Live-Deploy-Rehearsal-Testing-Guide.md)。
+- **人工（必要）：** [§3.2 的 S11 清單](#32-只能由人驗證的部分人工檢查清單)。
 
 **退出條件**：Feature Freeze 用了較早的核准觸發點；Docker 本地 runtime、ECR 與 EC2 交付檢查完成；
 恰好一次完整計時的評審流程彩排已完成；demo fallback 誠實；rollback 與提交證據有文件；
@@ -780,7 +896,7 @@ H3 三處都標示未實作；secret scan 通過。
 | **M1 Bronze** ★ | S2 · S3 | **完全離線**從 Streamlit 產出並下載四項 artifacts |
 | **M2 能力層** | S4 · S5 · S6 · S7 | deadline 編排、市場證據、研究證據、bounded reasoning 各自可驗證 |
 | **M3 Silver** ★ | S8 | 一次 live schema-valid Bedrock run **＋** 一次獨立的 deterministic fallback |
-| **M4 洞察** | S9 | Trust Scorecard、Market Regime、量化 invalidation（非阻塞） |
+| **M4 洞察** | S9 · S9B | Trust Scorecard、Market Regime、量化 invalidation、雙幣比較（皆非阻塞，皆須在 Freeze 前） |
 | **M5 Gold local Exit** ★ | S10 | 兩個不同資產各一次獨立單幣 run + 降級檢查 → **觸發 Feature Freeze** |
 | **M6 交付** | S11 | ECR/EC2 部署 + 一次 15 分鐘計時彩排 + 提交驗證 |
 
@@ -796,12 +912,13 @@ H3 三處都標示未實作；secret scan 通過。
 | §1 取證 — Evidence 處理 | **S6**（policies 已在 `main`） |
 | §2 推理 — Planner / Arbiter / Claim 分層 / conflict / H3 | **S7 ✅**（＋ S8 的整合驗證） |
 | §3 交付 — 四項 artifacts | **S2**（契約）· S8（降級路徑）· S10（驗收） |
-| §3 交付 — 繁中報告與禁語 lint | **S2**（renderer）· **S3**（lint）· S9（R16 區塊） |
+| §3 交付 — 繁中報告與禁語 lint | **S2**（renderer）· **S3**（lint）· S9（R16 區塊）· S9B（跨幣比較段落） |
 | §3 交付 — 執行紀錄與可重現性 | S2（形狀）· S4（stage 事件）· S8（完整串接） |
 | §3 交付 — 誠實性機制（三模式） | S3（UI 標示）· S8（run mode 測試） |
 | §3 交付 — Deadline 治理 | **S4**（＋ S10 的 fake-clock 驗收） |
 | §3 交付 — Streamlit 介面 | **S3** |
 | §4 信任提煉（R16） | **S9** |
+| §5.1 `assets` 一至二 / 跨幣比較（R17） | **S9B**（＋ S1 契約、S3 的 UI 加選控制） |
 | §6 系統與基礎設施 | S1（設定/時鐘）· S3（容器殼）· S11（部署） |
 | §7 外部相依面 | S1（`ports.py`）· S5/S6（adapter 實作）· S7 ✅（`bedrock.py`） |
 
@@ -819,6 +936,7 @@ H3 三處都標示未實作；secret scan 通過。
 | 2 | `adapters/okx.py`、`adapters/reddit.py` 不在 canonical tree | **S5 / S6 搬檔之前** | 預設不搬（`okx` 與「單一 baseline live market source」的核准決定衝突） |
 | 3 | `evidence/types.py` 的退場時機 | **S1 之後、S6 完成之前** | 明確排一次機械替換 + 刪檔，避免兩套契約長期並存 |
 | 4 | designated baseline **research** source 是哪一個 | **S8 Silver 驗收之前**（S0 就要記下） | 由 S0 preflight 的實測可用性決定 |
+| 8 | `reasoning/arbiter.py` 的 `select_evidence()` 需加 per-asset 配額，但它是**凍結路徑** | **S9B 動工之前** | 需原 P3（該檔 owner）同意；🚫 不得逕行修改。這是正確性修復，不是調參 |
 | 5 | 15 分鐘是否含題目輸入與評審檢視時間 | 主辦方確認前不阻塞 | 實作一律**從 run 開始**計時 |
 | 6 | 主辦方 CSV 算不算一個獨立 `independence_group` | 同上 | 暫計為一個（`organizer-public-market-data`） |
 | 7 | 「第一手/官方來源」的界定 | 同上 | 暫指原始資料產生者：交易所 API、專案官方公告、主辦方 CSV |
@@ -827,6 +945,6 @@ H3 三處都標示未實作；secret scan 通過。
 
 ---
 
-**下一步 →** 兩份手動測試指南，各自展開一個無法 headless 驗證的階段：
-[Stage3-Streamlit-Bronze-Testing-Guide.md](Stage3-Streamlit-Bronze-Testing-Guide.md) ·
-[Stage11-Live-Deploy-Rehearsal-Testing-Guide.md](Stage11-Live-Deploy-Rehearsal-Testing-Guide.md)
+**這是 design-pipeline 的最後一份。** 無法 headless 驗證的階段（S0／S3／S11）
+其人工檢查清單在本文 [§3.2](#32-只能由人驗證的部分人工檢查清單)。
+接著要看的是 `docs/ACTIVE_WORK.md`（誰正在做什麼）與 `.kiro/specs/hoya-market-agent/tasks.md`（規範性任務）。

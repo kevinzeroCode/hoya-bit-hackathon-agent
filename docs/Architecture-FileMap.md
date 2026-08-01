@@ -1,7 +1,7 @@
 # HOYA Market Agent — 架構與檔案地圖
 
-> **③ of ⑤ — design-pipeline 第三份產出。**
-> 上一份：[Tech-Stack-Plan.md](Tech-Stack-Plan.md)｜下一份：[Implementation-Plan.md](Implementation-Plan.md)｜索引：[README.md](README.md)
+> **③ of ④ — design-pipeline 第三份產出。**
+> 上一份：[Tech-Stack-Plan.md](Tech-Stack-Plan.md)｜下一份：[Implementation-Plan.md](Implementation-Plan.md)
 
 > **這份文件是衍生視圖，不是新的真相來源。**
 > canonical tree 與 import 規則的規範性擁有者是 `.kiro/steering/structure.md`；元件職責的擁有者是

@@ -75,6 +75,7 @@ inclusion: always
 - **「每個幣需各自實作一套」的來源一律 best-effort 或延後，不得成為 MVP blocking dependency。** 典型為各鏈鏈上瀏覽器（Etherscan=ETH、Solscan=SOL、XRPL⋯各不同）與各專案官方 Blog；缺漏時誠實揭露，不阻塞 run。
 - **若要納入鏈上／社群訊號，只採「單一多鏈／多幣聚合來源、以幣種符號查詢」者；禁止為五條鏈各寫一套 adapter。** 找不到幣種無關的聚合來源時，該訊號列為缺口揭露，不硬做。
 - **驗證只需兩個不同幣各跑一次單幣即可證明流程幣種無關**（對齊 Gold）；不要求五幣完整矩陣或 per-coin calibration。
+  雙幣比較另有自己的驗證（Requirement 17 的單一雙幣 run），不得以那兩次單幣 run 代替，也不得反過來用雙幣 run 代替 Gold 的幣種無關證明。
 - **報告與 Evidence 一律標明實際 `asset` 與 `time_range`**，不得把某一幣的取證條件假設套用到其他幣。
 
 一句話原則：**「用符號就能查五幣」的來源才進 MVP；「每個幣要各寫一套」的一律 best-effort 或跳過。**
@@ -117,11 +118,18 @@ inclusion: always
 
 ## Cross-Asset Rules
 
-- 內部 `assets` 契約支援一至兩個資產；UI 預設單幣。
+- 內部 `assets` 契約支援一至兩個資產；UI 預設單幣，第二幣只在使用者明確加選時進入 `assets`。
 - 不同幣種的 base-asset `volume` 單位不同，禁止直接跨幣比較。
-- 跨幣只能使用可比較尺度，例如報酬、波動、相對變化、各自 rolling z-score 或 live API quote volume。
+- 跨幣只能使用可比較尺度，例如報酬、波動、相對變化、各自 rolling z-score／百分位，或同一 provider、同一期間的 quote volume。
 - 跨幣 Claim 必須明記 `assets` 與 `time_range`。
 - 每個來源的 quote asset、時間範圍與來源切換都要揭露，禁止把不同口徑描述為同質資料。
+- **雙幣比較是已承諾能力（Requirement 17），不是 Future Work。** 以單一 run 完成：一個 `run_id`、
+  一個凍結 `analysis_as_of`、一份 Ledger、四項固定 artifacts；禁止為比較另開第二個 run 或第五項 artifact。
+- 雙幣 run 必須讓兩個資產各自都有 Evidence 進入 Arbiter payload，禁止單一資產或單一 source type
+  佔滿 30 筆上限。`asset=null` 的全市場項目不計入任一資產配額。
+- 任一資產缺少 baseline 市場證據時，比較標為 `unavailable` 並揭露缺口；
+  🚫 不得以單幣結果冒稱比較結果。
+- 比較結論不得成為相對買賣建議（例如「A 優於 B 所以換倉」）；Renderer 禁語 lint 仍最後把關。
 
 ## Architecture and H3 Honesty Rules
 
