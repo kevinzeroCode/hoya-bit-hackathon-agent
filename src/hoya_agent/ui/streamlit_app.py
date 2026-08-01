@@ -16,17 +16,26 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-import streamlit as st
+# Make `hoya_agent` importable when launched via
+# `streamlit run src/hoya_agent/ui/streamlit_app.py` with no editable install or
+# PYTHONPATH (a judge just running the file). Docker installs the package, so
+# `src` is simply already on the path there and this is a harmless no-op.
+_SRC = Path(__file__).resolve().parents[2]
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
-from hoya_agent.application import ApplicationService, build_request
-from hoya_agent.clock import SystemClock
-from hoya_agent.models import Asset, RunMode
-from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline
-from hoya_agent.ui.presenter import summary_view, trust_funnel
+import streamlit as st  # noqa: E402
+
+from hoya_agent.application import ApplicationService, build_request  # noqa: E402
+from hoya_agent.clock import SystemClock  # noqa: E402
+from hoya_agent.models import Asset, RunMode  # noqa: E402
+from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline  # noqa: E402
+from hoya_agent.ui.presenter import summary_view, trust_funnel  # noqa: E402
 
 UTC = timezone.utc
 # Organizer CSV ends 2026-05-31; Bronze replays that frozen cutoff (offline).
