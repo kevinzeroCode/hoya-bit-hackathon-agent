@@ -19,10 +19,10 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
+from fakes import build_settings
 
-from hoya_agent._provisional_seams import ExecutionEvent, TerminalState
 from hoya_agent.application import ApplicationService, build_request
-from hoya_agent.models import Asset, EvidenceLedger, Reliability, RunMode, SourceType
+from hoya_agent.models import Asset, EvidenceLedger, ExecutionEvent, Reliability, RunMode, SourceType, TerminalState
 from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline
 from hoya_agent.reporting.artifacts import ARTIFACT_NAMES, EVIDENCE_LEDGER, FINAL_REPORT
 
@@ -46,7 +46,7 @@ class RecordingProgress:
     def __init__(self) -> None:
         self.events: list[ExecutionEvent] = []
 
-    def emit(self, event: ExecutionEvent) -> None:
+    def publish(self, event: ExecutionEvent) -> None:
         self.events.append(event)
 
 
@@ -61,9 +61,19 @@ def offline_environment(monkeypatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
+def _run_dir(summary) -> Path:
+    """`RunSummary` records artifact paths, so the directory is derived, not stored."""
+    return Path(next(iter(summary.artifact_paths.values()))).parent
+
+
+def _missing(summary) -> list[str]:
+    """What is absent from `artifact_paths` is exactly what failed to land."""
+    return [name for name in ARTIFACT_NAMES if name not in summary.artifact_paths]
+
+
 def _run(tmp_path: Path, assets: list[Asset], stdout: io.StringIO | None = None):
     service = ApplicationService(
-        artifact_root=tmp_path / "artifacts",
+        settings=build_settings(tmp_path / "artifacts"),
         clock=FixedClock(),
         pipeline=OrganizerCsvPipeline(analysis_date=ANALYSIS_DATE),
         configured_sources=["public_market_data"],
@@ -85,11 +95,18 @@ async def test_real_market_evidence_flows_into_the_four_artifacts(tmp_path) -> N
     service, request, progress = _run(tmp_path, [Asset.BTC])
 
     summary = await service.run(request, progress=progress)
-    run_dir = Path(summary.artifact_dir)
+    run_dir = _run_dir(summary)
 
     assert sorted(p.name for p in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
-    assert summary.missing_artifacts == []
-    assert summary.evidence_item_count > 0
+    assert _missing(summary) == []
+    assert (
+        len(
+            EvidenceLedger.model_validate_json(
+                (run_dir / EVIDENCE_LEDGER).read_text(encoding="utf-8")
+            ).items
+        )
+        > 0
+    )
 
     ledger = EvidenceLedger.model_validate_json((run_dir / EVIDENCE_LEDGER).read_text(encoding="utf-8"))
     assert ledger.run_id == summary.run_id
@@ -108,11 +125,11 @@ async def test_real_market_evidence_flows_into_the_four_artifacts(tmp_path) -> N
 async def test_no_arbiter_yet_is_reported_honestly(tmp_path) -> None:
     service, request, _ = _run(tmp_path, [Asset.BTC])
     summary = await service.run(request)
-    run_dir = Path(summary.artifact_dir)
+    run_dir = _run_dir(summary)
 
     assert summary.terminal_state is TerminalState.degraded
-    assert summary.insufficient_data is True
-    assert summary.confidence is Reliability.low
+    assert "| 資料是否不足 | 是 |" in (_run_dir(summary) / FINAL_REPORT).read_text(encoding="utf-8")
+    assert "| 整體信心 | low |" in (_run_dir(summary) / FINAL_REPORT).read_text(encoding="utf-8")
 
     report = (run_dir / FINAL_REPORT).read_text(encoding="utf-8")
     assert "目前無法可靠判定" in report
@@ -122,7 +139,7 @@ async def test_no_arbiter_yet_is_reported_honestly(tmp_path) -> None:
 
     config = json.loads((run_dir / RUN_CONFIG_NAME).read_text(encoding="utf-8"))
     assert config["terminal_status"] == "degraded"
-    assert config["configured_sources"] == ["public_market_data"]
+    assert config["source_identifiers"] == ["public_market_data"]
 
 
 RUN_CONFIG_NAME = "run_config.json"
@@ -135,7 +152,7 @@ async def test_pipeline_is_coin_agnostic(tmp_path, asset: Asset) -> None:
     summary = await service.run(request)
 
     ledger = EvidenceLedger.model_validate_json(
-        (Path(summary.artifact_dir) / EVIDENCE_LEDGER).read_text(encoding="utf-8")
+        (_run_dir(summary) / EVIDENCE_LEDGER).read_text(encoding="utf-8")
     )
     assert ledger.items
     assert {item.asset for item in ledger.items} == {asset}
@@ -146,7 +163,7 @@ async def test_dual_asset_run_keeps_evidence_for_both_assets(tmp_path) -> None:
     summary = await service.run(request)
 
     ledger = EvidenceLedger.model_validate_json(
-        (Path(summary.artifact_dir) / EVIDENCE_LEDGER).read_text(encoding="utf-8")
+        (_run_dir(summary) / EVIDENCE_LEDGER).read_text(encoding="utf-8")
     )
     assert {item.asset for item in ledger.items} == {Asset.BTC, Asset.ETH}
 
@@ -155,7 +172,7 @@ async def test_metric_values_survive_for_quantified_thresholds(tmp_path) -> None
     """§16.4 needs the numeric value behind an Evidence ID, not just its prose."""
     pipeline = OrganizerCsvPipeline(analysis_date=ANALYSIS_DATE)
     service = ApplicationService(
-        artifact_root=tmp_path / "artifacts",
+        settings=build_settings(tmp_path / "artifacts"),
         clock=FixedClock(),
         pipeline=pipeline,
         stdout=io.StringIO(),
@@ -180,7 +197,7 @@ async def test_missing_csv_degrades_honestly_instead_of_crashing(tmp_path) -> No
     empty_dir = tmp_path / "no_data"
     empty_dir.mkdir()
     service = ApplicationService(
-        artifact_root=tmp_path / "artifacts",
+        settings=build_settings(tmp_path / "artifacts"),
         clock=FixedClock(),
         pipeline=OrganizerCsvPipeline(data_dir=empty_dir, analysis_date=ANALYSIS_DATE),
         stdout=io.StringIO(),
@@ -195,7 +212,7 @@ async def test_missing_csv_degrades_honestly_instead_of_crashing(tmp_path) -> No
     )
 
     summary = await service.run(request)
-    run_dir = Path(summary.artifact_dir)
+    run_dir = _run_dir(summary)
 
     # Still four artifacts, still schema-valid, and the gap is stated.
     assert sorted(p.name for p in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)

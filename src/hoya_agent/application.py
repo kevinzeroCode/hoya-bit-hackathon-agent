@@ -11,8 +11,8 @@ traceability, and `final_report.md` is written last. When analysis is missing th
 report becomes the deterministic insufficient-data report rather than a missing
 file.
 
-Provisional import note: `_provisional_seams` stands in for the Task 1b runtime
-seams. See that module's docstring and `docs/ai/S2_CONTRACT_EXPECTATIONS.md`.
+Task 1b has landed, so the runtime seams come from `models.py`/`ports.py` and the
+pipeline seam from `orchestration.pipeline`. The provisional stand-in is gone.
 """
 
 from __future__ import annotations
@@ -23,17 +23,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
-from hoya_agent._provisional_seams import (
-    AnalysisPipeline,
-    Clock,
+from hoya_agent.clock import build_run_context
+from hoya_agent.config import Settings
+from hoya_agent.models import (
+    AnalysisRequest,
+    Asset,
+    DataMode,
     ExecutionEvent,
-    ProgressSink,
     RunConfigSnapshot,
     RunContext,
+    RunMode,
     RunSummary,
     TerminalState,
 )
-from hoya_agent.models import AnalysisRequest, Asset, RunMode
+from hoya_agent.orchestration.pipeline import AnalysisPipeline
+from hoya_agent.ports import Clock, ProgressSink
 from hoya_agent.reporting.artifacts import (
     EVIDENCE_LEDGER,
     FINAL_REPORT,
@@ -91,22 +95,27 @@ class ApplicationService:
     def __init__(
         self,
         *,
-        artifact_root: Path,
+        settings: Settings,
         clock: Clock,
         pipeline: AnalysisPipeline,
-        prompt_version: str = PROMPT_VERSION,
-        policy_version: str = POLICY_VERSION,
+        prompt_versions: Mapping[str, str] | None = None,
         configured_sources: Sequence[str] = (),
-        optional_keys_present: Mapping[str, bool] | None = None,
+        data_mode: DataMode = DataMode.live,
         stdout: TextIO | None = None,
     ) -> None:
-        self._artifact_root = Path(artifact_root)
+        # `Settings` carries every configuration field `run_config.json` records,
+        # including which optional keys are present as booleans rather than values,
+        # so the service no longer takes them apart.
+        self._settings = settings
+        self._artifact_root = Path(settings.artifact_root)
         self._clock = clock
         self._pipeline = pipeline
-        self._prompt_version = prompt_version
-        self._policy_version = policy_version
+        self._prompt_versions = dict(prompt_versions or {"analysis": PROMPT_VERSION})
         self._configured_sources = list(configured_sources)
-        self._optional_keys_present = dict(optional_keys_present or {})
+        # Data mode is separate from run mode (evidence-contracts.md §14.1): a
+        # rehearsal run on fixtures and a demo run replaying a recorded bundle are
+        # different facts about the evidence, not about the run's honesty label.
+        self._data_mode = data_mode
         self._stdout = stdout
 
     async def run(
@@ -124,7 +133,7 @@ class ApplicationService:
         def emit(event: ExecutionEvent) -> None:
             store.append_event(event)
             if progress is not None:
-                progress.emit(event)
+                progress.publish(event)
 
         emit(self._event(context, "run", "run_start", "ok", message="run started"))
         if request.run_mode is RunMode.official and request.analysis_as_of != context.analysis_as_of:
@@ -161,8 +170,8 @@ class ApplicationService:
         if result is None:
             result = build_insufficient_data_result(
                 run_id=context.run_id,
-                question=context.question,
-                assets=list(context.assets),
+                question=context.request.question,
+                assets=list(context.request.assets),
                 analysis_as_of=context.analysis_as_of,
                 reason=_fallback_reason(outcome.degradation_notes),
             )
@@ -184,15 +193,17 @@ class ApplicationService:
         checksums = {
             name: digest for name, digest in store.checksums().items() if name != RUN_CONFIG
         }
+        # Missing artifacts and write failures are not snapshot fields: the
+        # contract records `artifact_checksums`, and what is absent from it is
+        # exactly what failed to land. The failures themselves are execution
+        # events, which is where the log already carries them.
         final_snapshot = snapshot.model_copy(
             update={
                 "stage_durations_ms": dict(outcome.stage_durations_ms),
-                "used_cached_evidence": any(item.is_cached for item in ledger.items),
+                "used_cache": any(item.is_cached for item in ledger.items),
                 "has_stale_evidence": any(item.is_stale for item in ledger.items),
-                "terminal_status": terminal_state.value,
+                "terminal_status": terminal_state,
                 "artifact_checksums": checksums,
-                "missing_artifacts": store.missing_artifacts(),
-                "artifact_write_failures": [f.as_dict() for f in store.failures],
             }
         )
         store.write_json(RUN_CONFIG, final_snapshot.model_dump(mode="json"))
@@ -207,61 +218,40 @@ class ApplicationService:
         )
         store.disclose_missing(terminal_state)
 
+        # `design.md` §104: the application returns artifact paths, effective data
+        # mode, stage statuses and degradation notes. The UI reads report text from
+        # `artifact_paths`, and confidence and insufficient-data live on
+        # `AnalysisResult`, so the summary does not duplicate either.
         return RunSummary(
             run_id=context.run_id,
-            run_mode=context.run_mode,
             terminal_state=terminal_state,
-            artifact_dir=str(store.run_dir),
+            effective_run_mode=request.run_mode,
+            effective_data_mode=self._data_mode,
             artifact_paths=store.artifact_paths(),
-            missing_artifacts=store.missing_artifacts(),
-            evidence_item_count=len(ledger.items),
-            confidence=result.confidence,
-            insufficient_data=result.insufficient_data,
+            stage_statuses=dict(outcome.stage_statuses),
             degradation_notes=list(outcome.degradation_notes) + list(result.degradation_notes),
-            report_markdown=report,
+            completed_at=self._clock.now_utc(),
         )
 
     # -- internals ----------------------------------------------------------
 
     def _build_context(self, request: AnalysisRequest) -> RunContext:
-        analysis_as_of = (
-            self._clock.now_utc()
-            if request.run_mode is RunMode.official
-            else request.analysis_as_of
-        )
-        return RunContext(
-            run_id=request.run_id,
-            run_mode=request.run_mode,
-            question=request.question,
-            assets=tuple(request.assets),
-            analysis_as_of=analysis_as_of,
-            deadline_seconds=request.deadline_seconds,
-        )
+        # `clock.build_run_context` owns the cutoff-freezing policy so official
+        # runs cannot take a caller-supplied cutoff.
+        return build_run_context(request, self._clock)
 
     def _initial_snapshot(
         self, request: AnalysisRequest, context: RunContext
     ) -> RunConfigSnapshot:
-        return RunConfigSnapshot(
-            schema_version=SCHEMA_VERSION,
-            prompt_version=self._prompt_version,
-            policy_version=self._policy_version,
-            run_id=context.run_id,
-            requested_run_mode=request.run_mode,
-            effective_run_mode=context.run_mode,
-            sanitized_request={
-                "question": request.question,
-                "assets": [asset.value for asset in request.assets],
-                "requested_at": request.requested_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "requested_analysis_as_of": request.analysis_as_of.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "deadline_seconds": request.deadline_seconds,
-                # MVP records conditional debate as accepted but disabled.
-                "enable_conditional_debate_requested": request.enable_conditional_debate,
-                "conditional_debate_effective": False,
-            },
-            analysis_as_of=context.analysis_as_of,
-            deadline_seconds=request.deadline_seconds,
-            configured_sources=self._configured_sources,
-            optional_keys_present=self._optional_keys_present,
+        # Settings is a superset of the snapshot's configuration fields, so it
+        # builds the payload itself; the service only supplies run-scoped values.
+        return self._settings.sanitized_snapshot(
+            context.request,
+            requested_data_mode=self._data_mode,
+            effective_data_mode=self._data_mode,
+            effective_run_mode=request.run_mode,
+            prompt_versions=self._prompt_versions,
+            source_identifiers=self._configured_sources,
         )
 
     def _event(
@@ -278,7 +268,7 @@ class ApplicationService:
             schema_version=SCHEMA_VERSION,
             timestamp=self._clock.now_utc(),
             run_id=context.run_id,
-            run_mode=context.run_mode,
+            run_mode=context.request.run_mode,
             stage=stage,
             event_type=event_type,
             status=status,

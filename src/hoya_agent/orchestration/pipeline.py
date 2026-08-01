@@ -5,9 +5,8 @@ fork-join. What lives here today is the first increment: the seam that lets the
 S2 vertical slice run on the real deterministic market evidence that landed on
 `main`, instead of on committed fixtures.
 
-Two provisional couplings are deliberate and temporary:
+One provisional coupling is deliberate and temporary:
 
-* `_provisional_seams` stands in for Task 1b's runtime seams (see that module).
 * `to_contract_ledger` bridges `evidence/types.py` (the data/evidence layer's
   frozen dataclasses) to `models.py` (the canonical Pydantic contracts). Both
   representations currently exist on `main`; when the dataclasses retire, this
@@ -20,17 +19,11 @@ path runs offline.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
-from hoya_agent._provisional_seams import (
-    EventEmitter,
-    ExecutionEvent,
-    PipelineOutcome,
-    RunContext,
-    TerminalState,
-)
 from hoya_agent.adapters.organizer_csv import default_data_dir, load_organizer_csv
 from hoya_agent.data.market_worker import build_market_evidence
 from hoya_agent.data.types import MarketBar
@@ -38,15 +31,51 @@ from hoya_agent.evidence.processor import build_ledger
 from hoya_agent.evidence.types import EvidenceDraft
 from hoya_agent.evidence.types import EvidenceLedger as WorkerLedger
 from hoya_agent.models import (
+    AnalysisResult,
     Asset,
     DegradationEvent,
     EvidenceItem,
     EvidenceLedger,
+    ExecutionEvent,
     Reliability,
+    RunContext,
     SourceType,
+    StageState,
+    TerminalState,
 )
 
 BarLoader = Callable[[str], Sequence[MarketBar]]
+
+# The application-to-pipeline seam. These were provisional while Task 1b was
+# outstanding; they live here now because orchestration owns them (Task 3), and
+# `application.py` depends on orchestration rather than the other way round.
+EventEmitter = Callable[[ExecutionEvent], None]
+
+
+@dataclass
+class PipelineOutcome:
+    """What the analysis pipeline returns to `ApplicationService`.
+
+    `result=None` means no validated analysis exists, which the application turns
+    into the deterministic insufficient-data report rather than a missing file.
+    """
+
+    ledger: EvidenceLedger
+    result: AnalysisResult | None
+    terminal_state: TerminalState = TerminalState.completed
+    degradation_notes: list[str] = field(default_factory=list)
+    stage_durations_ms: dict[str, int] = field(default_factory=dict)
+    # `RunSummary` reports per-stage state to the UI, so the pipeline is the one
+    # that has to record it; durations alone cannot distinguish done from skipped.
+    stage_statuses: dict[str, StageState] = field(default_factory=dict)
+
+
+@runtime_checkable
+class AnalysisPipeline(Protocol):
+    """The seam `ApplicationService` drives. Task 3 supplies the real implementation."""
+
+    async def execute(self, context: RunContext, emit: EventEmitter) -> PipelineOutcome: ...
+
 
 STAGE_MARKET = "market_worker"
 STAGE_EVIDENCE = "evidence_processor"
@@ -164,7 +193,7 @@ def to_contract_ledger(
     ledger = EvidenceLedger(
         run_id=context.run_id,
         analysis_as_of=context.analysis_as_of,
-        run_mode=context.run_mode,
+        run_mode=context.request.run_mode,
         items=sorted(items, key=lambda item: item.evidence_id),
         conflict_indicators=[],
         degradation_events=events,
@@ -199,7 +228,7 @@ class OrganizerCsvPipeline:
         degradation: list[str] = []
         statuses: list[str] = []
 
-        for asset in context.assets:
+        for asset in context.request.assets:
             status, asset_drafts = self._market_evidence_for(asset, as_of, degradation)
             statuses.append(status)
             drafts.extend(asset_drafts)
@@ -283,7 +312,7 @@ class OrganizerCsvPipeline:
         return ExecutionEvent(
             timestamp=datetime.now(timezone.utc),
             run_id=context.run_id,
-            run_mode=context.run_mode,
+            run_mode=context.request.run_mode,
             stage=stage,
             event_type="stage_end",
             status=status,

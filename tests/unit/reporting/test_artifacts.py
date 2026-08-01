@@ -14,8 +14,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from hoya_agent._provisional_seams import ExecutionEvent, TerminalState
-from hoya_agent.models import RunMode
+from hoya_agent.models import ExecutionEvent, RunMode, TerminalState
 from hoya_agent.reporting.artifacts import (
     ARTIFACT_NAMES,
     EVIDENCE_LEDGER,

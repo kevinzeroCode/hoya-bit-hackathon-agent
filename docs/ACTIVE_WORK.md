@@ -35,7 +35,7 @@ ruff check .
 ## 原始碼樹現況（2026-08-01 晚；S2 + 1b + S5 合併後更新）
 
 `main` 現在有 **44 個 `.py`** 在 `src/hoya_agent/` 底下，完整涵蓋：
-- 核心契約與 runtime：`models.py`、`config.py`、`clock.py`、`ports.py`、`application.py`、`_provisional_seams.py`
+- 核心契約與 runtime：`models.py`、`config.py`、`clock.py`、`ports.py`、`application.py`
 - 資料層：`data/indicators.py`、`data/market_worker.py`、`data/market_series.py`、`data/regime.py`、`data/price_analysis.py`
 - 證據層：`evidence/types.py`、`evidence/policies.py`、`evidence/processor.py`
 - 推理層：`reasoning/planner.py`、`reasoning/research_agent.py`、`reasoning/arbiter.py`、`reasoning/prompt_library.py`、`reasoning/conflict_extension.py`
@@ -110,8 +110,6 @@ ruff check .
 | `tests/fixtures/vertical_slice/` | S2 fixture pair | S2 / Task 2 | PR #12 |
 | `tests/unit/reporting/` | Renderer 單元測試 | S2 / Task 2 | PR #12 |
 | `tests/integration/test_vertical_slice.py` | 四項 artifact 整合測試 | S2 / Task 2 | PR #12 |
-| `src/hoya_agent/_provisional_seams.py` | Task 1b seam 的暫時替身；**1b 已合併，待清除程序執行** | S2 / Task 2 | PR #12 |
-| `tests/integration/test_s1_seam_bridge.py` | 橋接測試（1b seam 到位後用於驗證 field-name parity） | S2 / Task 2 | PR #12 |
 | `src/hoya_agent/orchestration/pipeline.py` | OrganizerCsvPipeline — CSV-only 四 artifact 產出 | CSV Pipeline 增量 | 已在 `main` |
 | `src/hoya_agent/data/indicators.py` | return, volatility, drawdown, volume z-score | S5 市場證據 | 已在 `main` |
 | `src/hoya_agent/data/market_worker.py` | OHLCV bars → high-reliability EvidenceDrafts | S5 市場證據 | 已在 `main` |
@@ -142,7 +140,6 @@ ruff check .
 ### Task 2 — S2 Fixture 垂直切片：✅ 已合併（PR #12）
 
 - `application.py`、`reporting/artifacts.py`、`reporting/renderer.py`
-- `_provisional_seams.py`（待 swap 清除）
 - 離線四 artifact 整合測試全綠
 
 ### Task 3 — Pipeline / Orchestration：🔶 部分完成
@@ -166,7 +163,7 @@ ruff check .
 | Bedrock 實際呼叫驗證 | ⚠️ 從未成功執行過 | 最高風險項 |
 | Streamlit UI | ❌ 未開始 | 無 |
 | Docker / EC2 部署 | ❌ 未開始 | Bedrock 驗證先 |
-| `_provisional_seams.py` 清除 | 🔶 1b 已合併，可執行 swap 程序 | 無 |
+| `_provisional_seams.py` 清除 | ✅ **已完成**——與 `test_s1_seam_bridge.py` 一併刪除，670 passed | 無 |
 | R16 Trust Scorecard | ❌ 未開始 | evidence layer 已就位 |
 | R17 雙幣比較 | ❌ 未開始 | Arbiter per-asset 配額需先解決 |
 
@@ -196,11 +193,13 @@ ruff check .
 
 ## 合流順序（剩餘工作）
 
-1. `_provisional_seams.py` swap — 1b 已合併，可執行清除程序（`docs/ai/S2_CONTRACT_EXPECTATIONS.md` §4）
-2. Task 3 fork-join + deadline — 在現有 `orchestration/pipeline.py` 上擴充
-3. `reporting/lint.py` — 純字串比對，不依賴外部
-4. Bedrock preflight — 最高風險項，做完才確認 H2-Lite 可跑
-5. Streamlit UI + Docker + EC2 部署
+1. ~~`_provisional_seams.py` swap~~ — ✅ **已完成**，該檔與 `test_s1_seam_bridge.py` 都已刪除
+2. ~~Bedrock preflight~~ — ✅ **已完成**（P2 驗證，Haiku 4.5 @ us-west-2；
+   紀錄見 `p2-etl-mvp/docs/service-access-check.md`）
+3. `reporting/lint.py` — 純字串比對，不依賴外部，**現在就能寫**
+4. Streamlit UI + Docker — S3 Bronze，目前的關鍵路徑
+5. Task 3 fork-join + deadline — 在現有 `orchestration/pipeline.py` 上擴充。
+   `PipelineOutcome.stage_statuses` 已備好但目前是空的，Task 3 要填。
 6. `tests/acceptance/` 與 `tests/live/` — Day 2 freeze 前建立
 
 ## 已知的環境問題

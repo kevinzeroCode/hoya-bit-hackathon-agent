@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
+from hoya_agent.config import Settings
 from hoya_agent.models import (
     ExecutionEvent,
     RawSourceRecord,
@@ -193,3 +195,20 @@ def fake_tool_registry(**operations: Any) -> StaticToolRegistry:
 
 
 UTC_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def build_settings(artifact_root: Path, **overrides: str) -> Settings:
+    """Minimal valid `Settings` for tests that need the real configuration seam.
+
+    `ApplicationService` takes `Settings` rather than loose arguments because
+    `run_config.json` records every configuration field, so the snapshot is built
+    from configuration rather than reassembled at the call site. Tests that only
+    care about run behaviour should not have to spell all of that out.
+    """
+    env = {
+        "AWS_REGION": "ap-northeast-1",
+        "BEDROCK_PRIMARY_MODEL_ID": "anthropic.primary",
+        "ARTIFACT_ROOT": str(artifact_root),
+        **overrides,
+    }
+    return Settings.from_env(env)

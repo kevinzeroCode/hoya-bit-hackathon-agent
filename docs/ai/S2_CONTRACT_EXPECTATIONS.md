@@ -1,5 +1,20 @@
 # S2 ↔ S1 契約期望與交接（Task 2 → Task 1b）
 
+> ## ✅ 這份交接已完成（2026-08-01）——以下保留為紀錄
+>
+> Task 1b 已合併，§4 的 swap 程序**已執行完畢**：`src/hoya_agent/_provisional_seams.py`
+> 與 `tests/integration/test_s1_seam_bridge.py` 都已刪除，全套測試 670 passed。
+>
+> 契約贏了每一處分歧，S2 是改的那一邊。實際改了什麼：
+> `RunContext` 的 `question`/`assets`/`run_mode` 收進 `request`、`deadline_seconds` →
+> `deadline_monotonic`、改由 `clock.build_run_context()` 建構；`RunSummary` 依 `design.md` §104
+> 只留 artifact 路徑／data mode／stage 狀態／降級說明；`RunConfigSnapshot` 改由
+> `Settings.sanitized_snapshot()` 產生；`ProgressSink.emit()` → `publish()`；
+> `AnalysisPipeline`／`PipelineOutcome`／`EventEmitter` 移進 `orchestration/pipeline.py`。
+> 完整清單見 `docs/Implementation-Plan.md` 的 S2 現況區塊。
+>
+> **本文件不再是待辦，不要再照著它做一次 swap。**
+
 > 狀態：**需求說明與交接備忘，非實作**。
 >
 > **權威順序**：`.kiro/steering/evidence-contracts.md` > `.kiro/specs/hoya-market-agent/design.md` >

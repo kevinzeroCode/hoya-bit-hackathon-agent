@@ -33,21 +33,22 @@ S0、S1、S2、S5、S7 全部落地，S6 大部分落地。**原本「四個人�
 |---|---|---|
 | **S0** preflight | ✅ | Bedrock 真的通了（Haiku 4.5 @ us-west-2），最高風險已拆除 |
 | **S1** 契約與接縫 | ✅ | `models.py`＋`config.py`/`clock.py`/`ports.py`/`tests/fakes.py`/`tests/conftest.py` 都在 `main`，契約驗收零落差 |
-| **S2** 垂直切片 | ✅ | fixture vertical slice 已合併（PR #12）；`application.py`、`reporting/`、`_provisional_seams.py` 都在 `main` |
+| **S2** 垂直切片 | ✅ | fixture vertical slice 已合併（PR #12）。**seam swap 已完成**：`_provisional_seams.py` 與 bridge 測試已刪除，全部改用真 `models.py`／`ports.py` |
 | **S5** 市場證據 | ✅ | `data/` 與行情 adapters 已整合進 `src/hoya_agent/` |
 | **S6** 研究與 Evidence | 🟡 | 大部分已整合；缺 `research_extractor` 合併、`ledger.py`、`official.py` |
 | **S7** bounded reasoning | ✅ | 早於 S1 完成並凍結 |
 | **S9** 創意層 | 🟡 | `regime.py` 已在 `main`；`trust.py` 未寫 |
 | **S3 / S4 / S8 / S9B / S10 / S11** | 🔴 | 未開始 |
 
-**`main` 目前：501+ passed（`pyproject.toml` 存在，44 個 `.py` 檔在 `src/hoya_agent/`）。**
-但 **`ruff check .` 有 87 個錯誤**（PR #8 整合大量 P2 程式碼後出現），
-違反 §3.3 的 Definition-of-Done「`ruff check .` 乾淨」。48 個可自動修。
-**這是目前唯一的紅字，建議在下一個階段開工前清掉**，否則之後每個人都會踩到既有噪音、
-分不清哪些是自己引入的。
+**本分支：670 passed，測試全綠。** S2 swap 之前 `main` 上有 6 個紅燈——那是
+`test_s1_seam_bridge.py` 的絆線，Task 1b 一落地就開始要求對齊。swap 做完，絆線連同
+`_provisional_seams.py` 一起功成身退，兩個檔都已刪除。
 
-**下一個關鍵路徑是 S3**（Streamlit Bronze）——S2 已完成，S3 擋住 S4 編排與 S8 Silver，
-而 S0／S1／S2／S5 已經不擋任何人。
+**`ruff check .` 剩 76 個錯誤，全部在 `p2-etl-mvp/`**——那個目錄不在 canonical tree 裡，
+而且 §8 #8 已排定要刪。`src/` 與 `tests/` 乾淨。
+
+**下一個關鍵路徑是 S3**（Streamlit Bronze）——`ui/`、`streamlit_app.py`、`reporting/lint.py`
+都還不存在，且 S3 擋住 S4 編排與 S8 Silver。S0／S1／S2／S5 都不擋任何人。
 
 ---
 
@@ -360,10 +361,25 @@ class ApplicationService(Protocol):
 > **已實作：** `application.py`、`reporting/artifacts.py`、`reporting/renderer.py`、
 > `_provisional_seams.py`、`tests/fixtures/vertical_slice/`（`evidence.json` + `analysis_result.json`）、
 > `tests/integration/test_vertical_slice.py`。
-> **⚠️ S2 在 Task 1b 之前落地**，因此 `_provisional_seams.py` 充當 runtime type stand-in
-> （`ExecutionEvent`、`RunConfigSnapshot`、`RunSummary`、`RunContext`、`Clock`、`ProgressSink`
-> 等型別暫住在此）。正式 seams 已在 1b 於 `models.py`/`ports.py` 定義完成，
-> **swap procedure 尚未執行**——待排的機械替換見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md §4`。
+> **✅ seam swap 已完成。** S2 在 Task 1b 之前落地，型別曾暫住 `_provisional_seams.py`；
+> 1b 落地後 `test_s1_seam_bridge.py` 的絆線開始要求對齊（`main` 上那 6 個紅燈就是它），
+> swap 已執行完畢：`_provisional_seams.py` 與 bridge 測試**都已刪除**，670 passed 全綠。
+>
+> **swap 的實際內容（契約贏，S2 是改的那一邊）：**
+> - `RunContext`：`question`／`assets`／`run_mode` 收進 `request`；`deadline_seconds` → `deadline_monotonic`；
+>   改由 `clock.build_run_context()` 建構，凍結 cutoff 的政策不再散落在 application。
+> - `RunSummary`：依 `design.md` §104 只回傳 artifact 路徑、data mode、stage 狀態與降級說明。
+>   `report_markdown`／`confidence`／`insufficient_data`／`evidence_item_count` 全部移除——
+>   前者 UI 從 `artifact_paths` 讀檔，後三者本來就屬 `AnalysisResult`，摘要不該複製一份。
+> - `RunConfigSnapshot`：改由 `Settings.sanitized_snapshot()` 產生，因為 Settings 本來就是
+>   snapshot 設定欄位的超集；`ApplicationService` 因此改吃 `Settings` 而非散裝參數。
+>   `missing_artifacts`／`artifact_write_failures` 移除——前者是「不在 `artifact_checksums` 裡的」，
+>   後者本質是執行事件，log 已經記了。
+> - `ProgressSink.emit()` → `publish()`（port 贏）。
+> - `AnalysisPipeline`／`PipelineOutcome`／`EventEmitter` 移進 `orchestration/pipeline.py`，
+>   因為那是 Task 3 的東西，且依賴方向是 application → orchestration。
+> - `PipelineOutcome` 新增 `stage_statuses`：`RunSummary` 要回報每個 stage 的狀態，
+>   而只有 pipeline 知道；光靠 `stage_durations_ms` 分不出「做完」和「跳過」。
 > **三個形狀已固化不可改名：** `run_config.json` snapshot、`execution_log.jsonl` event、
 > `evidence.json` container。
 > **指派：** 任務 A（Kiro，Task 2）＋任務 D（reporting/ 路徑）。

@@ -82,6 +82,16 @@ Record every resolution here so the next session does not re-litigate it.
   frozen. Swapping `_stubs.py` for the real models is still a later task and
   requires the owner's agreement.
 
+- **S2 seam swap is DONE (2026-08-01). Do not repeat it.** `_provisional_seams.py`
+  and `tests/integration/test_s1_seam_bridge.py` are deleted; `application.py`,
+  `orchestration/pipeline.py` and `reporting/artifacts.py` import the real
+  `models.py`/`ports.py`. Suite: 670 passed. The contracts won every divergence:
+  `RunContext` carries the request rather than copies of its fields, `RunSummary`
+  reports artifact paths instead of embedding report text, `RunConfigSnapshot`
+  comes from `Settings.sanitized_snapshot()`, and `ProgressSink` exposes
+  `publish()`. `AnalysisPipeline`/`PipelineOutcome`/`EventEmitter` now live in
+  `orchestration/pipeline.py`, which is their owner.
+
 - **`invalidation_conditions` shape.** `evidence-contracts.md` §7 shows a string
   list on `Claim`; §16.4 defines a structured object. Resolution:
   `Claim.invalidation_conditions` is `list[str]`;

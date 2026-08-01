@@ -13,17 +13,23 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from fakes import build_settings
 
-from hoya_agent._provisional_seams import (
-    AnalysisPipeline,
-    EventEmitter,
+from hoya_agent.application import ApplicationService, build_request, make_run_id
+from hoya_agent.models import (
+    AnalysisResult,
+    Asset,
+    EvidenceLedger,
     ExecutionEvent,
-    PipelineOutcome,
     RunContext,
+    RunMode,
     TerminalState,
 )
-from hoya_agent.application import ApplicationService, build_request, make_run_id
-from hoya_agent.models import AnalysisResult, Asset, EvidenceLedger, Reliability, RunMode
+from hoya_agent.orchestration.pipeline import (
+    AnalysisPipeline,
+    EventEmitter,
+    PipelineOutcome,
+)
 from hoya_agent.reporting.artifacts import (
     ARTIFACT_NAMES,
     EVIDENCE_LEDGER,
@@ -55,7 +61,7 @@ class RecordingProgress:
     def __init__(self) -> None:
         self.events: list[ExecutionEvent] = []
 
-    def emit(self, event: ExecutionEvent) -> None:
+    def publish(self, event: ExecutionEvent) -> None:
         self.events.append(event)
 
 
@@ -83,7 +89,7 @@ class FixturePipeline:
             ExecutionEvent(
                 timestamp=FROZEN_NOW,
                 run_id=context.run_id,
-                run_mode=context.run_mode,
+                run_mode=context.request.run_mode,
                 stage="evidence_processor",
                 event_type="stage_end",
                 status="ok",
@@ -142,11 +148,21 @@ def offline_environment(monkeypatch) -> None:
 
 def _service(tmp_path: Path, pipeline: AnalysisPipeline, stdout: io.StringIO | None = None):
     return ApplicationService(
-        artifact_root=tmp_path / "artifacts",
+        settings=build_settings(tmp_path / "artifacts"),
         clock=FixedClock(FROZEN_NOW),
         pipeline=pipeline,
         stdout=stdout if stdout is not None else io.StringIO(),
     )
+
+
+def _run_dir(summary) -> Path:
+    """`RunSummary` records artifact paths, so the directory is derived, not stored."""
+    return Path(next(iter(summary.artifact_paths.values()))).parent
+
+
+def _missing(summary) -> list[str]:
+    """What is absent from `artifact_paths` is exactly what failed to land."""
+    return [name for name in ARTIFACT_NAMES if name not in summary.artifact_paths]
 
 
 def _rehearsal_request(assets=(Asset.BTC,), question: str = QUESTION):
@@ -166,11 +182,11 @@ async def test_offline_rehearsal_run_writes_four_parseable_artifacts(tmp_path) -
 
     summary = await service.run(_rehearsal_request(), progress=progress)
 
-    run_dir = Path(summary.artifact_dir)
+    run_dir = _run_dir(summary)
     assert sorted(p.name for p in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
-    assert summary.missing_artifacts == []
+    assert _missing(summary) == []
     assert summary.terminal_state is TerminalState.completed
-    assert summary.run_mode is RunMode.rehearsal
+    assert summary.effective_run_mode is RunMode.rehearsal
 
     config = json.loads((run_dir / RUN_CONFIG).read_text(encoding="utf-8"))
     ledger = EvidenceLedger.model_validate_json((run_dir / EVIDENCE_LEDGER).read_text(encoding="utf-8"))
@@ -190,7 +206,6 @@ async def test_offline_rehearsal_run_writes_four_parseable_artifacts(tmp_path) -
     # run_config.json cannot checksum itself; the other three must all be recorded.
     assert set(config["artifact_checksums"]) == {EXECUTION_LOG, EVIDENCE_LEDGER, FINAL_REPORT}
     assert all(len(digest) == 64 for digest in config["artifact_checksums"].values())
-    assert config["missing_artifacts"] == []
     assert report.count("\n## ") == 11
     assert progress.events, "the UI must receive streamed events"
     assert {"run_start", "run_end"} <= {event.event_type for event in progress.events}
@@ -225,12 +240,13 @@ async def test_evidence_is_persisted_even_when_analysis_is_missing(tmp_path) -> 
     )
 
     summary = await service.run(_rehearsal_request())
-    run_dir = Path(summary.artifact_dir)
+    run_dir = _run_dir(summary)
 
     assert sorted(p.name for p in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
     assert summary.terminal_state is TerminalState.degraded
-    assert summary.insufficient_data is True
-    assert summary.confidence is Reliability.low
+    report = (run_dir / FINAL_REPORT).read_text(encoding="utf-8")
+    assert "| 資料是否不足 | 是 |" in report
+    assert "deterministic insufficient-data fallback" in report
 
     ledger = EvidenceLedger.model_validate_json((run_dir / EVIDENCE_LEDGER).read_text(encoding="utf-8"))
     assert len(ledger.items) == 5, "traceability survives an Arbiter failure"
@@ -247,7 +263,7 @@ async def test_evidence_is_persisted_even_when_analysis_is_missing(tmp_path) -> 
 
 async def test_report_states_no_fact_absent_from_the_fixtures(tmp_path) -> None:
     summary = await _service(tmp_path, FixturePipeline()).run(_rehearsal_request())
-    report = (Path(summary.artifact_dir) / FINAL_REPORT).read_text(encoding="utf-8")
+    report = (_run_dir(summary) / FINAL_REPORT).read_text(encoding="utf-8")
     fixture_text = (FIXTURE_DIR / "evidence.json").read_text(encoding="utf-8") + (
         FIXTURE_DIR / "analysis_result.json"
     ).read_text(encoding="utf-8")
@@ -260,7 +276,7 @@ async def test_report_states_no_fact_absent_from_the_fixtures(tmp_path) -> None:
 
 async def test_rehearsal_run_is_never_labelled_official(tmp_path) -> None:
     summary = await _service(tmp_path, FixturePipeline()).run(_rehearsal_request())
-    run_dir = Path(summary.artifact_dir)
+    run_dir = _run_dir(summary)
     report = (run_dir / FINAL_REPORT).read_text(encoding="utf-8")
     config = json.loads((run_dir / RUN_CONFIG).read_text(encoding="utf-8"))
 
@@ -282,14 +298,15 @@ async def test_single_artifact_failure_is_disclosed_by_exact_filename(tmp_path) 
 
     summary = await _service(tmp_path, FixturePipeline(), stdout=stdout).run(_rehearsal_request())
 
-    assert summary.missing_artifacts == [FINAL_REPORT]
+    assert _missing(summary) == [FINAL_REPORT]
     assert summary.terminal_state is TerminalState.degraded
     assert FINAL_REPORT in stdout.getvalue()
 
-    run_dir = Path(summary.artifact_dir)
+    run_dir = _run_dir(summary)
     config = json.loads((run_dir / RUN_CONFIG).read_text(encoding="utf-8"))
-    assert config["missing_artifacts"] == [FINAL_REPORT]
-    assert any(failure["name"] == FINAL_REPORT for failure in config["artifact_write_failures"])
+    assert FINAL_REPORT not in config["artifact_checksums"]
+    log_text = (run_dir / EXECUTION_LOG).read_text(encoding="utf-8")
+    assert FINAL_REPORT in log_text, "the failed write must be disclosed in the execution log"
     assert FINAL_REPORT not in config["artifact_checksums"]
     assert FINAL_REPORT in (run_dir / EXECUTION_LOG).read_text(encoding="utf-8")
 
@@ -303,9 +320,9 @@ async def test_unwritable_directory_discloses_all_four_filenames(tmp_path) -> No
     disclosure = stdout.getvalue()
     for name in ARTIFACT_NAMES:
         assert name in disclosure
-    assert summary.missing_artifacts == list(ARTIFACT_NAMES)
+    assert _missing(summary) == list(ARTIFACT_NAMES)
     assert summary.terminal_state is TerminalState.failed
-    assert summary.report_markdown is not None, "the report text is still returned to the UI"
+    assert summary.artifact_paths == {}, "nothing landed, so no path may be recorded"
 
 
 async def test_official_mode_freezes_the_cutoff_to_the_injected_clock(tmp_path) -> None:
@@ -342,8 +359,8 @@ async def test_question_asset_mismatch_logs_a_warning_and_keeps_assets(tmp_path)
         _rehearsal_request(question="ETH 與 SOL 的走勢如何？")
     )
 
-    assert pipeline.contexts[0].assets == (Asset.BTC,)
-    log_text = (Path(summary.artifact_dir) / EXECUTION_LOG).read_text(encoding="utf-8")
+    assert tuple(pipeline.contexts[0].request.assets) == (Asset.BTC,)
+    log_text = (_run_dir(summary) / EXECUTION_LOG).read_text(encoding="utf-8")
     assert "request_asset_mismatch" in log_text
 
 
@@ -352,4 +369,7 @@ async def test_run_id_and_report_are_deterministic_for_one_fixture_run(tmp_path)
     second = await _service(tmp_path / "b", FixturePipeline()).run(_rehearsal_request())
 
     assert first.run_id == second.run_id == "run_20260531_000000_fx01"
-    assert first.report_markdown == second.report_markdown
+    assert (
+        (_run_dir(first) / FINAL_REPORT).read_text(encoding="utf-8")
+        == (_run_dir(second) / FINAL_REPORT).read_text(encoding="utf-8")
+    )
