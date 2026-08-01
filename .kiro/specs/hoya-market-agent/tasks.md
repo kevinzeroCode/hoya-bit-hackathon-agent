@@ -107,9 +107,9 @@
   - **Acceptance:** Official mode uses the injected UTC clock, `analysis_as_of` remains immutable, no secret value reaches a snapshot, and all owners can implement against typed same-process seams without importing Streamlit or concrete providers. No database, queue, broker, remote registry, persistent implementation or independent service is introduced.
   - **Commit:** `feat: define shared runtime seams`
 
-- [ ] **2. Deliver the fixture vertical slice and incremental artifact contract**
+- [x] **2. Deliver the fixture vertical slice and incremental artifact contract** (landed ahead of Task 1b; the S1 runtime seams stand in via `_provisional_seams.py` + a self-activating bridge test)
   - **Owner:** P1 with P3; P2 and P4 review the interface
-  - **Wave / dependency:** Wave 1 / Task 1
+  - **Wave / dependency:** Wave 1 / Task 1 (**1a only**; 1b seams are stubbed, see `docs/ai/S2_CONTRACT_EXPECTATIONS.md`)
   - **Spec:** 4.3, 6.2, 9.8, 17 Day 1 morning
   - **Files:**
     - Create: `src/hoya_agent/application.py`
@@ -121,14 +121,16 @@
     - Create: `tests/unit/reporting/test_artifacts.py`
     - Create: `tests/unit/reporting/test_renderer.py`
     - Create: `tests/integration/test_vertical_slice.py`
-  - [ ] Write a failing integration test that passes one BTC `rehearsal` request, fixture Evidence and fixture `AnalysisResult` through the same-process application service with network, Bedrock and AWS credentials unavailable.
-  - [ ] Implement the smallest application flow that writes `run_config.json` first, streams `execution_log.jsonl`, writes `evidence.json`, then deterministically renders `final_report.md`; all four files share one `run_id`.
-  - [ ] Write renderer tests for all 11 required Traditional Chinese report sections, Evidence IDs, `high|medium|low` confidence, limitations, invalidation conditions and prohibited-advice lint.
-  - [ ] Implement deterministic Markdown rendering and a deterministic insufficient-data fallback; neither path may call an LLM.
-  - [ ] Test same-directory temporary-file and atomic-replace writes for the four fixed filenames.
-  - [ ] Test a partial/degraded run with a writable artifact directory and require all four artifacts with limitations, missing capabilities and terminal state.
-  - [ ] Test one failed artifact write and require the exact missing filename and write failure in stdout and every remaining writable `execution_log.jsonl` or `run_config.json`; when the directory is completely unwritable, require stdout to identify all missing filenames, write failure and terminal state.
-  - [ ] Run `python -m pytest tests/unit/reporting tests/integration/test_vertical_slice.py -q`.
+    - Create (Task 1b seam, deleted on swap): `src/hoya_agent/_provisional_seams.py`, `tests/integration/test_s1_seam_bridge.py`, `docs/ai/S2_CONTRACT_EXPECTATIONS.md`
+    - Create (fixture loaders; move into `tests/conftest.py` when 1b lands): `tests/unit/reporting/conftest.py`
+  - [x] Write a failing integration test that passes one BTC `rehearsal` request, fixture Evidence and fixture `AnalysisResult` through the same-process application service with network, Bedrock and AWS credentials unavailable.
+  - [x] Implement the smallest application flow that writes `run_config.json` first, streams `execution_log.jsonl`, writes `evidence.json`, then deterministically renders `final_report.md`; all four files share one `run_id`.
+  - [x] Write renderer tests for all 11 required Traditional Chinese report sections, Evidence IDs, `high|medium|low` confidence, limitations, invalidation conditions and prohibited-advice lint. (`reporting/lint.py` remains Task 7's file; the renderer exposes the lint hook and the prohibited-term table guards the rendered fixture output.)
+  - [x] Implement deterministic Markdown rendering and a deterministic insufficient-data fallback; neither path may call an LLM.
+  - [x] Test same-directory temporary-file and atomic-replace writes for the four fixed filenames.
+  - [x] Test a partial/degraded run with a writable artifact directory and require all four artifacts with limitations, missing capabilities and terminal state.
+  - [x] Test one failed artifact write and require the exact missing filename and write failure in stdout and every remaining writable `execution_log.jsonl` or `run_config.json`; when the directory is completely unwritable, require stdout to identify all missing filenames, write failure and terminal state.
+  - [x] Run `python -m pytest tests/unit/reporting tests/integration/test_vertical_slice.py -q`. (28 + 12 passed; full suite 422 passed / 6 skipped, `ruff check .` clean, Python 3.12.13)
   - **Acceptance:** The network-free application-service fixture path produces four parseable artifacts and honest `rehearsal` metadata without Bedrock or AWS. The report contains no facts absent from fixtures, missing analysis produces the deterministic fallback, and artifact-write failures follow the approved disclosure contract. Bronze is completed only after the Task 7 offline Streamlit checkpoint also passes.
   - **Commit:** `feat: add fixture artifact vertical slice`
 

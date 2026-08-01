@@ -26,7 +26,6 @@ prompts/
 tests/contract/
 tests/unit/reasoning/
 ```
-
 If a change genuinely requires editing one of these, stop and report why instead
 of editing. The owner must agree first.
 
@@ -89,6 +88,43 @@ happens — and `models.py` is imported by all four owners.
   `tests/conftest.py`, and the remaining plumbing models).
 
 Do not tick Task 1's parent checkbox until both halves are done.
+
+## Task 2 (S2) landed before Task 1b — provisional seam in place
+
+Task 2 (fixture vertical slice) is **complete** on branch
+`task/2-fixture-vertical-slice`: `application.py`, `reporting/artifacts.py`,
+`reporting/renderer.py`, the `tests/fixtures/vertical_slice/` pair, and the
+offline four-artifact integration test. Verified on Python 3.12.13:
+422 passed / 6 skipped, `ruff check .` clean.
+
+It landed **before Task 1b**, so the four runtime seams 1b owns are stubbed in
+`src/hoya_agent/_provisional_seams.py` (`ExecutionEvent`, `RunConfigSnapshot`,
+`RunSummary`, `RunContext`, `Clock`, `ProgressSink`, plus Task 3's
+`TerminalState` / `AnalysisPipeline` / `PipelineOutcome`). Field names are copied
+verbatim from `evidence-contracts.md` §13/§14.
+
+- **Task 1b owner: do not work around this file.** Define the real names in
+  `models.py` / `ports.py` as planned. On any disagreement the contract and 1b
+  win, and S2 is the side that changes.
+- `tests/integration/test_s1_seam_bridge.py` skips while the real seams are
+  absent and starts enforcing field-name parity the moment they exist; when every
+  seam has landed it fails on purpose to demand the swap.
+- The swap procedure is in `docs/ai/S2_CONTRACT_EXPECTATIONS.md` §4. It touches
+  only `application.py`, `reporting/artifacts.py` and
+  `tests/integration/test_vertical_slice.py`, then deletes the stand-in and the
+  bridge test.
+- S2 deliberately did **not** create `tests/conftest.py`, `tests/fakes.py`,
+  `config.py`, `clock.py`, `ports.py` or `reporting/lint.py`. Fixture loaders sit
+  in `tests/unit/reporting/conftest.py` until 1b's shared conftest exists.
+
+**`reporting/lint.py` is still nobody's committed file.** It appears in
+`structure.md` and `Implementation-Plan.md` S3 but in no `tasks.md` file list.
+`renderer.render(result, ledger, lint=hook)` already accepts it; until the UI
+owner lands it, the prohibited-advice check exists only in the S2 tests.
+
+The three shapes first written to disk by S2 — the `run_config.json` snapshot,
+the `execution_log.jsonl` event, and the `evidence.json` container — may gain
+fields later but **must not be renamed**.
 
 ## Downstream consumer already written
 

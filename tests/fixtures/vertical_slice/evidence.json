@@ -1,0 +1,116 @@
+{
+  "schema_version": "1.0",
+  "run_id": "run_20260531_000000_fx01",
+  "analysis_as_of": "2026-05-31T00:00:00Z",
+  "run_mode": "rehearsal",
+  "items": [
+    {
+      "evidence_id": "ev_001",
+      "asset": "BTC",
+      "source_type": "market",
+      "source_name": "public_market_data",
+      "source_url": null,
+      "published_at": "2026-05-31T00:00:00Z",
+      "fetched_at": "2026-05-31T00:01:00Z",
+      "query_or_parameters": "file=BTC_daily_ohlcv.csv; window_days=14; boundary=UTC daily close",
+      "content_reference": "BTC_daily_ohlcv.csv rows 2026-05-17 and 2026-05-31 UTC close",
+      "normalized_fact": "BTC 在 2026-05-17 至 2026-05-31 UTC 的 14 日報酬為 -4.88%。",
+      "reliability": "high",
+      "independence_group": "organizer-public-market-data",
+      "content_hash": "05676d0f9a6d420dce225aad78490d2c0d6fc7818b6f1c915125ee25354c44dc",
+      "is_cached": false,
+      "cache_time": null,
+      "is_stale": false
+    },
+    {
+      "evidence_id": "ev_002",
+      "asset": "BTC",
+      "source_type": "market",
+      "source_name": "Binance Spot",
+      "source_url": "https://api.binance.com/api/v3/klines",
+      "published_at": "2026-05-31T00:00:00Z",
+      "fetched_at": "2026-05-31T00:01:05Z",
+      "query_or_parameters": "symbol=BTCUSDT&interval=1d&startTime=2026-05-02&endTime=2026-05-31; credentials removed",
+      "content_reference": "Binance klines BTCUSDT 1d quote volume 2026-05-02..2026-05-31 UTC",
+      "normalized_fact": "BTC 在 2026-05-31 UTC 的日成交金額對自身 30 日滾動基準的 z-score 為 +1.80。",
+      "reliability": "high",
+      "independence_group": "binance.com",
+      "content_hash": "aa5ad6739a1bd4021613304cf6fa4d36e0533a1c81c87c75118b7353ffe2730a",
+      "is_cached": false,
+      "cache_time": null,
+      "is_stale": false
+    },
+    {
+      "evidence_id": "ev_003",
+      "asset": "BTC",
+      "source_type": "news",
+      "source_name": "Example Markets Daily",
+      "source_url": "https://news.example.com/2026/05/29/btc-spot-inflow",
+      "published_at": "2026-05-29T09:30:00Z",
+      "fetched_at": "2026-05-31T00:02:10Z",
+      "query_or_parameters": "article_url=https://news.example.com/2026/05/29/btc-spot-inflow; original page fetched",
+      "content_reference": "Exchange spot net inflow note published 2026-05-29",
+      "normalized_fact": "具名媒體於 2026-05-29 報導 BTC 現貨資金淨流入已連續五個交易日為正。",
+      "reliability": "medium",
+      "independence_group": "news.example.com",
+      "content_hash": "992c08be66cc84280215febf09b6441f62f6c80ab09c104a4bda66af5e5b90a6",
+      "is_cached": false,
+      "cache_time": null,
+      "is_stale": false
+    },
+    {
+      "evidence_id": "ev_004",
+      "asset": null,
+      "source_type": "macro",
+      "source_name": "Alternative.me Fear & Greed Index",
+      "source_url": "https://api.alternative.me/fng/",
+      "published_at": "2026-05-31T00:00:00Z",
+      "fetched_at": "2026-05-31T00:02:20Z",
+      "query_or_parameters": "limit=1&format=json",
+      "content_reference": "Alternative.me Fear and Greed index value 2026-05-31",
+      "normalized_fact": "2026-05-31 全市場 Fear & Greed Index 讀值為 41（Fear），為全市場情緒指標。",
+      "reliability": "low",
+      "independence_group": "alternative.me",
+      "content_hash": "383141c449dee7b3836d998ce07f9fd45fb6d85618b17eea3fe681ddb0a4cbd9",
+      "is_cached": true,
+      "cache_time": "2026-05-30T23:40:00Z",
+      "is_stale": false
+    },
+    {
+      "evidence_id": "ev_005",
+      "asset": "BTC",
+      "source_type": "market",
+      "source_name": "public_market_data",
+      "source_url": null,
+      "published_at": "2026-05-31T00:00:00Z",
+      "fetched_at": "2026-05-31T00:01:02Z",
+      "query_or_parameters": "file=BTC_daily_ohlcv.csv; window=2026-05-02..2026-05-31; aggregate=min(close); boundary=UTC daily close",
+      "content_reference": "BTC_daily_ohlcv.csv minimum daily close 2026-05-02..2026-05-31 UTC",
+      "normalized_fact": "BTC 在 2026-05-02 至 2026-05-31 UTC 的最低日收盤為 92400.0 USD。",
+      "reliability": "high",
+      "independence_group": "organizer-public-market-data",
+      "content_hash": "3c546eb90a05b4b227940d938eaa1e7b5a90b3de18461bb2d238d815fb69191c",
+      "is_cached": false,
+      "cache_time": null,
+      "is_stale": false
+    }
+  ],
+  "conflict_indicators": [
+    {
+      "claim_id": "cl_004",
+      "supporting_evidence_ids": ["ev_001"],
+      "opposing_evidence_ids": ["ev_003"],
+      "independence_groups": ["organizer-public-market-data", "news.example.com"],
+      "rule_version": "1.0"
+    }
+  ],
+  "degradation_events": [
+    {
+      "stage": "acquisition",
+      "event_type": "source_unavailable",
+      "source": "official_announcement_feed",
+      "message": "官方公告來源在本次 rehearsal fixture 中未提供，官方管道證據缺口已揭露。",
+      "timestamp": "2026-05-31T00:02:30Z"
+    }
+  ]
+}

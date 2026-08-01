@@ -11,8 +11,9 @@
 
 | 項目 | 狀態 |
 |---|---|
-| `main` | ✅ **gate 已完成**（`fc517e7`）。22 個 `.py`、`src/hoya_agent/` 樹已就位。仍缺 `pyproject.toml`（屬任務 A） |
-| 測試 | `main` 上 **157 passed + 15 subtests**，Python 3.12.13 離線實跑（2026-08-01） |
+| `main` | ✅ **gate 已完成**（`fc517e7`）。22 個 `.py`、`src/hoya_agent/` 樹已就位。仍缺 `pyproject.toml`（屬任務 A） || 測試 | `main` 上 **157 passed + 15 subtests**，Python 3.12.13 離線實跑（2026-08-01）。`task/2-fixture-vertical-slice` 上 **422 passed + 6 skipped** |
+| 共享契約 `models.py` | ✅ **Task 1a 已合併進 `main`**（PR #6，merge `faf437b`）。Task 1b（`config.py`／`clock.py`／`ports.py`／plumbing models）仍在進行中 |
+| S2（Task 2 fixture 垂直切片） | ✅ **已完成於 `task/2-fixture-vertical-slice`**，早於 Task 1b；1b 的 seam 以 `_provisional_seams.py` 暫代，替換程序見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md` |
 | 可執行的 Agent 程式碼 | `adapters/bedrock.py`、`reasoning/`、`evidence/{types,policies}.py` 都在 `main` 上 |
 | 共享契約 `models.py` | 尚不存在，但**已不再阻塞 B 和 C**——gate 已把兩邊共用的 `evidence/types.py` 先落地 |
 | P2 的其餘 48 個檔 | 仍在 `feat/p2-report-integration`，待任務 B 和 C 各搬一半 |
@@ -101,6 +102,8 @@ PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest tests -q
 | `src/hoya_agent/reasoning/` | Planner、Research Agent、Arbiter、H3 停用樁、prompt 載入器 | P3 | 同上 |
 | `prompts/` | `planner-v1`、`research-extraction-v1`、`arbiter-v1` | P3 | 同上 |
 | `tests/contract/`、`tests/unit/reasoning/` | 上述的測試 | P3 | 同上 |
+| `src/hoya_agent/application.py`、`src/hoya_agent/reporting/`（除 `lint.py`）、`tests/fixtures/vertical_slice/`、`tests/unit/reporting/`、`tests/integration/test_vertical_slice.py` | S2／Task 2：fixture 垂直切片、四項 artifact 原子寫入與缺檔揭露、繁中 11 段 deterministic renderer | Kiro（任務 A） | `task/2-fixture-vertical-slice` |
+| `src/hoya_agent/_provisional_seams.py`、`tests/integration/test_s1_seam_bridge.py` | Task 1b seam 的暫時替身與橋接測試；**1b 合併後刪除**（程序見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md` §4） | Kiro（任務 A） | 同上 |
 
 同樣的清單也寫在 `.kiro/steering/work-in-progress.md`，所以 Kiro 每次執行都會知道。
 
