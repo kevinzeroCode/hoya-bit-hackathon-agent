@@ -20,7 +20,7 @@ import streamlit.components.v1 as components
 
 from evidence.evidence_json import build_evidence_payload
 from pipeline import collect_comparison, collect_evidence
-from render_report import build_values, render
+from render_report import build_values, render, render_comparison
 
 UTC = timezone.utc
 ASSETS = ["BTC", "ETH", "SOL", "BNB", "XRP"]
@@ -88,20 +88,11 @@ else:
     a, b = assets
     with st.spinner(f"比較 {a} vs {b} …"):
         cb = collect_comparison(a, b, offline=offline)
+        report_html = render_comparison(cb, _TEMPLATE.read_text(encoding="utf-8"))
     if question:
-        st.markdown(f"**題目：** {question}")
-    st.warning("方向性結論由 P3 推理層產生；本系統不預測價格。以下為 P2 的 deterministic 跨幣比較證據。", icon="⚠️")
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric(f"{a} 市場狀態", _regime(cb.regime_a))
-    m2.metric(f"{b} 市場狀態", _regime(cb.regime_b))
-    m3.metric("合併證據", f"{len(cb.ledger.items)}")
-    m4.metric("獨立來源群", f"{cb.ledger.independence_group_count}")
-    st.subheader(f"跨幣比較：{a} vs {b}")
-    for fact in cb.comparison_facts:
-        st.write("•", fact)
-    st.caption(f"分析時點 {cb.as_of} UTC　·　LLM：{cb.provider}　·　跨幣只用報酬/比值/相關性，不比 base volume")
-    st.subheader("合併證據帳本")
-    st.dataframe(_ledger_rows(cb.ledger.items), use_container_width=True, hide_index=True, height=420)
+        st.caption(f"題目：{question}　·　{a} 市場狀態 {_regime(cb.regime_a)}／{b} {_regime(cb.regime_b)}"
+                   f"　·　LLM：{cb.provider}　·　合併證據 {len(cb.ledger.items)} 筆")
+    components.html(report_html, height=1600, scrolling=True)
     payload = build_evidence_payload(
         cb.ledger, asset=f"{a}-vs-{b}", analysis_as_of=cb.as_of,
         run_id=f"ui-cmp-{a.lower()}-{b.lower()}-{datetime.now(UTC):%Y%m%dT%H%M%SZ}",

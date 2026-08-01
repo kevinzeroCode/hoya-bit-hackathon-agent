@@ -30,8 +30,11 @@ from adapters.okx import fetch_okx_daily
 from adapters.organizer_csv import default_data_dir, load_organizer_csv
 from adapters.reddit import fetch_reddit_posts
 from adapters.rss import fetch_rss_news
+from data.indicators import simple_return
+from data.market_series import closes
 from data.market_worker import build_market_evidence
 from data.price_analysis import (
+    attribution,
     build_attribution_evidence,
     build_comparison_evidence,
     build_event_timeline_evidence,
@@ -80,6 +83,9 @@ class ComparisonBundle:
     regime_a: object
     regime_b: object
     provider: str
+    bars_a: list = field(default_factory=list)
+    bars_b: list = field(default_factory=list)
+    metrics: dict = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
     comparison_facts: list[str] = field(default_factory=list)
 
@@ -206,8 +212,17 @@ def collect_comparison(asset_a: str, asset_b: str, *, offline: bool = False) -> 
     drafts = list(ba.drafts) + list(bb.drafts) + list(comp.drafts)
     ledger = build_ledger(drafts)
     facts = [d.normalized_fact for d in comp.drafts]
+    ca, cbx = closes(ba.bars), closes(bb.bars)
+    metrics: dict = {}
+    try:
+        attr = attribution(ca, cbx, reference=b)
+        metrics = {"ret_a": simple_return(ca, 14), "ret_b": simple_return(cbx, 14),
+                   "corr": attr.correlation, "beta": attr.beta, "pct": attr.rel_strength_pctile}
+    except Exception:  # noqa: BLE001 - metrics are best-effort for the chart/stats
+        metrics = {}
     return ComparisonBundle(
         asset_a=a, asset_b=b, as_of=as_of, ledger=ledger,
         regime_a=ba.regime, regime_b=bb.regime, provider=ba.provider,
+        bars_a=ba.bars, bars_b=bb.bars, metrics=metrics,
         notes=ba.notes + bb.notes + comp.degradation, comparison_facts=facts,
     )

@@ -309,3 +309,114 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ── comparison rendering (P4 template style, two rebased price lines) ─────────
+
+def _svg_two_paths(cl_a, cl_b, n: int = 14):
+    """Two price lines rebased to 100, mapped into the template's 760x300 viewBox."""
+    wa = (cl_a[-n:] if len(cl_a) >= n else cl_a[:])
+    wb = (cl_b[-n:] if len(cl_b) >= n else cl_b[:])
+    m = min(len(wa), len(wb))
+    wa, wb = wa[-m:], wb[-m:]
+    ra = [c / wa[0] * 100 for c in wa]
+    rb = [c / wb[0] * 100 for c in wb]
+    x0, x1, ytop, ybot, base = 54.0, 730.0, 55.0, 235.0, 250.0
+    lo = min(min(ra), min(rb)); hi = max(max(ra), max(rb)); span = (hi - lo) or 1.0
+    xs = [x0 + i * (x1 - x0) / (m - 1) for i in range(m)] if m > 1 else [x0]
+    ya = [ybot - (v - lo) / span * (ybot - ytop) for v in ra]
+    yb = [ybot - (v - lo) / span * (ybot - ytop) for v in rb]
+    pa = "M " + " L ".join(f"{x:.0f} {y:.0f}" for x, y in zip(xs, ya))
+    pb = "M " + " L ".join(f"{x:.0f} {y:.0f}" for x, y in zip(xs, yb))
+    return pa, pa + f" L {x1:.0f} {base:.0f} L {x0:.0f} {base:.0f} Z", pb
+
+
+def render_comparison(cb, template: str) -> str:
+    """Fill the P4 report template for a 1–2 coin comparison (same visual language)."""
+    h = template
+    a, b = cb.asset_a, cb.asset_b
+    items = cb.ledger.items
+    rel = {"high": 0, "medium": 0, "low": 0}
+    for it in items:
+        rel[it.reliability] = rel.get(it.reliability, 0) + 1
+    types = {it.source_type for it in items}
+    groups = cb.ledger.independence_group_count
+    with_pub = sum(1 for it in items if it.published_at is not None)
+    m = cb.metrics or {}
+    ret_a, ret_b = m.get("ret_a", 0.0), m.get("ret_b", 0.0)
+    corr, beta, pct = m.get("corr", 0.0), m.get("beta", 0.0), m.get("pct", 0.0)
+    stronger = a if ret_a >= ret_b else b
+
+    def rep(old: str, new: str) -> None:
+        nonlocal h
+        if old in h:
+            h = h.replace(old, new, 1)
+
+    rep("<h1>BTC 市場狀況與短期方向判斷</h1>", f"<h1>{a} vs {b} 跨幣比較</h1>")
+    rep("<p class=\"standfirst\">針對 BTC 過去兩週的市場表現，整合價格、新聞與市場情緒，"
+        "說明訊號一致程度、主要風險與可能推翻結論的條件。</p>",
+        f'<p class="standfirst">比較 {a} 與 {b} 的相對表現（報酬、相關性、相對強弱）；'
+        f'跨幣只用報酬/比值，不比 base volume。方向性結論由 P3 產生，不預測價格。</p>')
+    rep('<span class="chip demo">DEMO · 錄製資料</span>', '<span class="chip demo">REHEARSAL · 真實資料</span>')
+    rep('<span class="runid">demo-btc-001</span>',
+        f'<span class="runid">p2-cmp-{a.lower()}-{b.lower()}-{datetime.now(UTC):%Y%m%d}</span>')
+    rep("<p class=\"verdict\">偏多，但尚未形成高信心趨勢</p>",
+        f'<p class="verdict">{a} 近 14 日相對 {b} {"較強" if ret_a >= ret_b else "較弱"}（方向性結論待 P3）</p>')
+    rep("<p class=\"reason\">這是展示模板，不代表即時市場判斷。</p>",
+        f'<p class="reason">P2 跨幣比較：市場/證據為真實資料；方向判斷由 P3 推理層產生。</p>')
+    rep("<dd>2026-05-31 UTC</dd>", f"<dd>{cb.as_of} UTC</dd>")
+
+    rep("<small>Market Regime</small><strong>Mixed</strong><p>動能偏正，波動與量能未同步確認</p>",
+        f"<small>相對報酬(14日)</small><strong>{(ret_a - ret_b) * 100:+.2f}%</strong>"
+        f"<p>{a} {ret_a:+.2%}、{b} {ret_b:+.2%}</p>")
+    rep("<small>Conclusion Confidence</small><strong>Medium</strong><p>3 個獨立來源群組，存在 1 個反方訊號</p>",
+        f"<small>相關性(90日)</small><strong>{corr:.2f}</strong><p>越高越隨 {b} 同向</p>")
+    rep("<small>Evidence Coverage</small><strong>8 / 10</strong><p>價格與新聞完整；鏈上資料降級</p>",
+        f"<small>Beta</small><strong>{beta:.2f}</strong><p>{a} 對 {b} 的敏感度</p>")
+    rep("<small>Source Diversity</small><strong>3 類</strong><p>市場資料、官方公告、公開新聞</p>",
+        f"<small>相對強弱</small><strong>{pct * 100:.0f} 百分位</strong><p>{a}/{b} 比值(近 252 日)</p>")
+
+    # chart：兩幣 rebased=100 疊線
+    cl_a = [bar.close for bar in cb.bars_a]
+    cl_b = [bar.close for bar in cb.bars_b]
+    if cl_a and cl_b:
+        pa, area_a, pb = _svg_two_paths(cl_a, cl_b)
+        h = re.sub(r'(<path class="area" d=")[^"]*(")', lambda mo: mo.group(1) + area_a + mo.group(2), h, count=1)
+        h = re.sub(r'(<path class="price" d=")[^"]*(")', lambda mo: mo.group(1) + pa + mo.group(2), h, count=1)
+        h = re.sub(r'(<path class="avgline" d=")[^"]*(")', lambda mo: mo.group(1) + pb + mo.group(2), h, count=1)
+        wd = [bar.date for bar in cb.bars_a][-14:]
+        if wd:
+            h = h.replace(">05/18</text>", f">{wd[0]:%m/%d}</text>", 1)
+            h = h.replace(">05/24</text>", f">{wd[len(wd)//2]:%m/%d}</text>", 1)
+            h = h.replace(">05/31</text>", f">{wd[-1]:%m/%d}</text>", 1)
+    rep("<p>展示資料 · 2026-05-18 至 2026-05-31 · USDT</p>",
+        f"<p>真實資料 · {a} vs {b} · 近 14 日收盤(rebased=100)</p>")
+    rep("<span><i></i>收盤價</span><span><i class=\"avg\"></i>7 日均線</span>",
+        f'<span><i></i>{a}</span><span><i class="avg"></i>{b}</span>')
+    rep("主辦方 OHLCV CSV；圖中數值僅為模板示意，正式 Renderer 必須使用該次 run 的確定性計算結果。",
+        f"{a} 與 {b} 近 14 日收盤(rebased 到 100)；deterministic 計算，跨幣只用報酬/比值，不比 base volume。")
+
+    h = re.sub(r"<tbody>.*?</tbody>", "<tbody>" + _ledger_rows(items) + "</tbody>", h, count=1, flags=re.S)
+
+    rep("<small>獨立性</small><strong>Strong</strong><p>3 個 independence groups</p>",
+        f"<small>獨立性</small><strong>{_ordinal(groups,3,2)}</strong><p>{groups} 個 independence groups</p>")
+    rep("<small>來源多樣性</small><strong>Moderate</strong><p>3 類；缺鏈上</p>",
+        f"<small>來源多樣性</small><strong>{_ordinal(len(types),3,2)}</strong><p>{len(types)} 類</p>")
+    rep("<small>可信度組成</small><strong>Strong</strong><p>high 4 · medium 3</p>",
+        f"<small>可信度組成</small><strong>{'Strong' if rel['high'] else 'Moderate'}</strong>"
+        f"<p>high {rel['high']} · medium {rel['medium']} · low {rel['low']}</p>")
+    rep("<small>一致性</small><strong>Moderate</strong><p>1 個反方訊號</p>",
+        "<small>一致性</small><strong>待 P3</strong><p>需 claim 立場（矛盾偵測）</p>")
+    rep("<small>時效性</small><strong>Moderate</strong><p>1 個來源 freshness 未知</p>",
+        f"<small>時效性</small><strong>—</strong><p>{with_pub}/{len(items)} 筆具 published_at</p>")
+
+    rep("<p>目前證據較支持「市場處於偏多但仍混合的狀態」，而不是已確認的單邊上升趨勢。價格動能提供支持，但量能與外部風險訊號仍不足以把信心提高至 high。</p>",
+        f"<p>P2 提供 {a} 與 {b} 的 deterministic 跨幣比較(相對報酬 {(ret_a-ret_b)*100:+.2f} 個百分點、"
+        f"相關性 {corr:.2f}、beta {beta:.2f})。哪一個較值得布局的方向性結論由 P3 推理層產生——此處不由 P2 判斷。</p>")
+    rep("<div class=\"answer-foot\"><span>CONCLUSION · C-03</span><span>CONFIDENCE · MEDIUM</span><span>SUPPORT · E-001, E-003, E-006</span><span>OPPOSE · E-008</span></div>",
+        f'<div class="answer-foot"><span>比較 · {a} vs {b}</span><span>證據 · {len(items)} 筆</span>'
+        f'<span>獨立群 · {groups}</span><span>STANCE · 待 P3</span></div>')
+    rep("本頁使用示意資料展示報告結構。正式執行必須替換為該次 run 的 Evidence Ledger、原始時間戳與真實降級狀態；fixture 不得標示為 official。",
+        f"本頁為 P2 跨幣比較(輕量,保留 1–2 幣契約)：市場/比較證據為真實 deterministic 資料；"
+        "推理與方向結論待 P3。非 official run。")
+    return h
