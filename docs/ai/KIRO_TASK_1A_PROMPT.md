@@ -8,15 +8,20 @@
 
 ## 執行前置
 
-1. **先裝 Python 3.12 —— 這是唯一的硬阻塞。** `tech.md` 鎖定 3.12，Kiro 會照著寫
-   `requires-python = ">=3.12"`；本機目前只有 3.11.9，屆時 `pip install -e ".[dev]"`
-   會直接失敗，Kiro 的 TDD 驗證步驟就跑不完，等於產出無法驗證。
+1. **先備妥 Python 3.12。** `tech.md` 鎖定 3.12，Kiro 會照著寫 `requires-python = ">=3.12"`；
+   系統 Python 若仍是 3.11.9，`pip install -e ".[dev]"` 會直接失敗，Kiro 的 TDD 驗證步驟
+   就跑不完，等於產出無法驗證。
+
+   **已於 2026-08-01 解決（用 `uv`，不必動系統 Python）**——每台機器各跑一次：
 
    ```bash
-   py -3.12 --version     # 沒有輸出就是還沒裝
+   uv python install 3.12          # 已驗證：cpython-3.12.13
+   uv venv --python 3.12 .venv
+   .venv/Scripts/python.exe -V     # 應顯示 3.12.x
    ```
 
-   兩條路擇一：裝 Python 3.12（建議，五分鐘），或請 P1 裁決把 `tech.md` 放寬到 3.11。
+   同日已在 3.12.13 上實跑兩棵現有的樹：`task/6-bedrock-reasoning` 134 passed + 15 subtests、
+   `feat/p2-report-integration` 122 passed。所以 3.12 不再是未知數，`tech.md` 也不需要放寬到 3.11。
    **不要**讓 Kiro 寫 3.12 然後跳過驗證步驟——那會產出一批沒跑過測試的契約。
 2. 從最新的 `main` 開分支：
 
