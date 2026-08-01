@@ -87,4 +87,3 @@ python scripts/verify_s8_s9_s9b.py
 2. shared contracts、frozen reasoning/prompts 需 owner 同意才改。
 3. S9/S9B 的「完成」只代表離線能力；S8 Silver、S10 Gold、S11 deployment 各有獨立 gate。
 4. 每次合併後同步本檔、Implementation Plan 與 Kiro WIP；不得保留已刪檔案的現況描述。
-
