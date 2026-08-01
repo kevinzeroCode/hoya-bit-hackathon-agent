@@ -17,8 +17,14 @@ import asyncio
 import os
 import sys
 import time
+from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+# Run with zero setup: put src/ on the path so `hoya_agent` imports without PYTHONPATH.
+_SRC = Path(__file__).resolve().parents[1] / "src"
+if str(_SRC) not in sys.path:
+    sys.path.insert(0, str(_SRC))
 
 from hoya_agent.adapters.bedrock import BedrockLLMClient, BedrockSettings  # noqa: E402
 from hoya_agent.reasoning.prompt_library import load_prompt  # noqa: E402
