@@ -22,32 +22,36 @@
 Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC2。
 **每個檔的細節請看檔案地圖，本文不重列。**
 
-> ⚠️ **狀態掃描時間：2026-08-01（晚間重掃），基準 commit `main`。**
-> 各階段的「現況」區塊記的是**真的跑過**的事實，不是計畫。
+> ⚠️ **狀態掃描時間：2026-08-01（PR #18 合併後），基準 commit `d7245e4`。**
+> 本快照以實際 `main` 檔案、已執行驗收與外部 gate 為準；較舊章節若衝突，以本節為準。
 
-### 1.1 現況快照（2026-08-01 晚間）
+### 1.1 現況快照（authoritative）
 
-S0、S1、S2、S5、S7 全部落地，S6 大部分落地。**原本「四個人三個在等契約」的局面已經解除。**
-
-| 階段 | 狀態 | 一句話 |
+| 階段 | 狀態 | 驗證後結論 |
 |---|---|---|
-| **S0** preflight | ✅ | Bedrock 真的通了（Haiku 4.5 @ us-west-2），最高風險已拆除 |
-| **S1** 契約與接縫 | ✅ | `models.py`＋`config.py`/`clock.py`/`ports.py`/`tests/fakes.py`/`tests/conftest.py` 都在 `main`，契約驗收零落差 |
-| **S2** 垂直切片 | ✅ | fixture vertical slice 已合併（PR #12）；`application.py`、`reporting/`、`_provisional_seams.py` 都在 `main` |
-| **S5** 市場證據 | ✅ | `data/` 與行情 adapters 已整合進 `src/hoya_agent/` |
-| **S6** 研究與 Evidence | 🟡 | 大部分已整合；缺 `research_extractor` 合併、`ledger.py`、`official.py` |
-| **S7** bounded reasoning | ✅ | 早於 S1 完成並凍結 |
-| **S9** 創意層 | 🟡 | `regime.py` 已在 `main`；`trust.py` 未寫 |
-| **S3 / S4 / S8 / S9B / S10 / S11** | 🔴 | 未開始 |
+| **S0** preflight | 🟡 | 曾以 Haiku 4.5 / `invoke_model` 成功抽取，但正式 Converse 結構化證據與規定位置的 rehearsal 紀錄仍缺 |
+| **S1** 契約與接縫 | ✅ | canonical models/config/clock/ports/fakes 已落地；runtime provisional seam 已退場 |
+| **S2** 垂直切片 | ✅ | fixture application、四項 artifacts、繁中 deterministic renderer 已落地 |
+| **S3** Streamlit Bronze | 🔴 | canonical Streamlit、禁語 lint、container shell 與 Bronze acceptance 尚未落地 |
+| **S4** deadline 編排 | 🟡 | `DeadlineAwarePipeline`、deadline/run-state、fork-join 已落地；fake-clock/cancellation 完整驗收仍缺 |
+| **S5** 市場證據 | ✅ | Organizer CSV、Binance、deterministic indicators 與 market evidence 已整合 |
+| **S6** 研究與 Evidence | 🟡 | adapters/processor 大部分已整合；baseline research 的 canonical 完整驗收仍缺 |
+| **S7** bounded reasoning | ✅ | Planner、Research Agent、Arbiter 與 Bedrock boundary 已完成並凍結 |
+| **S8** H2-Lite Silver | 🟡 | 離線 orchestration/fallback/artifacts 通過；live Bedrock＋baseline market/research Silver gate 未通過 |
+| **S9** 創意層 | ✅（離線） | Trust Scorecard、regime/unavailable、Evidence-backed invalidation 與 renderer 已通過離線 smoke |
+| **S9B** 雙幣比較 | ✅（離線） | 單一 run/cutoff/ledger、UTC 對齊、balanced Arbiter projection、比較 Claim 與第 12 段已通過 |
+| **S10** Gold local Exit | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 尚缺 |
+| **S11** 部署與彩排 | 🔴 | CI、ECR/EC2、live smoke、rollback 與 15 分鐘 judged-flow rehearsal 尚缺 |
 
-**`main` 目前：501+ passed（`pyproject.toml` 存在，44 個 `.py` 檔在 `src/hoya_agent/`）。**
-但 **`ruff check .` 有 87 個錯誤**（PR #8 整合大量 P2 程式碼後出現），
-違反 §3.3 的 Definition-of-Done「`ruff check .` 乾淨」。48 個可自動修。
-**這是目前唯一的紅字，建議在下一個階段開工前清掉**，否則之後每個人都會踩到既有噪音、
-分不清哪些是自己引入的。
+**目前完成分層：**嚴格完成 S1/S2/S5/S7；離線功能完成 S9/S9B；
+部分完成 S0/S4/S6/S8；未完成 S3/S10/S11。
 
-**下一個關鍵路徑是 S3**（Streamlit Bronze）——S2 已完成，S3 擋住 S4 編排與 S8 Silver，
-而 S0／S1／S2／S5 已經不擋任何人。
+**尚未通過的 repository-wide gate：** GitHub Actions/status checks 尚未配置；
+完整 pytest/Ruff 未在 PR #18 環境重跑，且既有紀錄仍有 87 個 Ruff errors。
+因此不得把離線 smoke 說成 Silver、Gold 或部署完成。
+
+**下一條關鍵路徑：** S3 Bronze → 補 S4/S6 驗收 → S8 live Silver →
+S10 Gold local Exit → S11 部署與計時彩排。
 
 ---
 
@@ -356,17 +360,9 @@ class ApplicationService(Protocol):
 
 ### S2 — Fixture 垂直切片與 artifact 契約
 
-> **現況：✅ 已完成（2026-08-01，PR #12 合併進 `main`）。422 passed tests at merge time。**
-> **已實作：** `application.py`、`reporting/artifacts.py`、`reporting/renderer.py`、
-> `_provisional_seams.py`、`tests/fixtures/vertical_slice/`（`evidence.json` + `analysis_result.json`）、
-> `tests/integration/test_vertical_slice.py`。
-> **⚠️ S2 在 Task 1b 之前落地**，因此 `_provisional_seams.py` 充當 runtime type stand-in
-> （`ExecutionEvent`、`RunConfigSnapshot`、`RunSummary`、`RunContext`、`Clock`、`ProgressSink`
-> 等型別暫住在此）。正式 seams 已在 1b 於 `models.py`/`ports.py` 定義完成，
-> **swap procedure 尚未執行**——待排的機械替換見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md §4`。
-> **三個形狀已固化不可改名：** `run_config.json` snapshot、`execution_log.jsonl` event、
-> `evidence.json` container。
-> **指派：** 任務 A（Kiro，Task 2）＋任務 D（reporting/ 路徑）。
+> **現況：✅ 已完成；PR #18 已完成 canonical seam swap。**
+> `application.py`、artifact store、renderer 與 fixture vertical slice 均在 `main`；
+> `_provisional_seams.py` 與 bridge test 已刪除，runtime imports 已指向 canonical models/ports。
 
 **目標**：在完全沒有網路、Bedrock 與 AWS 憑證的情況下，讓一個 fixture 請求穿過**真正的**
 `ApplicationService` 並產出四份可解析的 artifacts。這是 [Tech-Stack-Plan.md §7](Tech-Stack-Plan.md) 的**風險切片 A**。
@@ -469,8 +465,9 @@ Docker 支援不重新定義 Bronze 閘門——**Bronze 不要求 Docker 驗收
 
 ### S4 — Deadline-aware fork-join 編排
 
-> **現況：🔴 未開始（`orchestration/` 目錄不存在）。**
-> **指派：** 任務 A。**相依：** S2 ✅（已完成，可立即開工）。
+> **現況：🟡 核心實作已在 PR #18 合併，完整退出 gate 尚未通過。**
+> `DeadlineAwarePipeline`、`deadline.py`、`run_state.py`、720 秒 analysis hard stop
+> 與 Market/Research fork-join 已落地；仍缺規劃中的 fake-clock、cancellation、fork-join 專項測試。
 
 **目標**：讓時間與狀態成為一個地方的決定。
 
@@ -687,8 +684,10 @@ H3 不做任何 Bull/Bear/Judge 呼叫。
 
 ### S8 — H2-Lite 整合與降級路徑 ★ **Silver Exit**
 
-> **現況：🔴 未開始。相依 S4、S5、S6、S7（S7 已完成）。**
-> **指派：** 任務 A 整合；B/C/D 修各自模組。
+> **現況：🟡 離線核心完成，Silver live gate 尚未通過。**
+> PR #18 已接通 canonical seams、deadline-aware H2-Lite、降級與 artifacts；
+> `scripts/verify_s8_s9_s9b.py` 離線通過。仍需一次 schema-valid live Bedrock run
+> 同時走 designated baseline market/research，以及獨立 deterministic fallback acceptance。
 
 **目標**：把六個 stage 接成一條真的會跑的 pipeline，並讓每一種失敗都有被測過的降級路徑。
 
@@ -732,14 +731,9 @@ Bronze 仍綠；一次單幣 live run 經兩條 baseline 路徑產出 schema-val
 
 ### S9 — 創意層：信任提煉與市場洞察（Requirement 16）
 
-> **現況：🟡 regime 已在 `main`，Trust Scorecard 未寫。**
-> `src/hoya_agent/data/regime.py` 已隨 PR #8 整合進正式樹；
-> `docs/price-data-analysis-outputs.html` 已用主辦方資料集**實算過**五幣的 regime 標籤，
-> 證明這個判定可行。**`evidence/trust.py` 完全未寫。**
-> ⚠️ 那份 HTML 的 regime 值是以 `as_of 2026-05-31` 算的**示範值**，
-> 比賽當天的 `analysis_as_of` 是當天——**🚫 那些數字不得寫死進程式或報告。**
-> **指派：** regime 與量化門檻 → 任務 B；Trust Scorecard → 任務 C。
-> **相依：** S8（但**對 Bronze 與 Silver 非阻塞**）。
+> **現況：✅ 離線功能完成。**
+> `evidence/trust.py`、canonical regime/unavailable、Evidence-backed invalidation 與 renderer
+> 已由 PR #18 合併並通過離線驗收；完整 repository pytest/Ruff 仍屬全案 gate。
 
 **目標**：把既有的嚴謹度「顯影」成評審一眼看得懂的東西，而**不**變成第二個真相來源。
 
@@ -790,14 +784,10 @@ golden 測試要用**可手算**的 OHLCV fixture；驗證 coin-agnostic（門�
 
 ### S9B — 雙幣比較（Requirement 17）
 
-> **現況：🔴 未開始。**
-> **執行窗口：** S8（Silver）之後、S10 觸發 Feature Freeze 之前，與 S9 同一個 additive 窗口，
-> 兩者互不相依、可並行。編號用 B 是為了不動既有的 S9–S11 引用。
-> **這是承諾能力，不是 Future Work**——命題題型明確包含跨幣比較，2026-08-01 由 product owner 決定納入。
-> 它**不列入 Gold 閘門條件**，但因為 Feature Freeze 在 Gold local Exit 觸發，
-> 所以實際上必須在 S10 之前完成，否則走 §退場條款。
-> **指派：** 比較指標 → 任務 B；Arbiter 配額 → 原 P3（**凍結路徑，需 owner 同意**）；
-> 報告段落與 UI → 任務 D。
+> **現況：✅ 離線功能完成。**
+> PR #18 已完成單一 run/cutoff/ledger、交集 UTC 日期比較 Evidence、
+> asset/source-balanced Arbiter projection、雙資產比較 Claim 與雙幣限定第 12 段。
+> UI 第二資產控制仍由 S3 接線；這不影響本階段離線核心判定。
 
 **目標**：讓一次雙幣 run 真的回答「這兩個幣相比如何」，而不是把兩份單幣分析並排。
 
