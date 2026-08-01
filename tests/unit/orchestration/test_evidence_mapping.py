@@ -15,6 +15,7 @@ and `src/hoya_agent/models.py` (the canonical Pydantic contracts) coexist on
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,7 +23,7 @@ from hoya_agent.clock import build_run_context
 from hoya_agent.evidence.types import EvidenceItem as WorkerItem
 from hoya_agent.evidence.types import EvidenceLedger as WorkerLedger
 from hoya_agent.models import AnalysisRequest, Asset, Reliability, RunContext, RunMode, SourceType
-from hoya_agent.orchestration.pipeline import to_contract_ledger
+from hoya_agent.orchestration.pipeline import _merge_research_drafts, to_contract_ledger
 
 ANALYSIS_AS_OF = datetime(2026, 5, 31, tzinfo=UTC)
 
@@ -161,3 +162,35 @@ def test_items_stay_sorted_by_evidence_id() -> None:
     mapped = to_contract_ledger(WorkerLedger(items=items, dropped_duplicates=0), context=_context())
     ids = [item.evidence_id for item in mapped.ledger.items]
     assert ids == sorted(ids)
+
+
+def test_research_merge_accepts_enum_backed_drafts() -> None:
+    context = _context()
+    initial = to_contract_ledger(
+        WorkerLedger(items=[_worker_item()], dropped_duplicates=0), context=context
+    ).ledger
+    raw = SimpleNamespace(
+        asset=Asset.BTC,
+        source_type=SourceType.news,
+        source_name="official_project_feed",
+        source_url="https://example.test/news/1",
+        published_at=ANALYSIS_AS_OF,
+        fetched_at=ANALYSIS_AS_OF,
+        query_or_parameters="asset=BTC",
+        content_reference="record-1",
+        normalized_fact="A schema-valid research fact.",
+        reliability=Reliability.high,
+        independence_group="official-project-feed",
+        is_cached=False,
+        cache_time=None,
+        is_stale=False,
+    )
+
+    merged, rejected = _merge_research_drafts(context, initial, [raw])
+
+    assert rejected == 0
+    assert any(
+        item.source_type is SourceType.news and item.asset is Asset.BTC
+        for item in merged.items
+    )
+

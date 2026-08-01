@@ -70,6 +70,16 @@ class PipelineOutcome:
     stage_durations_ms: dict[str, int] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ReasoningRequest:
+    """String-valued request view for the frozen S7 reasoning boundary."""
+
+    run_id: str
+    question: str
+    assets: tuple[str, ...]
+    analysis_as_of: datetime
+
+
 @runtime_checkable
 class AnalysisPipeline(Protocol):
     async def execute(self, context: RunContext, emit: EventEmitter) -> PipelineOutcome: ...
@@ -113,6 +123,7 @@ class DeadlineAwarePipeline:
         deadline = DeadlineManager(self._clock, analysis_deadline)
         notes: list[str] = []
         durations: dict[str, int] = {}
+        reasoning_request = _reasoning_request(context)
 
         plan = None
         if self._planner is not None:
@@ -120,7 +131,7 @@ class DeadlineAwarePipeline:
             try:
                 plan, plan_notes = await deadline.run(
                     self._planner.run(
-                        request=context.request,
+                        request=reasoning_request,
                         deadline=analysis_deadline,
                     ),
                     timeout_seconds=self._stage_timeout,
@@ -142,7 +153,7 @@ class DeadlineAwarePipeline:
             return await deadline.run(
                 self._research.run(
                     plan=plan,
-                    request=context.request,
+                    request=reasoning_request,
                     deadline=analysis_deadline,
                 ),
                 timeout_seconds=self._stage_timeout,
@@ -226,7 +237,7 @@ class DeadlineAwarePipeline:
                     )
                 result, arbiter_notes = await deadline.run(
                     self._arbiter.run(
-                        request=context.request,
+                        request=reasoning_request,
                         ledger=arbiter_ledger,
                         indicators=ledger.conflict_indicators,
                         deadline=analysis_deadline,
@@ -595,15 +606,15 @@ def _map_enums(
     asset: Asset | None = None
     if raw.asset is not None:
         try:
-            asset = Asset(raw.asset)
+            asset = Asset(_enum_value(raw.asset))
         except ValueError:
             return None, None, None, f"不支援的資產 {raw.asset!r}"
     try:
-        source_type = SourceType(raw.source_type)
+        source_type = SourceType(_enum_value(raw.source_type))
     except ValueError:
         return None, None, None, f"不支援的 source_type {raw.source_type!r}"
     try:
-        reliability = Reliability(raw.reliability)
+        reliability = Reliability(_enum_value(raw.reliability))
     except ValueError:
         return None, None, None, f"不支援的 reliability {raw.reliability!r}"
     return asset, source_type, reliability, None
@@ -619,6 +630,20 @@ def _event(
 
 def _elapsed_ms(clock: Clock, started: float) -> int:
     return max(0, round((clock.monotonic() - started) * 1000))
+
+
+def _reasoning_request(context: RunContext) -> ReasoningRequest:
+    return ReasoningRequest(
+        run_id=context.run_id,
+        question=context.question,
+        assets=tuple(asset.value for asset in context.assets),
+        analysis_as_of=context.analysis_as_of,
+    )
+
+
+def _enum_value(value: Any) -> str:
+    raw = getattr(value, "value", value)
+    return str(raw)
 
 
 def _pipeline_event(
@@ -702,8 +727,12 @@ def _merge_research_drafts(
         try:
             drafts.append(
                 EvidenceDraft(
-                    asset=getattr(raw, "asset", None),
-                    source_type=str(getattr(raw, "source_type")),
+                    asset=(
+                        _enum_value(getattr(raw, "asset"))
+                        if getattr(raw, "asset", None) is not None
+                        else None
+                    ),
+                    source_type=_enum_value(getattr(raw, "source_type")),
                     source_name=str(getattr(raw, "source_name")),
                     source_url=getattr(raw, "source_url", None),
                     published_at=getattr(raw, "published_at", None),
@@ -711,7 +740,7 @@ def _merge_research_drafts(
                     query_or_parameters=str(getattr(raw, "query_or_parameters")),
                     content_reference=str(getattr(raw, "content_reference")),
                     normalized_fact=str(getattr(raw, "normalized_fact")),
-                    reliability=str(getattr(raw, "reliability")),
+                    reliability=_enum_value(getattr(raw, "reliability")),
                     independence_group=str(getattr(raw, "independence_group")),
                     is_cached=bool(getattr(raw, "is_cached", False)),
                     cache_time=getattr(raw, "cache_time", None),
@@ -855,3 +884,4 @@ def _dual_asset_result(
         market_regime=regime,
         trust_scorecards=cards,
     )
+
