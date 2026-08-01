@@ -153,6 +153,7 @@ CSV↔live 以 **2026-06-01** 為來源切換點並揭露差異。
 | **Binance Futures（永續資金費率）** | market（衍生品維度） | `high` | binance.com | 免 |
 | CoinGecko | market | `medium` | coingecko.com | 免 |
 | **CoinDesk · The Block · Bitcoin Magazine · CryptoSlate · Decrypt · Cointelegraph · NewsBTC · Bitcoinist · CoinJournal**（RSS） | news | `medium` | 各自網域（9 群） | 免 |
+| **Google News（依幣種搜尋）** | news | `low` | 原發布者網域 | 免 |
 | CryptoPanic | news | `low` | 原發布者網域 | 免費 token |
 | Alternative.me F&G | social | `low` | alternative.me | — |
 | Reddit r/CryptoCurrency | social | `low` | reddit.com | — |
@@ -165,6 +166,9 @@ CSV↔live 以 **2026-06-01** 為來源切換點並揭露差異。
 
 **噪音處理哲學**:不主觀刪源（判斷是 P3 的事），而是**分級 + 隔離**——低訊號社群鎖在 `low`,
 結構上（confidence 上限）**無法驅動高信心結論**;這比直接刪除更可回溯。
+
+**五幣覆蓋（現場抽哪個都能做）**:市場（CSV+OKX）、衍生品（資金費率）、情緒（F&G）對 **BTC/ETH/SOL/BNB/XRP 全涵蓋**。
+新聞的一般 RSS 偏 BTC/ETH,小幣（SOL/BNB/XRP）會不足——因此加入 **Google News 依幣種搜尋**保證每個幣都有新聞（實測 5 幣各 15+ 篇）。
 
 ---
 

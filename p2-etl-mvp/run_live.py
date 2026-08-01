@@ -28,6 +28,7 @@ import httpx
 from adapters._assets import mentions
 from adapters.alternative_me import fetch_fear_greed
 from adapters.derivatives import fetch_funding_rate
+from adapters.google_news import fetch_google_news
 from adapters.organizer_csv import default_data_dir, load_organizer_csv
 from adapters.okx import CANDLES_URL as OKX_URL
 from adapters.okx import INDEPENDENCE_GROUP as OKX_GROUP
@@ -154,6 +155,12 @@ def main() -> None:
         notes += res.degradation
         news_hits += len(res.drafts)
         print(f"[新聞] {name}: {len(res.drafts)} 篇")
+
+    # 2b) Google News 依幣種搜尋（保證任一幣都有新聞覆蓋，aggregator→low）
+    gn = fetch_google_news(asset, analysis_as_of=now, client=client, lookback_days=14)
+    drafts += list(gn.drafts)
+    notes += gn.degradation
+    print(f"[新聞] Google News（依幣種搜尋）: {len(gn.drafts)} 篇")
 
     # 3) LLM 語意抽取（真 GPT，跑同一批真新聞 → 結構化無立場事實，low）
     llm_provider = "none"
