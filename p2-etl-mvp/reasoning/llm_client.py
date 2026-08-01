@@ -11,18 +11,8 @@ Only `complete(system, user) -> str` crosses this boundary; the caller parses an
 validates the returned text. No provider-specific types leak past here.
 
 Production note (Amazon Bedrock — the competition target):
-
-    from anthropic import AnthropicBedrockMantle
-    class BedrockClient:
-        def __init__(self, region: str, model: str):
-            self._c = AnthropicBedrockMantle(aws_region=region)
-            self._model = model          # e.g. "anthropic.claude-haiku-4-5"
-        def complete(self, *, system: str, user: str) -> str:
-            r = self._c.messages.create(
-                model=self._model, max_tokens=1024, system=system,
-                messages=[{"role": "user", "content": user}],
-            )
-            return next(b.text for b in r.content if b.type == "text")
+    See `reasoning/bedrock_client.py` → `BedrockClient` (boto3 `bedrock-runtime`
+    `invoke_model`; model id + region from env; standard AWS credential chain).
 """
 
 from __future__ import annotations

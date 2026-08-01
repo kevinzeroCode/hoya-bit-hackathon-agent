@@ -96,7 +96,15 @@ LLM **只判相關性 / 分事件類型 / 抽多筆無立場事實**,不編數�
 - `reasoning/research_extractor.py` → `extract_news_facts()`：一篇 →「相關性 + 事件類型 + 多筆原子事實」,**一篇可產多張證據卡**（非單篇摘要）
 - `reasoning/llm_client.py` → `LLMClient` 介面 + `FakeLLMClient`（測試）
 - `reasoning/gpt_client.py` → GPT mock（讀 `OPENAI_API_KEY`）
-- **正式 LLM 要用 Amazon Bedrock 上的 Claude**（`anthropic.claude-*`）——換 LLM 只改注入那一行。
+- `reasoning/bedrock_client.py` → **`BedrockClient`（正式）**：boto3 `bedrock-runtime` `invoke_model`，model id/region 讀環境變數，走標準 AWS 憑證鏈（Bedrock API 金鑰／臨時憑證／EC2 IAM 角色皆可，無需改碼）。
+- **provider 自動選擇**：`run_live.py` 設 `BEDROCK_MODEL_ID` → 用 Bedrock；否則 `OPENAI_API_KEY` → GPT；都沒有 → 誠實略過。
+
+  ```powershell
+  $env:AWS_REGION       = "us-west-2"
+  $env:BEDROCK_MODEL_ID = "anthropic.claude-3-5-haiku-20241022-v1:0"   # 從 Bedrock 模型目錄複製
+  $env:AWS_BEARER_TOKEN_BEDROCK = "..."   # 或用 IAM 角色 / 臨時憑證
+  python run_live.py BTC        # [LLM] 那段即跑 Bedrock
+  ```
 
 ### 4) 刻意不做的事（界線）
 - ✕ **TA 技術指標**（MACD/RSI/K線型態）——題目明訂「不是技術指標回測」;我的指標是**狀態描述**非買賣訊號。

@@ -162,19 +162,27 @@ def main() -> None:
     notes += gn.degradation
     print(f"[新聞] Google News（依幣種搜尋）: {len(gn.drafts)} 篇")
 
-    # 3) LLM 語意抽取（真 GPT，跑同一批真新聞 → 結構化無立場事實，low）
+    # 3) LLM 語意抽取（真新聞 → 結構化無立場事實，low）
+    #    provider 自動選擇：Bedrock（比賽正式）> GPT（dev）> 略過，一行不用改
     llm_provider = "none"
     records = _rss_records(asset, client)
-    if os.getenv("OPENAI_API_KEY") and records:
-        from reasoning.gpt_client import GptClient  # imported lazily; needs the key
-        ext = extract_news_facts(records[:_MAX_LLM_ARTICLES], llm=GptClient())
+    llm = None
+    if os.getenv("BEDROCK_MODEL_ID") and records:
+        from reasoning.bedrock_client import BedrockClient  # lazy: needs boto3 + creds
+        llm = BedrockClient()
+        llm_provider = f"bedrock:{os.getenv('BEDROCK_MODEL_ID')}"
+    elif os.getenv("OPENAI_API_KEY") and records:
+        from reasoning.gpt_client import GptClient  # lazy: needs the key
+        llm = GptClient()
+        llm_provider = "openai-gpt (dev; 換 Bedrock 設 BEDROCK_MODEL_ID 即可)"
+    if llm is not None:
+        ext = extract_news_facts(records[:_MAX_LLM_ARTICLES], llm=llm)
         drafts += list(ext.drafts)
         notes += ext.degradation
-        llm_provider = "openai-gpt (dev; swap to Bedrock for official)"
-        print(f"[LLM] OpenAI GPT 讀 {min(len(records), _MAX_LLM_ARTICLES)} 篇真新聞 "
+        print(f"[LLM] {llm_provider} 讀 {min(len(records), _MAX_LLM_ARTICLES)} 篇真新聞 "
               f"→ 抽出 {len(ext.drafts)} 筆結構化事實")
     else:
-        why = "未設 OPENAI_API_KEY" if not os.getenv("OPENAI_API_KEY") else "無可用新聞"
+        why = "無可用新聞" if not records else "未設 BEDROCK_MODEL_ID / OPENAI_API_KEY"
         print(f"[LLM] 略過語意抽取（{why}）——不放任何假資料進帳本")
 
     # 4) 社群（真 Reddit，best-effort；datacenter IP 會 403）
