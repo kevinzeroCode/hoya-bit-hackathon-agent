@@ -21,11 +21,13 @@ import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 
 import httpx
 
 from adapters._assets import mentions
 from adapters.alternative_me import fetch_fear_greed
+from adapters.derivatives import fetch_funding_rate
 from adapters.organizer_csv import default_data_dir, load_organizer_csv
 from adapters.okx import CANDLES_URL as OKX_URL
 from adapters.okx import INDEPENDENCE_GROUP as OKX_GROUP
@@ -36,10 +38,12 @@ from adapters.rss import fetch_rss_news
 from data.market_worker import build_market_evidence
 from data.regime import build_regime_evidence, classify_regime
 from data.text_clean import clean_text
+from evidence.evidence_json import dump_evidence_json
 from evidence.processor import build_ledger
 from reasoning.research_extractor import NewsRecord, extract_news_facts
 
 UTC = timezone.utc
+_ART_DIR = Path(__file__).resolve().parent / "artifacts"
 # Six first-party crypto outlets — each a distinct independence group (medium).
 # All verified reachable; parsed by fetch_rss_news (RFC-822 pubDate).
 FEEDS = [
@@ -49,8 +53,11 @@ FEEDS = [
     ("https://cryptoslate.com/feed/", "CryptoSlate", "cryptoslate.com"),
     ("https://decrypt.co/feed", "Decrypt", "decrypt.co"),
     ("https://cointelegraph.com/rss", "Cointelegraph", "cointelegraph.com"),
+    ("https://www.newsbtc.com/feed/", "NewsBTC", "newsbtc.com"),
+    ("https://bitcoinist.com/feed/", "Bitcoinist", "bitcoinist.com"),
+    ("https://coinjournal.net/feed/", "CoinJournal", "coinjournal.net"),
 ]
-_MAX_LLM_ARTICLES = 8  # cap real GPT calls to control cost
+_MAX_LLM_ARTICLES = 10  # cap real GPT calls to control cost
 
 
 def _rss_records(asset: str, client: httpx.Client, lookback_days: int = 30) -> list[NewsRecord]:
@@ -149,12 +156,14 @@ def main() -> None:
         print(f"[新聞] {name}: {len(res.drafts)} 篇")
 
     # 3) LLM 語意抽取（真 GPT，跑同一批真新聞 → 結構化無立場事實，low）
+    llm_provider = "none"
     records = _rss_records(asset, client)
     if os.getenv("OPENAI_API_KEY") and records:
         from reasoning.gpt_client import GptClient  # imported lazily; needs the key
         ext = extract_news_facts(records[:_MAX_LLM_ARTICLES], llm=GptClient())
         drafts += list(ext.drafts)
         notes += ext.degradation
+        llm_provider = "openai-gpt (dev; swap to Bedrock for official)"
         print(f"[LLM] OpenAI GPT 讀 {min(len(records), _MAX_LLM_ARTICLES)} 篇真新聞 "
               f"→ 抽出 {len(ext.drafts)} 筆結構化事實")
     else:
@@ -173,6 +182,12 @@ def main() -> None:
     notes += fg.degradation
     print(f"[情緒] Fear & Greed: {len(fg.drafts)} 筆")
 
+    # 6) 衍生品（真 Binance 永續資金費率——槓桿情緒，全新維度，high）
+    fr = fetch_funding_rate(asset, analysis_as_of=now, client=client)
+    drafts += list(fr.drafts)
+    notes += fr.degradation
+    print(f"[衍生品] 資金費率: {len(fr.drafts)} 筆" + (f"（{fr.degradation}）" if fr.degradation else ""))
+
     # 合併 → 去重 → 排序 → 統一帳本
     ledger = build_ledger(drafts)
     print()
@@ -189,6 +204,15 @@ def main() -> None:
         print("\n揭露（degradation）：")
         for n in notes:
             print("  -", n)
+
+    # 產出比賽固定 artifact：evidence.json（真實資料、可回溯、無 secrets）
+    run_id = f"p2-live-{asset.lower()}-{now:%Y%m%dT%H%M%SZ}"
+    out_path = _ART_DIR / "evidence.json"
+    payload = dump_evidence_json(
+        ledger, out_path, asset=asset, analysis_as_of=as_of,
+        run_id=run_id, run_mode="rehearsal", llm_provider=llm_provider,
+    )
+    print(f"\n[artifact] evidence.json 已輸出（run_mode=rehearsal, {payload['summary']['evidence_count']} 筆）：{out_path}")
 
 
 if __name__ == "__main__":
