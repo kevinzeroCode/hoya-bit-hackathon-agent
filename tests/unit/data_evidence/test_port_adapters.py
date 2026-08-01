@@ -171,6 +171,8 @@ def test_rss_research_adapter_returns_source_result_envelope():
     assert r.title and "Bitcoin" in r.title
     assert r.record_id  # non-empty stable id
     assert r.metadata["operation"] == "news.rss"
+    assert r.metadata["reliability"] == "medium"
+    assert r.metadata["independence_group"] == "coindesk.com"
     assert result.fetched_at is not None
     assert result.latency_ms is not None and result.latency_ms >= 0
     assert "feed_url=" in (result.query_or_parameters or "")

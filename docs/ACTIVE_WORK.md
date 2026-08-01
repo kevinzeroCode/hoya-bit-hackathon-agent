@@ -2,7 +2,7 @@
 
 > **開工前先讀。** 這份文件只記當前事實與路徑 ownership；歷史狀態請看 Git。
 >
-> 最後更新：2026-08-01，S8 PR #25 基準 `main@3158031`。
+> 最後更新：2026-08-02，完整 Silver live pipeline gate 開發基準 `main@21e6f14`。
 
 ## Authoritative status
 
@@ -16,7 +16,7 @@
 | S5 | ✅ | deterministic market evidence 完成 |
 | S6 | 🟡 | research adapters/processor 大部分完成；canonical baseline acceptance 未完成 |
 | S7 | ✅ | bounded reasoning 完成並凍結 |
-| S8 | 🟡 | PR #25 補上 run-mode/provenance/degradation 與 opt-in live gates；受限於驗證環境，尚未實跑 Silver |
+| S8 | ✅ | 完整單次 ApplicationService live gate 通過（1 passed in 50.15s）；Silver Exit 完成 |
 | S9 | ✅（離線） | Trust/Regime/Invalidation 完成 |
 | S9B | ✅（離線） | one-run dual-asset comparison 完成 |
 | S10 | 🔴 | Gold local Exit 未開始 |
@@ -29,7 +29,10 @@
 - `_provisional_seams.py` 與 `test_s1_seam_bridge.py` 已刪除。
 - 新增 `orchestration/{deadline,pipeline,run_state}.py`、`evidence/trust.py` 與雙幣報告路徑。
 - PR #18 的離線 S8/S9/S9B acceptance smoke、compileall、變更 whitespace check 通過。
-- GitHub Actions/status checks 尚未配置；live Silver 仍不得宣稱通過。
+- GitHub Actions/status checks 尚未配置；S8 以 D 槽 credentialed manual live gate 驗收通過。
+- 2026-08-02：非 live `1143 passed, 3 skipped`、Ruff clean；新增 deterministic research
+  provenance bridge，避免把 reliability／independence policy 交給 LLM。
+- 完整 live gate：`tests/live/test_live_silver_pipeline.py` → `1 passed in 50.15s`；S8 關閉。
 - **完整 pytest／Ruff 已於 `b84622c` 實跑**（Claude Code，2026-08-01，Python 3.12.13，
   `uv pip install -e ".[dev]"` 後的乾淨 venv，含 streamlit 1.60.0）：
   `pytest tests -q` → **598 passed，零失敗**；`ruff check .` → **All checks passed**。

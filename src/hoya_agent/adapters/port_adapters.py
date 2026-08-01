@@ -164,7 +164,15 @@ def _to_raw_record(draft, *, operation: str) -> RawSourceRecord:
         title=draft.normalized_fact,
         content=draft.normalized_fact,
         query_or_parameters=draft.query_or_parameters,
-        metadata={"operation": operation, "source_reference": draft.content_reference},
+        metadata={
+            "operation": operation,
+            "source_reference": draft.content_reference,
+            # These values are assigned deterministically by the source adapter,
+            # never by the extraction model.  Preserve them across the raw-record
+            # boundary so orchestration can admit a schema-valid extracted fact.
+            "reliability": draft.reliability,
+            "independence_group": draft.independence_group,
+        },
     )
 
 

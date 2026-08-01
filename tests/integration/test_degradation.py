@@ -7,6 +7,7 @@ from hoya_agent.clock import build_run_context
 from hoya_agent.models import (
     AnalysisRequest,
     Asset,
+    RawSourceRecord,
     ResearchPlan,
     ResearchStep,
     RunMode,
@@ -89,6 +90,45 @@ class MalformedResearch:
         )
 
 
+class ContractShapedResearch:
+    async def run(self, *, plan, request, deadline):
+        del plan, request, deadline
+        record = RawSourceRecord(
+            record_id="rss-001",
+            source_name="CoinDesk",
+            source_type=SourceType.news,
+            source_url="https://www.coindesk.com/markets/example",
+            asset=Asset.BTC,
+            published_at=Clock().now_utc(),
+            fetched_at=Clock().now_utc(),
+            title="Bitcoin market update",
+            content="Bitcoin market activity increased during the session.",
+            query_or_parameters="feed=coindesk;lookback_days=14",
+            metadata={
+                "source_reference": "CoinDesk RSS item rss-001",
+                "reliability": "medium",
+                "independence_group": "coindesk.com",
+            },
+        )
+        return SimpleNamespace(
+            # This is the frozen Research Extraction contract: the LLM extracts
+            # facts but does not assign source trust or provenance policy.
+            drafts=[
+                SimpleNamespace(
+                    record_id="rss-001",
+                    asset=Asset.BTC,
+                    normalized_fact="Bitcoin market activity increased during the session.",
+                    content_reference="CoinDesk RSS item rss-001",
+                    # Even a richer model payload cannot upgrade source policy.
+                    reliability="high",
+                    independence_group="model-invented-group",
+                )
+            ],
+            records=[record],
+            degradation_events=[],
+        )
+
+
 class FailingArbiter:
     async def run(self, **kwargs):
         del kwargs
@@ -131,6 +171,21 @@ async def test_invalid_research_draft_is_rejected_before_arbiter() -> None:
     assert outcome.ledger.items
     assert all(item.source_type is not SourceType.news for item in outcome.ledger.items)
     assert any("Evidence 契約" in note for note in outcome.degradation_notes)
+
+
+async def test_contract_shaped_research_draft_inherits_deterministic_source_policy() -> None:
+    outcome = await DeadlineAwarePipeline(
+        clock=Clock(),
+        market_pipeline=OrganizerCsvPipeline(analysis_date=date(2026, 5, 31)),
+        planner=OneStepPlanner(),
+        research_agent=ContractShapedResearch(),
+    ).execute(_context(), lambda event: None)
+
+    news = [item for item in outcome.ledger.items if item.source_type is SourceType.news]
+    assert len(news) == 1
+    assert news[0].source_name == "CoinDesk"
+    assert news[0].reliability.value == "medium"
+    assert news[0].independence_group == "coindesk.com"
 
 
 async def test_arbiter_failure_preserves_ledger_and_deterministic_fallback() -> None:

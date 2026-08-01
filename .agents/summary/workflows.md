@@ -424,3 +424,13 @@ validates the complete `RunConfigSnapshot` again before rewriting
 `live` to `recorded_fallback`; official plus any non-live effective data mode is
 rejected by the canonical model validator instead of being silently copied into an
 artifact. Integration coverage lives in `tests/integration/test_run_modes.py`.
+
+## Research Extraction Provenance Bridge
+
+The baseline research adapter assigns reliability and independence group before
+the LLM boundary and stores both values in `RawSourceRecord.metadata`. The
+Research Agent returns only extracted fact fields plus `record_id` as required by
+the frozen prompt. During Evidence merge, orchestration joins the fetched record
+back by `record_id`, restores adapter-owned provenance, and rejects any draft that
+cannot be joined or validated. This keeps source policy deterministic while
+allowing the canonical extraction schema to enter the ledger.

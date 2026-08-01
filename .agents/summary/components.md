@@ -437,3 +437,10 @@ layer infers them — the UI reads a state orchestration already recorded.
   labels and claim-to-ledger resolution.
 - `tests/live/test_live_sources.py` and `test_bedrock_access.py` are opt-in
   network/AWS gates and skip unless `RUN_LIVE_TESTS=1`.
+- `tests/live/test_live_silver_pipeline.py` is the final opt-in gate: one
+  `ApplicationService` run consumes the Organizer/Binance cutover and CoinDesk
+  RSS, performs Bedrock research extraction and Arbiter reasoning, then verifies
+  market/news Evidence plus all four artifacts.
+- `RssResearchAdapter` preserves deterministic reliability and independence
+  metadata on each `RawSourceRecord`. Orchestration joins that metadata back to
+  the extraction result by `record_id`; the LLM never assigns source trust.

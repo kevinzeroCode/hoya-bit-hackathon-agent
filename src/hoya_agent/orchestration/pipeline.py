@@ -254,7 +254,12 @@ class DeadlineAwarePipeline:
         ledger = market_outcome.ledger
         research_drafts = list(getattr(research_result, "drafts", ()) or ())
         if research_drafts:
-            ledger, rejected = _merge_research_drafts(context, ledger, research_drafts)
+            ledger, rejected = _merge_research_drafts(
+                context,
+                ledger,
+                research_drafts,
+                research_records=list(getattr(research_result, "records", ()) or ()),
+            )
             if rejected:
                 notes.append(f"{rejected} 筆研究 draft 未符合 Evidence 契約，已拒絕。")
         state.settle(
@@ -907,6 +912,8 @@ def _merge_research_drafts(
     context: RunContext,
     ledger: EvidenceLedger,
     research_drafts: Sequence[Any],
+    *,
+    research_records: Sequence[Any] = (),
 ) -> tuple[EvidenceLedger, int]:
     drafts: list[EvidenceDraft] = []
     for item in ledger.items:
@@ -929,44 +936,86 @@ def _merge_research_drafts(
             )
         )
     rejected = 0
-    required = (
-        "asset",
-        "source_type",
-        "source_name",
-        "fetched_at",
-        "query_or_parameters",
-        "content_reference",
-        "normalized_fact",
-        "reliability",
-        "independence_group",
-    )
+    records_by_id = {
+        str(getattr(record, "record_id", "")): record
+        for record in research_records
+        if getattr(record, "record_id", None)
+    }
     for raw in research_drafts:
-        if any(getattr(raw, name, None) is None for name in required[1:]):
+        record = records_by_id.get(str(getattr(raw, "record_id", "")))
+        metadata = getattr(record, "metadata", {}) if record is not None else {}
+        provenance_fields = {
+            "asset",
+            "source_type",
+            "source_name",
+            "source_url",
+            "published_at",
+            "fetched_at",
+            "query_or_parameters",
+            "reliability",
+            "independence_group",
+            "is_cached",
+            "cache_time",
+            "is_stale",
+        }
+
+        def value(name: str, default: Any = None) -> Any:
+            # A joined source record is authoritative for provenance and trust.
+            # The extraction model may only supply the extracted fact/reference;
+            # rich legacy drafts remain supported when no record is available.
+            if record is not None and name in provenance_fields:
+                recorded = getattr(record, name, None)
+                if recorded is not None:
+                    return recorded
+                if name in metadata:
+                    return metadata[name]
+            extracted = getattr(raw, name, None)
+            if extracted is not None:
+                return extracted
+            if record is not None:
+                recorded = getattr(record, name, None)
+                if recorded is not None:
+                    return recorded
+            return metadata.get(name, default)
+
+        required_values = (
+            value("source_type"),
+            value("source_name"),
+            value("fetched_at"),
+            value("query_or_parameters"),
+            value("content_reference", metadata.get("source_reference")),
+            value("normalized_fact"),
+            value("reliability"),
+            value("independence_group"),
+        )
+        if any(item is None for item in required_values):
             rejected += 1
             continue
         try:
             drafts.append(
                 EvidenceDraft(
                     asset=(
-                        _enum_value(getattr(raw, "asset"))
-                        if getattr(raw, "asset", None) is not None
+                        _enum_value(value("asset"))
+                        if value("asset") is not None
                         else None
                     ),
-                    source_type=_enum_value(getattr(raw, "source_type")),
-                    source_name=str(getattr(raw, "source_name")),
-                    source_url=getattr(raw, "source_url", None),
-                    published_at=getattr(raw, "published_at", None),
-                    fetched_at=getattr(raw, "fetched_at"),
-                    query_or_parameters=str(getattr(raw, "query_or_parameters")),
-                    content_reference=str(getattr(raw, "content_reference")),
-                    normalized_fact=str(getattr(raw, "normalized_fact")),
-                    reliability=_enum_value(getattr(raw, "reliability")),
-                    independence_group=str(getattr(raw, "independence_group")),
-                    is_cached=bool(getattr(raw, "is_cached", False)),
-                    cache_time=getattr(raw, "cache_time", None),
-                    is_stale=bool(getattr(raw, "is_stale", False)),
-                    metric_name=getattr(raw, "metric_name", None),
-                    metric_value=getattr(raw, "metric_value", None),
+                    source_type=_enum_value(value("source_type")),
+                    source_name=str(value("source_name")),
+                    source_url=value("source_url"),
+                    published_at=value("published_at"),
+                    fetched_at=value("fetched_at"),
+                    query_or_parameters=str(value("query_or_parameters")),
+                    content_reference=str(
+                        value("content_reference", metadata.get("source_reference"))
+                    ),
+                    normalized_fact=str(value("normalized_fact")),
+                    reliability=_enum_value(value("reliability")),
+                    independence_group=str(value("independence_group")),
+                    is_cached=bool(value("is_cached", False)),
+                    cache_time=value("cache_time"),
+                    is_stale=bool(value("is_stale", False)),
+                    metric_name=value("metric_name"),
+                    metric_value=value("metric_value"),
                 )
             )
         except (TypeError, ValueError):
