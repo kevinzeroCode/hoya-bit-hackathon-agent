@@ -2,13 +2,14 @@
 
 預計在兩天內完成的 H2-Lite 加密市場研究 Agent：在現場題目與指定幣種下，整合 deterministic 市場指標與多源 Evidence，產出可回溯、可誠實降級的繁體中文報告。
 
-> **Current status:** requirements、system design、Kiro spec 與四人分工已核准；runtime implementation 尚未開始。H3 debate、S3、CloudWatch、ECS 不屬於 MVP 承諾。
+> **Current status:** requirements、system design、Kiro spec 與四人分工已核准。原始碼樹已落地於 `src/hoya_agent/`（gate `fc517e7`，2026-08-01），四份平行任務進行中——目前進度以 [Active Work](docs/ACTIVE_WORK.md) 為準。H3 debate、S3、CloudWatch、ECS 不屬於 MVP 承諾。
 
 ## Start Here
 
 | Need | Document |
 |---|---|
 | **開工前先看**：誰正在做什麼、哪些路徑已凍結、下一個可認領的工作 | [Active Work](docs/ACTIVE_WORK.md) |
+| **這憑什麼叫 Agent、憑什麼可信**：三層架構、四道邊界、LLM 出現的三個位置 | [Agent Architecture](docs/agent-architecture.md) |
 | 快速了解 FR、NFR、API、HLD、時序、AWS 與 failure design | [System Design](docs/system-design.md) |
 | 這個產品做得到什麼、契約詞彙表在哪 | [Features](docs/Features.md)（design-pipeline ① 入口，②–④ 由此串接） |
 | 動工前必須鎖死的技術決定、依賴規則、第一個里程碑 | [Tech-Stack-Plan](docs/Tech-Stack-Plan.md) |
@@ -34,7 +35,7 @@ flowchart LR
     App --> Plan["Planner"]
     Plan --> Market["Market Worker<br/>Deterministic Python"]
     Plan --> Research["Research Agent<br/>Bounded LLM"]
-    Sources["Organizer CSV<br/>Binance / CoinGecko<br/>News / Official / F&G"] --> Market
+    Sources["Organizer CSV<br/>Binance<br/>News / Official / F&G"] --> Market
     Sources --> Research
     Bedrock["Amazon Bedrock"] --> Plan
     Bedrock --> Research
@@ -47,6 +48,7 @@ flowchart LR
 ```
 
 完整元件責任、domain model、sequence diagram、deadline 與 EC2 deployment diagram 見 [System Design](docs/system-design.md)。
+Agent 的決策邊界、信任邊界與 LLM／deterministic 分區見 [Agent Architecture](docs/agent-architecture.md)。
 
 ## MVP Contract
 
