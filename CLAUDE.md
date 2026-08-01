@@ -115,6 +115,11 @@ H3 Bull/Bear/Judge 實作、鏈上/宏觀/額外社群 adapter、S3/CloudWatch/E
 
 - **Red → Green → Refactor**：先寫會失敗的聚焦測試 → 跑到確認失敗 → 最小實作 → 跑模組測試 + 相關 regression → 通過才 commit。
 - 一次一個 task；同 commit 更新 `tasks.md` 的 checkbox。
+- **Push 前必須同時更新 `docs/Implementation-Plan.md` 的階段現況**——改 §1.1 現況快照那一列，
+  以及你那個階段的「現況」區塊。動到 `src/`、`tests/` 或 artifact 行為就一定要更新。
+  現況區塊寫**真的跑過的事實**（實際測試數字、`ruff` 結果、踩過的坑），不是計畫。
+  2026-08-01 那份文件半天內過時兩次，兩次都會讓人重做已完成的工作或空等不存在的阻塞——
+  **一份存在但過時的狀態表，比沒有狀態表更糟**，因為大家會相信它。
 - **絕不宣稱測試通過卻沒實際跑過。** 修 bug 先加重現用 regression test。
 - Conventional commits：`feat:` `fix:` `test:` `docs:` `chore:`。每個 task 一個 commit，不要 squash。
 - 在 `docs/evidence/kiro/README.md` 記錄 Kiro task→commit 對應。

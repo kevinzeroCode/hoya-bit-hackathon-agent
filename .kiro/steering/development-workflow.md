@@ -20,11 +20,22 @@ inclusion: always
 4. Implement only enough code to satisfy the requirement.
 5. Run the focused test, then the relevant regression suite.
 6. Update the corresponding checkbox in `tasks.md` in the same commit.
-7. Commit a small, reviewable change with no secrets or generated runtime artifacts.
+7. Update the stage status in `docs/Implementation-Plan.md` in the same commit — both the
+   §1.1 snapshot row and your stage's own status block. Required for any change to `src/`,
+   `tests/`, or artifact behaviour, before pushing.
+8. Commit a small, reviewable change with no secrets or generated runtime artifacts.
 
 ## Hard Gates
 
 - Never claim a test passed without running it in the current workspace.
+- Never push a change to `src/`, `tests/`, or artifact behaviour while
+  `docs/Implementation-Plan.md` still describes the old state. On 2026-08-01 that file went
+  stale twice within half a day — once still calling Bedrock unverified after it had been
+  proven working, once still calling S2 the blocking critical path after it had merged.
+  Either one costs another owner half a day of redone or blocked work, because a status
+  table that is present but wrong is trusted, whereas an absent one makes people go and check.
+  Status blocks record what was actually run — real test counts, `ruff` result, and the
+  traps hit along the way — not what is planned.
 - Never silently replace live evidence with rehearsal fixtures in `official` mode.
 - Never add unbounded loops, autonomous tool recursion, or retries outside the stage deadline.
 - Never commit `.env`, AWS credentials, API keys, cached production responses, or participant secrets.

@@ -4,6 +4,24 @@
 > 上一份：[Architecture-FileMap.md](Architecture-FileMap.md)｜索引：[README.md](README.md)
 > 無法 headless 驗證的部分收在本文 §3.2，不另立測試指南文件。
 
+> ## 🔴 開 PR 前必做：更新你那個階段的「現況」區塊
+>
+> **規則：任何動到 `src/`、`tests/` 或 artifact 行為的 PR，都必須在同一個 PR 裡更新本文。**
+> 要改兩個地方：①「§1.1 現況快照」那一列；②你那個階段的「現況」區塊。
+>
+> **為什麼是硬性規定：** 2026-08-01 半天之內，本文的狀態標記過時了兩次。
+> 一次寫著「Bedrock 從未呼叫過，這是最大未爆彈」，其實已經通了；
+> 一次寫著「S2 未開始、是關鍵路徑」，其實已經合併。
+> 兩次都會讓人**重做已完成的工作**，或**空等一個並不存在的阻塞**。
+> 四個人平行開發時，一份過時的狀態表比沒有狀態表更糟——沒有的話大家會自己去查，
+> 有但過時的話大家會相信它。
+>
+> **現況區塊要寫「真的跑過的事實」，不是計畫。** 至少包含：
+> 實際的測試數字（`X passed, Y failed`）、`ruff` 結果、以及**踩過的坑**——
+> 後者價值最高，S0 那三個 Bedrock 陷阱就是靠這樣留下來的。
+>
+> **不確定要不要更新就更新。** 成本是三分鐘，不更新的成本是別人半天。
+
 > **這份文件是衍生視圖，不是新的真相來源。**
 > 任務清單與驗收條件的規範性擁有者是 `.kiro/specs/hoya-market-agent/tasks.md`；
 > 「誰正在做什麼、哪些路徑已凍結」的擁有者是 `docs/ACTIVE_WORK.md`。
@@ -33,19 +51,27 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 |---|---|---|
 | **S0** preflight | ✅ | Bedrock 真的通了（Haiku 4.5 @ us-west-2），最高風險已拆除 |
 | **S1** 契約與接縫 | ✅ | `models.py`＋`config/clock/ports/fakes` 都在 `main`，契約驗收零落差 |
+| **S2** fixture 垂直切片 | ✅ | PR #12：`orchestration/pipeline.py`、`reporting/{artifacts,renderer}.py`、fixtures 與整合測試 |
 | **S5** 市場證據 | ✅ | `data/` 與行情 adapters 已整合進 `src/hoya_agent/` |
 | **S6** 研究與 Evidence | 🟡 | 大部分已整合；缺 `research_extractor` 合併、`ledger.py`、`official.py` |
 | **S7** bounded reasoning | ✅ | 早於 S1 完成並凍結 |
 | **S9** 創意層 | 🟡 | `regime.py` 已在 `main`；`trust.py` 未寫 |
-| **S2 / S3 / S4 / S8 / S9B / S10 / S11** | 🔴 | 未開始 |
+| **S3 / S4 / S8 / S9B / S10 / S11** | 🔴 | 未開始（S4 的 `pipeline.py` 已由 S2 起頭） |
 
-**`main` 目前：501 passed。** 但 **`ruff check .` 有 87 個錯誤**（PR #8 整合大量 P2 程式碼後出現），
-違反 §3.3 的 Definition-of-Done「`ruff check .` 乾淨」。48 個可自動修。
-**這是目前唯一的紅字，建議在下一個階段開工前清掉**，否則之後每個人都會踩到既有噪音、
-分不清哪些是自己引入的。
+**`main` 目前：564 passed、6 failed、`ruff check .` 88 errors。**
 
-**下一個關鍵路徑是 S2**（fixture 垂直切片）——它擋住 S3 Bronze 與 S4 編排，
-而 S0／S1／S5 已經不擋任何人。
+那 6 個失敗**不是壞掉，是設計好的絆線**。`tests/integration/test_s1_seam_bridge.py`
+在 Task 1b 落地前全部 skip，**1b 一落地就開始強制對齊並失敗**——用意是把「我們先寫了替身」
+變成一個可驗證的機械替換，而不是靜默的欄位名漂移。它現在紅，等於在喊：
+
+> **該做 S2 swap 了。** 把 `application.py` 與 `reporting/artifacts.py` 的 import 指向
+> `hoya_agent.models` / `hoya_agent.ports`，刪掉 `hoya_agent/_provisional_seams.py`，
+> 再刪掉 bridge 模組本身。步驟見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md`。
+> 衝突時的權威順序：`evidence-contracts.md` > `design.md` > bridge 模組；**S2 是要改的那一邊。**
+
+**下一個關鍵路徑是 S3 ★Bronze**（`ui/`、`streamlit_app.py`、`reporting/lint.py` 都還不存在），
+與它平行的是上面那個 S2 swap 與 88 個 ruff 錯誤——後兩者都違反 §3.3 的 Definition-of-Done，
+**建議在 S3 開工前清掉**，否則之後每個人都分不清哪些噪音是自己引入的。
 
 ---
 
@@ -354,10 +380,19 @@ class ApplicationService(Protocol):
 
 ### S2 — Fixture 垂直切片與 artifact 契約
 
-> **現況：🔴 未開始。**
-> **已實作：** 無（`reporting/` 目錄尚不存在）。
-> **可接手的既有產出：** P2 的 `p2-etl-mvp/render_report.py` 與 HTML 模板已寫好並產出過
-> `render/out/hoya-report-BTC.html`——渲染邏輯可參考，但**輸出格式必須改回 Markdown**（HTML 非 MVP artifact）。
+> **現況：✅ 已完成（2026-08-01，PR #12），但留了一筆必須立刻還的技術債。**
+> **已實作：** `orchestration/pipeline.py`（322 行）、`reporting/artifacts.py`、`reporting/renderer.py`（402 行）、
+> `tests/fixtures/vertical_slice/`、`tests/integration/test_vertical_slice.py`、
+> `tests/unit/reporting/`（共 3168 行）。
+> **⚠️ 未還的債：S2 早於 S1 的後半（Task 1b）完成**，所以它的 plumbing 型別暫住在
+> `hoya_agent/_provisional_seams.py`。Task 1b 現在已經落地，
+> `tests/integration/test_s1_seam_bridge.py` 的 6 個絆線測試因此開始失敗——**這是設計好的訊號，不是壞掉。**
+> **要做的替換（步驟見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md`）：**
+> ① `application.py` 與 `reporting/artifacts.py` 的 import 改指向 `hoya_agent.models` / `hoya_agent.ports`；
+> ② 刪 `hoya_agent/_provisional_seams.py`；③ 刪 bridge 模組本身。
+> 已知落差：`ExecutionEvent`、`RunConfigSnapshot`、`RunContext`、`RunSummary` 四個型別
+> S2 寫入了契約未定義的欄位，`ProgressSink` 多了一個 `emit()`。
+> **權威順序：`evidence-contracts.md` > `design.md` > bridge 模組——S2 是要改的那一邊。**
 > **指派：** 任務 A（Kiro，Task 2）＋任務 D（reporting/ 路徑）。
 
 **目標**：在完全沒有網路、Bedrock 與 AWS 憑證的情況下，讓一個 fixture 請求穿過**真正的**
