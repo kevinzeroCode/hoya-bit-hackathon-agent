@@ -444,4 +444,3 @@ layer infers them — the UI reads a state orchestration already recorded.
 - `RssResearchAdapter` preserves deterministic reliability and independence
   metadata on each `RawSourceRecord`. Orchestration joins that metadata back to
   the extraction result by `record_id`; the LLM never assigns source trust.
-
