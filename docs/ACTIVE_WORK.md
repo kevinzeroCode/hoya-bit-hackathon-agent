@@ -11,20 +11,31 @@
 
 | 項目 | 狀態 |
 |---|---|
-| `main` | 規格、steering、官方資料集、docs 齊全，但**零個 `.py`、沒有 `pyproject.toml`**——clone 下來裝不起來也跑不了 |
-| 可執行的 Agent 程式碼 | 全部在未合併分支，且分屬**兩棵不相容的樹**（見下節） |
-| 共享契約 `models.py` | **尚不存在——這是目前的頭號阻塞** |
-| 測試 | Task 6：134 passed + 15 subtests；P2：122 passed。兩邊都在 Python 3.12 離線實跑通過（2026-08-01 驗證） |
-| Bedrock 實際呼叫 | **尚未驗證過任何一次** |
+| `main` | ✅ **gate 已完成**（`fc517e7`）。22 個 `.py`、`src/hoya_agent/` 樹已就位。仍缺 `pyproject.toml`（屬任務 A） |
+| 測試 | `main` 上 **157 passed + 15 subtests**，Python 3.12.13 離線實跑（2026-08-01） |
+| 可執行的 Agent 程式碼 | `adapters/bedrock.py`、`reasoning/`、`evidence/{types,policies}.py` 都在 `main` 上 |
+| 共享契約 `models.py` | 尚不存在，但**已不再阻塞 B 和 C**——gate 已把兩邊共用的 `evidence/types.py` 先落地 |
+| P2 的其餘 48 個檔 | 仍在 `feat/p2-report-integration`，待任務 B 和 C 各搬一半 |
+| Bedrock 實際呼叫 | ⚠️ **仍未驗證過任何一次**——這是目前最大的未爆彈，任務 D 最優先 |
 
-## 原始碼樹現況（2026-08-01 實掃所有分支）
+跑測試（`pyproject.toml` 落地前用這個）：
 
-**這是目前最大的結構性問題：同一個專案有兩棵互不相容的 Python 樹，而 `main` 上一棵都沒有。**
+```bash
+uv venv --python 3.12 .venv
+uv pip install --python .venv/Scripts/python.exe pydantic pytest pytest-asyncio boto3 httpx
+PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest tests -q
+```
+
+## 原始碼樹現況（2026-08-01；gate 完成後更新）
+
+原本的問題是：同一個專案有兩棵互不相容的 Python 樹，而 `main` 上一棵都沒有。
+**gate（`fc517e7`）已解決前半——`main` 現在有一棵合乎 `structure.md` 的樹。**
+剩下的是把 P2 那 48 個檔搬進來，由任務 B 和 C 各搬一半。
 
 | 分支 | `.py` 數 | 位置 | 合乎 `structure.md` canonical tree？ |
 |---|---|---|---|
-| `origin/main` | **0** | — | 連 `pyproject.toml` 都沒有 |
-| `task/6-bedrock-reasoning` | 18（9 src + 9 test） | `src/hoya_agent/` | ✅ 唯一合乎，**尚未合併** |
+| `origin/main` | **22** | `src/hoya_agent/` | ✅ gate 已完成，157 passed |
+| `task/6-bedrock-reasoning` | 18（9 src + 9 test） | `src/hoya_agent/` | ✅ **已合併進 `main`**，此分支可關閉 |
 | `feat/p2-report-integration` | 48 | `p2-etl-mvp/` | ❌ 平行目錄，自帶 `pyproject.toml` |
 | `feat/p2-etl-data-evidence` | 47 | `p2-etl-mvp/` | ❌ 是 report-integration 的**子集**，可忽略 |
 | `price`、`task/7-html-report-template` | 0 | — | 只有 docs |
@@ -148,24 +159,23 @@
 > 若模型開通沒過或 model ID 不對，整個 H2-Lite 架構是死的，A／B／C 做得再好都沒用。
 > 所以 **D 的 Bedrock preflight 排在所有事情前面**，而且它剛好不需要等任何人。
 
-### 唯一的 gate（約 1 小時，做完就解鎖 B 和 C）
+### ✅ gate 已完成（`fc517e7`，2026-08-01）
 
-由「agent 用 Kiro」的人做，兩步：
+原本擋住 B 和 C 的前置關卡，已經做完並推上 `main`：
 
-1. **把 `task/6-bedrock-reasoning` 合併進 `main`。** 它已測過（134 passed + 15 subtests）、
-   路徑合乎 `structure.md`、不需修改。合併後 `main` 第一次有一棵真的樹。
-   唯一會撞的是 `src/hoya_agent/__init__.py` 與 `adapters/__init__.py`，兩個都是空殼。
-2. **順手把三個跨界共用檔搬進去**，B 和 C 才不會為了同一個檔互相等：
+1. `task/6-bedrock-reasoning` 已合併——`main` 有了 `adapters/bedrock.py` 與 `reasoning/`。
+2. 兩個跨界共用檔已就位——`evidence/types.py`、`evidence/policies.py`
+   （加上 `tests/unit/evidence/test_policies.py`）。
 
-   ```bash
-   git checkout origin/feat/p2-report-integration -- \
-     p2-etl-mvp/evidence/types.py p2-etl-mvp/evidence/policies.py p2-etl-mvp/tests/test_policies.py
-   # 移到 src/hoya_agent/evidence/ 與 tests/unit/evidence/，改 import 前綴，跑綠，push
-   ```
+**`main` 現在 157 passed + 15 subtests**（Python 3.12.13 離線實跑）。
+B 和 C 開工需要的 import 已實測可用：
 
-   兩個檔都只依賴標準函式庫，搬完即可獨立跑綠，不需要 `models.py`。
+```python
+from hoya_agent.evidence.types import EvidenceDraft, EvidenceItem
+from hoya_agent.evidence.policies import reliability_for, Reliability
+```
 
-**D（UI）不受這個 gate 影響，現在就能開工。**
+**四份任務現在全部可以同時開工，沒有人在等任何人。**
 
 ### 四份任務與路徑佔用（依四人專長切分，互不重疊，可同時 commit）
 
@@ -255,19 +265,15 @@ lint 對「買進／加倉／做多／配置」等詞全部攔下。
 
 所有人的分支都**從 `main` 開**，不要從 `feat/p2-*` 開。以下分支目前都還不存在，是你自己建的。
 
-**A — agent 用 Kiro**（先做 gate，做完 push `main`，其他人才動）
+**A — agent 用 Kiro**（gate 已完成，直接跑 Kiro Task 1a）
 
 ```bash
 git checkout main && git pull
-git merge origin/task/6-bedrock-reasoning        # gate 第 1 步
-git checkout origin/feat/p2-report-integration -- \
-  p2-etl-mvp/evidence/types.py p2-etl-mvp/evidence/policies.py p2-etl-mvp/tests/test_policies.py
-# 搬到 src/hoya_agent/evidence/ 與 tests/unit/evidence/，改 import，跑綠
-git push origin main                              # gate 完成，通知 B 和 C
-git checkout -b task/1a-contracts-core            # 接著跑 Kiro Task 1a
+git checkout -b task/1a-contracts-core
+# 接著照 docs/ai/KIRO_TASK_1A_PROMPT.md 執行
 ```
 
-**D — UI**（不等 gate，現在就開）
+**D — UI**
 
 ```bash
 git checkout main && git pull
@@ -276,10 +282,10 @@ git checkout origin/feat/p2-report-integration -- \
   p2-etl-mvp/render_report.py p2-etl-mvp/render/     # P2 已寫好的報告產生器與模板
 ```
 
-**B — 分析指標**（等 A 說 gate 完成）
+**B — 分析指標**
 
 ```bash
-git checkout main && git pull                     # 要拿到 gate 之後的 main
+git checkout main && git pull
 git checkout -b task/4-market-data-layer
 git checkout origin/feat/p2-report-integration -- \
   p2-etl-mvp/data/indicators.py p2-etl-mvp/data/market_series.py \
@@ -292,7 +298,7 @@ git checkout origin/feat/p2-report-integration -- \
   p2-etl-mvp/tests/test_binance.py p2-etl-mvp/tests/test_okx.py
 ```
 
-**C — 資訊整理**（等 A 說 gate 完成）
+**C — 資訊整理**
 
 ```bash
 git checkout main && git pull
