@@ -13,6 +13,7 @@ ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 
 # 套件安裝(hatchling: packages=src/hoya_agent;含 httpx/boto3/streamlit)
 COPY pyproject.toml README.md ./
+COPY .streamlit ./.streamlit
 COPY src ./src
 RUN pip install -e .
 

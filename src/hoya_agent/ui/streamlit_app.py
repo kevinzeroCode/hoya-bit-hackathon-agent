@@ -146,8 +146,38 @@ def _render_result(view: dict) -> None:
                 st.write("•", note)
 
 
+# Editorial design tokens mirroring the P4 report prototype: serif display
+# headings, mono uppercase labels, distillation-green accent on a warm paper
+# ground. No webfont CDN (offline/Docker-safe) — system serif/mono fallbacks.
+_THEME_CSS = """
+<style>
+:root{--ink:#151815;--muted:#767d75;--line:#d8d8cf;--green:#087f5b;--paper:#fffefa;
+--serif:"Noto Serif TC","Source Han Serif TC",Georgia,serif;
+--mono:ui-monospace,"Cascadia Mono",Consolas,monospace;}
+.block-container{max-width:1160px;padding-top:2.2rem;}
+h1,h2,h3{font-family:var(--serif)!important;letter-spacing:-.01em;color:var(--ink);}
+h1{font-weight:650;}
+/* uppercase mono eyebrows for section subheaders */
+h3{border-left:3px solid var(--green);padding-left:.55rem;}
+/* captions -> muted mono labels */
+[data-testid="stCaptionContainer"]{font-family:var(--mono);color:var(--muted);letter-spacing:.02em;}
+/* metrics -> paper cards with mono labels + serif values */
+[data-testid="stMetric"]{background:var(--paper);border:1px solid var(--line);
+border-radius:12px;padding:14px 16px;}
+[data-testid="stMetricLabel"]{font-family:var(--mono);text-transform:uppercase;
+letter-spacing:.06em;color:var(--muted);font-size:.72rem;}
+[data-testid="stMetricValue"]{font-family:var(--serif);}
+/* primary action + tabs pick up the green accent */
+.stButton>button,.stFormSubmitButton>button{border-radius:999px;font-weight:600;}
+[data-baseweb="tab-list"]{gap:.4rem;}
+hr{border-color:var(--line);}
+</style>
+"""
+
+
 def main() -> None:
     st.set_page_config(page_title="HOYA Market Agent — Bronze", page_icon="🧾", layout="wide")
+    st.markdown(_THEME_CSS, unsafe_allow_html=True)
     st.title("🧾 加密市場分析 Agent")
     st.caption("多源資訊的信任提煉 · Bronze(離線、deterministic、無 Bedrock/AWS)· 研究導向,非投資建議")
 

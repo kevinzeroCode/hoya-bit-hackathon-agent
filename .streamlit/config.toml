@@ -1,0 +1,12 @@
+# HOYA Market Agent — editorial theme (matches the P4 report prototype palette).
+# Warm paper ground, ink text, distillation-green accent.
+[theme]
+base = "light"
+primaryColor = "#087f5b"
+backgroundColor = "#f5f4ef"
+secondaryBackgroundColor = "#fffefa"
+textColor = "#151815"
+font = "sans serif"
+
+[browser]
+gatherUsageStats = false
