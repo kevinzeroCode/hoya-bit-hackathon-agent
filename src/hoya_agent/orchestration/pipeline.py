@@ -494,7 +494,142 @@ class MappedLedger:
 
 def to_contract_ledger(
     worker_ledger: WorkerLedger,
-    *…1335 tokens truncated…_analysis_date or context.analysis_as_of.date()
+    *,
+    context: RunContext,
+    degradation_messages: Sequence[str] = (),
+) -> MappedLedger:
+    """Convert a worker ledger into the canonical contract ledger, losing nothing silently."""
+    now = datetime.now(timezone.utc)
+    items: list[EvidenceItem] = []
+    metric_index: dict[str, MetricValue] = {}
+    unmapped: list[str] = []
+    events: list[DegradationEvent] = []
+
+    for raw in worker_ledger.items:
+        asset, source_type, reliability, reason = _map_enums(raw)
+        if reason is not None:
+            unmapped.append(raw.evidence_id)
+            events.append(
+                _event(
+                    now,
+                    stage=STAGE_EVIDENCE,
+                    event_type="evidence_unmappable",
+                    source=raw.source_name,
+                    message=f"{raw.evidence_id} 未納入 Ledger：{reason}",
+                )
+            )
+            continue
+
+        items.append(
+            EvidenceItem(
+                evidence_id=raw.evidence_id,
+                asset=asset,
+                source_type=source_type,
+                source_name=raw.source_name,
+                source_url=raw.source_url,
+                published_at=raw.published_at,
+                fetched_at=raw.fetched_at,
+                query_or_parameters=raw.query_or_parameters,
+                content_reference=raw.content_reference,
+                normalized_fact=raw.normalized_fact,
+                reliability=reliability,
+                independence_group=raw.independence_group,
+                content_hash=raw.content_hash,
+                is_cached=raw.is_cached,
+                cache_time=raw.cache_time,
+                is_stale=raw.is_stale,
+            )
+        )
+        if raw.metric_name is not None and raw.metric_value is not None:
+            metric_index[raw.evidence_id] = MetricValue(
+                metric_name=raw.metric_name, metric_value=float(raw.metric_value)
+            )
+
+    if worker_ledger.dropped_duplicates:
+        events.append(
+            _event(
+                now,
+                stage=STAGE_EVIDENCE,
+                event_type="exact_duplicate_collapsed",
+                source="evidence_processor",
+                message=f"以 content_hash 精確去重，收合 {worker_ledger.dropped_duplicates} 筆重複證據。",
+            )
+        )
+
+    for message in degradation_messages:
+        events.append(
+            _event(
+                now,
+                stage=STAGE_MARKET,
+                event_type="metric_unavailable",
+                source="public_market_data",
+                message=message,
+            )
+        )
+
+    if not items and not events:
+        # models.EvidenceLedger rejects an empty ledger with no stated reason.
+        events.append(
+            _event(
+                now,
+                stage=STAGE_EVIDENCE,
+                event_type="no_evidence",
+                source="pipeline",
+                message="本次 run 未取得任何可用證據，且未記錄其他降級原因。",
+            )
+        )
+
+    ledger = EvidenceLedger(
+        run_id=context.run_id,
+        analysis_as_of=context.analysis_as_of,
+        run_mode=context.run_mode,
+        items=sorted(items, key=lambda item: item.evidence_id),
+        conflict_indicators=[],
+        degradation_events=events,
+    )
+    return MappedLedger(ledger=ledger, metric_index=metric_index, unmapped=unmapped)
+
+
+class OrganizerCsvPipeline:
+    """Deterministic, offline pipeline over the organizer Daily OHLCV CSV.
+
+    One code path serves every supported asset: the symbol is a parameter, never a
+    branch. There is no Arbiter in this increment, so `result` is `None` and the
+    application renders the deterministic insufficient-data report over real
+    evidence rather than pretending an analysis exists.
+    """
+
+    def __init__(
+        self,
+        *,
+        data_dir: Path | None = None,
+        load_bars: BarLoader | None = None,
+        analysis_date: date | None = None,
+        extra_drafts: Callable[[], tuple[list[EvidenceDraft], list[str]]] | None = None,
+        market_source_name: str | None = None,
+        market_independence_group: str | None = None,
+        market_source_url: str | None = None,
+    ) -> None:
+        self._data_dir = data_dir
+        self._load_bars = load_bars
+        self._analysis_date = analysis_date
+        # Injected callable for additional deterministic sources (e.g. live Fear &
+        # Greed). It owns any HTTP so this module keeps its no-httpx boundary.
+        self._extra_drafts = extra_drafts
+        # Provenance for the market series. Defaults (None) keep the organizer CSV
+        # labels; a live loader (e.g. Binance) must pass its own so evidence is
+        # never misattributed to the organizer benchmark.
+        self._market_source: dict[str, str] = {}
+        if market_source_name is not None:
+            self._market_source["source_name"] = market_source_name
+        if market_independence_group is not None:
+            self._market_source["independence_group"] = market_independence_group
+        if market_source_url is not None:
+            self._market_source["source_url"] = market_source_url
+        self.last_metric_index: dict[str, MetricValue] = {}
+
+    async def execute(self, context: RunContext, emit: EventEmitter) -> PipelineOutcome:
+        as_of = self._analysis_date or context.analysis_as_of.date()
         drafts: list[EvidenceDraft] = []
         degradation: list[str] = []
         statuses: list[str] = []
@@ -1018,5 +1153,4 @@ def _dual_asset_result(
         market_regime=regime,
         trust_scorecards=cards,
     )
-
 
