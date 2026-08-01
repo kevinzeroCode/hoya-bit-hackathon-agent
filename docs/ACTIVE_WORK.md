@@ -2,7 +2,7 @@
 
 > **開工前先讀。** 這份文件只記當前事實與路徑 ownership；歷史狀態請看 Git。
 >
-> 最後更新：2026-08-01，S8 分支基準 `main@3d4020f`。
+> 最後更新：2026-08-01，S8 PR #25 基準 `main@3158031`。
 
 ## Authoritative status
 
@@ -16,16 +16,11 @@
 | S5 | ✅ | deterministic market evidence 完成 |
 | S6 | 🟡 | research adapters/processor 大部分完成；canonical baseline acceptance 未完成 |
 | S7 | ✅ | bounded reasoning 完成並凍結 |
-| S8 | 🟡 | `agent/s8-silver-gate` 已補 run-mode/provenance/degradation 與 opt-in live gates；受限於本環境無網路/AWS/Python 3.12 dev runtime，尚未實跑 Silver |
+| S8 | 🟡 | PR #25 補上 run-mode/provenance/degradation 與 opt-in live gates；受限於驗證環境，尚未實跑 Silver |
 | S9 | ✅（離線） | Trust/Regime/Invalidation 完成 |
 | S9B | ✅（離線） | one-run dual-asset comparison 完成 |
 | S10 | 🔴 | Gold local Exit 未開始 |
 | S11 | 🔴 | 部署與 judged-flow rehearsal 未開始 |
-
-## Active branch ownership
-
-- `agent/s8-silver-gate`：P1/S8 gate；佔用 `application.py`、`orchestration/pipeline.py`、S8 integration/live tests 與本狀態文件。
-- 此分支不修改 frozen reasoning、prompts、Bedrock adapter 或 shared models。
 
 ## Current main
 
@@ -41,7 +36,7 @@
 - **Ruff 基線 87 → 0**：PR #16 清一批，`9537d3e` 清掉剩餘 84 個，
   `37b1379` 引進的 2 個 `I001` 也已修掉。`Implementation-Plan.md` §3.3 的
   「`ruff check .` 乾淨」這條 DoD **現已達成**。
-- `tests/acceptance/` 在 main 尚不存在；`tests/live/` 已於 `agent/s8-silver-gate` 新增 opt-in source/Bedrock gate。
+- `tests/acceptance/` 尚不存在；PR #25 新增 `tests/live/` 的 opt-in source/Bedrock gate。
 
 ## Completed and frozen
 
