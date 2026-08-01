@@ -8,6 +8,7 @@ Binance or any specific exchange. Deterministic, offline, no LLM.
 from __future__ import annotations
 
 import csv
+import os
 from datetime import date
 from pathlib import Path
 
@@ -20,7 +21,14 @@ _REQUIRED_COLUMNS = ("date", "open", "high", "low", "close", "volume")
 
 
 def default_data_dir() -> Path:
-    """Locate the organizer dataset whether run standalone or inside the repo."""
+    """Locate the organizer dataset whether run standalone, inside the repo, or in Docker.
+
+    `HOYA_DATA_DIR` env var wins (used by the container / deployment); otherwise fall
+    back to repo/sibling locations.
+    """
+    env = os.getenv("HOYA_DATA_DIR")
+    if env:
+        return Path(env)
     base = Path(__file__).resolve().parents[2]
     candidates = [
         base / "HOYA_BIT_crypto_market_dataset" / "data",                      # inside the repo
