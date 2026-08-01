@@ -63,7 +63,7 @@
   `models.py` is imported by all four owners. Do not tick this parent checkbox
   until both halves are done.
 
-- [x] **1a. Freeze the normative data contracts**
+- [x] **1a. Freeze the normative data contracts** (corrective contract review cleared by Codex 2026-08-01)
   - **Owner:** P1, reviewed by P2/P3/P4
   - **Wave / dependency:** Wave 0 / Task 0 may run concurrently
   - **Spec:** 5, 7; `evidence-contracts.md` 1-12 and 16; Requirement 16

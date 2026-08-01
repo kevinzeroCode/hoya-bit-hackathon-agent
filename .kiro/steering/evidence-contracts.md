@@ -343,7 +343,7 @@ Deterministic mapping (fixed; must stay consistent with §10 confidence rubric):
 }
 ```
 
-- `label` enum: `trending_up | trending_down | range_bound | high_volatility | mixed`.
+- `label` enum: `trending_up | trending_down | range_bound | high_volatility | mixed | unavailable`.
 - Assignment order (first match wins), all coin-agnostic against the asset's own
   rolling history:
   1. `high_volatility` if `realized_vol_pctile >= high_vol_pctile`.
@@ -352,9 +352,14 @@ Deterministic mapping (fixed; must stay consistent with §10 confidence rubric):
   3. `range_bound` if `abs(return_window) <= range_return_abs_max`.
   4. otherwise `mixed`.
 - `metrics` and `thresholds` are persisted with the regime `EvidenceItem` and in
-  `run_config.json`. `reliability` is `high`; `source_type` is `market`.
+  `run_config.json`. When `label` is one of the classified values above,
+  `reliability` is `high`, `source_type` is `market`, and `metrics`, `thresholds`
+  and `evidence_id` are required and populated.
 - If required bars are missing, emit `label="unavailable"` with a degradation
-  note; never forward-fill.
+  note; never forward-fill. In the `unavailable` payload shape, `metrics` and
+  `thresholds` may be empty maps and `evidence_id` may be `null`, because no
+  deterministic Evidence exists to reference. `asset`, `label`, `as_of` and
+  `window_days` remain required so the run still records what was attempted.
 
 ### 16.4 Quantified Invalidation Condition
 

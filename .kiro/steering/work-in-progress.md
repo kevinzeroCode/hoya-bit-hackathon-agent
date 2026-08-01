@@ -46,29 +46,30 @@ at the package root and under `adapters/` and `evidence/`. Leave them as they ar
 
 Record every resolution here so the next session does not re-litigate it.
 
-- **Task 1a contract acceptance is done — do not redo it.** After `models.py`
-  landed (`b9f57db`), all eight downstream stand-in contracts in
-  `tests/unit/reasoning/_stubs.py` were compared field-by-field against the real
-  models. Result: **zero fields exist downstream that the contracts lack, and
-  nothing was renamed.** `EvidenceItem`, `ConflictIndicator`, `ClaimEvidenceLink`
-  and `InvalidationCondition` match exactly; `EvidenceLedger`, `Claim`,
-  `AnalysisResult` and `AnalysisRequest` differ in one direction only, where the
-  contracts carry fields the stubs never modelled.
+- **Task 1a contract acceptance is COMPLETE.** The original Task 1a commit
+  (`b9f57db`) landed `models.py`; a subsequent Codex contract review returned
+  `BLOCKING-ISSUES-FOUND` with 14 findings. The corrective commit
+  `fix: align core models with evidence contracts` on branch
+  `task/1a-contracts-core` addressed the accepted findings. A second Codex
+  review on 2026-08-01 cleared the corrective pass (205 model tests passed,
+  362 unit+contract tests passed, ruff clean, zero invalid-payload probe
+  failures).
 
-  Eleven of those added fields are **required**: `run_id`, `run_mode` and
-  `analysis_as_of` on the ledger, request and result; `question` and `assets` on
-  the result; `requested_at` on the request; `time_range` on `Claim`. Whoever
-  constructs these objects must supply them. That is orchestration's job — it is
-  the only layer that knows a run's identity — so this is Task 3 work, not a
-  defect in the reasoning layer.
+  Deferrals recorded by the corrective commit's disposition table (still open):
+  - Clock-freeze of official `analysis_as_of` → Task 1b (RunContext + Clock).
+  - Configured clock tolerance for fetched-vs-published slack → Task 1b.
+  - Ledger `published_at <= analysis_as_of` cutoff → Task 5 (Evidence Processor).
+  - Cross-artifact evidence-ID resolution (Link/Scorecard/InvalidationCondition
+    against the ledger) → Task 5 / Task 8 (integration wiring).
+  - `InvalidationCondition.threshold` equality against ledger value → Task 6
+    (Arbiter/Renderer).
+  - Confidence caps requiring ledger/conflict inputs (material conflict,
+    independence-group count, stale-cache-only) → Task 5 / Task 6.
+  - Configured maximum `question` length → Task 1b (Settings).
 
-  `Claim.time_range` being required is contract-faithful: `evidence-contracts.md`
-  shows it unconditionally in the Claim example and constrains it in the rules
-  (`time_range.start <= time_range.end <= analysis_as_of`).
-
-  This was verified by comparing model fields programmatically, so
-  `tests/unit/reasoning/` was never edited and stays frozen. Swapping `_stubs.py`
-  for the real models remains a later task requiring the owner's agreement.
+  Downstream stand-in contracts in `tests/unit/reasoning/_stubs.py` remain
+  frozen. Swapping `_stubs.py` for the real models is still a later task and
+  requires the owner's agreement.
 
 - **`invalidation_conditions` shape.** `evidence-contracts.md` §7 shows a string
   list on `Claim`; §16.4 defines a structured object. Resolution:
