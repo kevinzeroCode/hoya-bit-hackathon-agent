@@ -9,7 +9,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gpt = ["openai>=1.0"]   # local-dev GPT mock only (BedrockClient is the production path)
+ui = ["streamlit>=1.30"]   # front-end (app.py)
+gpt = ["openai>=1.0"]      # local-dev GPT mock only (BedrockClient is the production path)
 dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]

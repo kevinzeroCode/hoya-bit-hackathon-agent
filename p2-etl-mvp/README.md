@@ -14,14 +14,18 @@ HOYA 加密市場分析 AI Agent 的**資料側**原型:把多個來源的原始
 ## 快速開始
 
 ```bash
-python -m pip install -e ".[dev]"      # 裝 httpx + boto3(Bedrock) + pytest;GPT mock 另加 ".[dev,gpt]"
-python -m pytest -q                     # 104 passed（含真官方資料 golden 測）
+python -m pip install -e ".[dev,ui]"    # httpx + boto3 + pytest + streamlit;GPT mock 再加 gpt
+python -m pytest -q                      # 141 passed（含真官方資料 golden 測）
 
-python verify.py            # 離線完整流程 + 每張卡「完整欄位」（= 欄位契約，給整合對接）
-python run_full.py          # 5 幣真 CSV → 規模示範（9,130 筆日K → 25 筆證據）
-python run_live.py BTC      # 真 live 四類來源（新聞/社群/情緒/市場）+ 真 LLM 語意抽取
+# 前端(互動,推薦)：選幣種 + 輸入題目 + 按鈕執行 → 證據帳本 + 下載 evidence.json
+streamlit run app.py
+
+# 或單一 CLI 入口(一行跑完整條 → evidence.json + 報告)
+python run_agent.py BTC              # 完整 live（多源 + Bedrock/GPT）+ 報告
+python run_agent.py ETH --offline    # 離線 deterministic（只用官方 CSV）
 ```
-> 三個腳本用途不同:**verify=離線契約/斷網備案**、**run_full=資料規模**、**run_live=真·多源信任提煉**。
+> 統一入口是 `app.py`(前端) / `run_agent.py`(CLI),兩者都走同一條 `pipeline.collect_evidence()`。
+> 其餘為專用工具:**verify=離線契約/斷網備案**、**run_full=資料規模**、**run_live=詳細 live 逐源輸出**。
 > 環境:Python 3.12（開發用 3.11 也可跑；整合/Docker 請用 3.12）。
 > 預設 `pytest` **不打外網**;所有 adapter 用 `httpx.MockTransport` 測。
 > `run_live.py` 需外網;設 `OPENAI_API_KEY` 才啟用 LLM 語意層（沒設則誠實略過，不放假資料進帳本）。
