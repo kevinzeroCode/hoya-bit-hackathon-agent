@@ -29,15 +29,16 @@ def default_data_dir() -> Path:
     env = os.getenv("HOYA_DATA_DIR")
     if env:
         return Path(env)
-    base = Path(__file__).resolve().parents[2]
-    candidates = [
-        base / "HOYA_BIT_crypto_market_dataset" / "data",                      # inside the repo
-        base / "hoya-bit-hackathon-agent" / "HOYA_BIT_crypto_market_dataset" / "data",  # sibling checkout
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
-    return candidates[0]
+    here = Path(__file__).resolve()
+    # Walk up ancestors so it works in any layout (p2-etl-mvp/, src/hoya_agent/, Docker).
+    for base in here.parents:
+        for candidate in (
+            base / "HOYA_BIT_crypto_market_dataset" / "data",
+            base / "hoya-bit-hackathon-agent" / "HOYA_BIT_crypto_market_dataset" / "data",
+        ):
+            if candidate.exists():
+                return candidate
+    return here.parents[2] / "HOYA_BIT_crypto_market_dataset" / "data"
 
 
 def load_organizer_csv(path: Path) -> list[MarketBar]:
