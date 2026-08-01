@@ -17,12 +17,49 @@ classDiagram
     
     class ProgressSink {
         <<Protocol>>
-        +emit(event: ExecutionEvent) None
+        +publish(event: ExecutionEvent) None
     }
     
     class LLMClient {
         <<Protocol>>
         +converse_structured(operation, messages, schema, max_tokens, deadline, system_prompt) BaseModel
+    }
+
+    class SourceAdapter~SourceT~ {
+        <<Protocol>>
+        +fetch(context, **params) SourceT
+    }
+
+    class MarketDataAdapter {
+        <<Protocol>>
+        +fetch_daily_bars(asset, start, end, context) object
+        +fetch_snapshot(asset, context) object
+    }
+
+    class ResearchSourceAdapter {
+        <<Protocol>>
+        +fetch(operation, context, **params) list~RawSourceRecord~
+    }
+
+    class ArtifactStore {
+        <<Protocol>>
+        +write_text(run_id, filename, content) str
+        +write_json(run_id, filename, payload) str
+        +append_event(run_id, event) str
+    }
+
+    class PersistencePort {
+        <<Protocol>>
+        +save_summary(summary) None
+        +get_summary(run_id) RunSummary | None
+        +save_artifact_references(run_id, references) None
+    }
+
+    class ToolRegistry {
+        <<Protocol>>
+        +operations() tuple~str~
+        +is_allowed(operation) bool
+        +invoke(operation, **params) object
     }
 
     class LocalArtifactStore {
@@ -37,15 +74,212 @@ classDiagram
     ApplicationService --> Clock
     ApplicationService --> LocalArtifactStore
     Planner --> LLMClient
+    Planner --> ToolRegistry
     ResearchAgent --> LLMClient
+    ResearchAgent --> ResearchSourceAdapter
     Arbiter --> LLMClient
+    MarketWorker --> MarketDataAdapter
 ```
 
 ## Core Protocols
 
+### Clock
+
+**Location:** `src/hoya_agent/ports.py` (runtime_checkable)
+
+```python
+@runtime_checkable
+class Clock(Protocol):
+    def now_utc(self) -> datetime: ...
+    def monotonic(self) -> float: ...
+```
+
+**Purpose:** Injects time so tests use fixed clocks without patching `datetime.now()`.
+
+**Rules:**
+- `now_utc()` returns timezone-aware UTC datetime (never naive)
+- `monotonic()` returns `time.monotonic()` equivalent for deadline arithmetic
+- Official mode freezes `analysis_as_of` from `now_utc()` at run start
+
+**Concrete implementation:** `SystemClock` in `src/hoya_agent/clock.py`
+
+---
+
+### LLMClient
+
+**Location:** `src/hoya_agent/ports.py` (runtime_checkable)
+
+```python
+@runtime_checkable
+class LLMClient(Protocol):
+    async def converse_structured(
+        self,
+        *,
+        operation: str,
+        messages: Sequence[Mapping[str, Any]],
+        schema: type[ModelT],
+        max_tokens: int,
+        deadline: float,
+        system_prompt: str = "",
+    ) -> ModelT: ...
+```
+
+**Consumers:** Planner, ResearchAgent, Arbiter (each makes exactly 1 call per run)
+
+**Guarantees:**
+- Output validates against `schema` before returning
+- At most 1 repair attempt within the same `deadline`
+- At most 1 model fallback switch for retryable errors
+- Raises typed exceptions: `LLMSchemaError`, `LLMTimeoutError`, `LLMUnavailableError`
+- Never logs prompt text, credentials, or chain-of-thought
+
+**Concrete implementation:** `BedrockLLMClient` in `src/hoya_agent/adapters/bedrock.py`
+
+---
+
+### SourceAdapter[SourceT]
+
+**Location:** `src/hoya_agent/ports.py`
+
+```python
+SourceT = TypeVar("SourceT", covariant=True)
+
+class SourceAdapter(Protocol[SourceT]):
+    async def fetch(self, *, context: RunContext, **params: object) -> SourceT: ...
+```
+
+**Purpose:** Generic fetch boundary for any external source. Specializations (`MarketDataAdapter`, `ResearchSourceAdapter`) extend this pattern with typed methods.
+
+---
+
+### MarketDataAdapter
+
+**Location:** `src/hoya_agent/ports.py`
+
+```python
+class MarketDataAdapter(Protocol):
+    async def fetch_daily_bars(
+        self,
+        *,
+        asset: Asset,
+        start: date,
+        end: date,
+        context: RunContext,
+    ) -> object: ...
+
+    async def fetch_snapshot(self, *, asset: Asset, context: RunContext) -> object: ...
+```
+
+**Purpose:** Typed boundary for OHLCV bar sources. Returns bars filtered to the requested range.
+
+**Concrete implementations:**
+- `CsvMarketAdapter` in `src/hoya_agent/adapters/port_adapters.py` — organizer Daily OHLCV CSV (offline, deterministic)
+- `BinanceMarketAdapter` in `src/hoya_agent/adapters/port_adapters.py` — Binance public klines (live baseline)
+
+---
+
+### ResearchSourceAdapter
+
+**Location:** `src/hoya_agent/ports.py`
+
+```python
+class ResearchSourceAdapter(Protocol):
+    async def fetch(
+        self,
+        *,
+        operation: str,
+        context: RunContext,
+        **params: object,
+    ) -> list[RawSourceRecord]: ...
+```
+
+**Purpose:** Typed boundary for news/research sources. Returns normalized `RawSourceRecord` items for downstream evidence admission.
+
+**Concrete implementation:** `RssResearchAdapter` in `src/hoya_agent/adapters/port_adapters.py`
+
+---
+
+### ProgressSink
+
+**Location:** `src/hoya_agent/ports.py` (runtime_checkable)
+
+```python
+@runtime_checkable
+class ProgressSink(Protocol):
+    async def publish(self, event: ExecutionEvent) -> None: ...
+```
+
+**Purpose:** Receives execution events for streaming to `execution_log.jsonl` and optional UI progress display.
+
+---
+
+### ArtifactStore
+
+**Location:** `src/hoya_agent/ports.py`
+
+```python
+class ArtifactStore(Protocol):
+    async def write_text(self, run_id: str, filename: str, content: str) -> str: ...
+    async def write_json(self, run_id: str, filename: str, payload: object) -> str: ...
+    async def append_event(self, run_id: str, event: ExecutionEvent) -> str: ...
+```
+
+**Purpose:** Async boundary for artifact persistence. Returns the path/reference where the content was stored.
+
+---
+
+### PersistencePort
+
+**Location:** `src/hoya_agent/ports.py`
+
+```python
+class PersistencePort(Protocol):
+    """Future-facing port; S1 intentionally supplies no persistent backend."""
+    async def save_summary(self, summary: RunSummary) -> None: ...
+    async def get_summary(self, run_id: str) -> RunSummary | None: ...
+    async def save_artifact_references(self, run_id: str, references: Mapping[str, str]) -> None: ...
+```
+
+**Alias:** `RunPersistence = PersistencePort`
+
+---
+
+### ToolRegistry
+
+**Location:** `src/hoya_agent/ports.py`
+
+```python
+class ToolRegistry(Protocol):
+    def operations(self) -> tuple[str, ...]: ...
+    def is_allowed(self, operation: str) -> bool: ...
+    async def invoke(self, operation: str, **params: object) -> object: ...
+```
+
+**Purpose:** Configuration-backed allowlist of finite local operations the Planner may reference.
+
+**Concrete implementation:** `StaticToolRegistry` in `src/hoya_agent/ports.py`
+
+```python
+class StaticToolRegistry:
+    """Immutable, configuration-backed map of finite local operations."""
+
+    def __init__(self, operations: Mapping[str, ToolOperation]) -> None: ...
+    def operations(self) -> tuple[str, ...]: ...
+    def is_allowed(self, operation: str) -> bool: ...
+    async def invoke(self, operation: str, **params: object) -> object: ...
+```
+
+**Validation rules:**
+- Operation names must not be blank
+- Duplicate names raise `ValueError`
+- Non-callable handlers raise `TypeError`
+- Invoking a disallowed operation raises `PermissionError`
+
+---
+
 ### AnalysisPipeline
 
-**Location:** `src/hoya_agent/_provisional_seams.py` (will move to `ports.py`)
+**Location:** `src/hoya_agent/_provisional_seams.py` (Task 3 will move to `orchestration/`)
 
 ```python
 @runtime_checkable
@@ -69,65 +303,101 @@ class AnalysisPipeline(Protocol):
 
 ---
 
-### Clock
+## Configuration Interfaces
 
-**Location:** `src/hoya_agent/_provisional_seams.py` (will move to `clock.py`)
+### Settings
+
+**Location:** `src/hoya_agent/config.py`
 
 ```python
-@runtime_checkable
-class Clock(Protocol):
+class Settings(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    aws_region: str
+    bedrock_primary_model_id: str
+    artifact_root: Path
+    bedrock_fallback_model_id: str | None = None
+    cryptopanic_api_token: str | None = None
+    http_connect_timeout_seconds: float = 5.0
+    http_read_timeout_seconds: float = 20.0
+    max_evidence_for_arbiter: int = 30
+    llm_call_timeout_seconds: float = 45.0
+    allow_recorded_demo_fallback: bool = False
+    log_level: str = "INFO"
+    max_question_length: int = 2000
+    clock_tolerance_seconds: float = 5.0
+    optional_key_presence: dict[str, bool]
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings": ...
+    def validate_request(self, request: AnalysisRequest) -> None: ...
+    def sanitized_snapshot(self, request: AnalysisRequest) -> RunConfigSnapshot: ...
+```
+
+**Key methods:**
+- `from_env(env=None)` — parses from `os.environ` or provided mapping; raises `ValueError` on missing required vars
+- `validate_request(request)` — enforces `max_question_length`; raises `ValueError`
+- `sanitized_snapshot(request)` — produces a `RunConfigSnapshot` safe for artifact persistence (no secrets)
+
+**Required environment variables:** `AWS_REGION`, `BEDROCK_PRIMARY_MODEL_ID`, `ARTIFACT_ROOT`
+
+**Optional environment variables:** `BEDROCK_FALLBACK_MODEL_ID`, `CRYPTOPANIC_API_TOKEN`, `HTTP_CONNECT_TIMEOUT_SECONDS`, `HTTP_READ_TIMEOUT_SECONDS`, `MAX_EVIDENCE_FOR_ARBITER`, `LLM_CALL_TIMEOUT_SECONDS`, `ALLOW_RECORDED_DEMO_FALLBACK`, `LOG_LEVEL`
+
+---
+
+### SystemClock and build_run_context
+
+**Location:** `src/hoya_agent/clock.py`
+
+```python
+class SystemClock:
     def now_utc(self) -> datetime: ...
     def monotonic(self) -> float: ...
-```
 
-**Purpose:** Injects time so tests use fixed clocks without patching `datetime.now()`.
+def build_run_context(request: AnalysisRequest, clock: Clock) -> RunContext:
+    """Create immutable timing state, freezing official cutoff from clock."""
+```
 
 **Rules:**
-- `now_utc()` returns timezone-aware UTC datetime (never naive)
-- `monotonic()` returns `time.monotonic()` equivalent for deadline arithmetic
-- Official mode freezes `analysis_as_of` from `now_utc()` at run start
+- `SystemClock` satisfies the `Clock` protocol from `ports.py`
+- `build_run_context` freezes `analysis_as_of` to `clock.now_utc()` in `official` mode
+- Raises `ValueError` if clock returns naive or non-UTC datetime
+- Computes `deadline_monotonic = started_monotonic + request.deadline_seconds`
 
 ---
 
-### ProgressSink
+## Port Adapter Implementations
 
-**Location:** `src/hoya_agent/_provisional_seams.py` (will move to `ports.py`)
+**Location:** `src/hoya_agent/adapters/port_adapters.py`
 
-```python
-@runtime_checkable
-class ProgressSink(Protocol):
-    def emit(self, event: ExecutionEvent) -> None: ...
-```
-
-**Purpose:** Receives execution events for streaming to `execution_log.jsonl` and optional UI progress display.
-
----
-
-### LLMClient (via BedrockLLMClient)
-
-**Location:** `src/hoya_agent/adapters/bedrock.py`
+### CsvMarketAdapter
 
 ```python
-async def converse_structured(
-    self,
-    *,
-    operation: str,
-    messages: list[dict],
-    schema: type[BaseModel],
-    max_tokens: int,
-    deadline: float,
-    system_prompt: str,
-) -> BaseModel: ...
+class CsvMarketAdapter:
+    """MarketDataAdapter over the organizer Daily OHLCV CSV (deterministic, offline)."""
+    async def fetch_daily_bars(self, *, asset: Asset, start: date, end: date, context: RunContext): ...
+    async def fetch_snapshot(self, *, asset: Asset, context: RunContext): ...
 ```
 
-**Consumers:** Planner, ResearchAgent, Arbiter (each makes exactly 1 call per run)
+### BinanceMarketAdapter
 
-**Guarantees:**
-- Output validates against `schema` before returning
-- At most 1 repair attempt within the same `deadline`
-- At most 1 model fallback switch for retryable errors
-- Raises typed exceptions: `LLMSchemaError`, `LLMTimeoutError`, `LLMUnavailableError`
-- Never logs prompt text, credentials, or chain-of-thought
+```python
+class BinanceMarketAdapter:
+    """MarketDataAdapter over Binance public klines (live baseline)."""
+    def __init__(self, client: httpx.Client | None = None) -> None: ...
+    async def fetch_daily_bars(self, *, asset: Asset, start: date, end: date, context: RunContext): ...
+    async def fetch_snapshot(self, *, asset: Asset, context: RunContext): ...
+```
+
+### RssResearchAdapter
+
+```python
+class RssResearchAdapter:
+    """ResearchSourceAdapter over a first-party outlet RSS feed → RawSourceRecord[]."""
+    def __init__(self, *, feed_url: str, source_name: str, publisher_domain: str,
+                 client: httpx.Client | None = None) -> None: ...
+    async def fetch(self, *, operation: str, context: RunContext, **params: object) -> list[RawSourceRecord]: ...
+```
 
 ---
 
@@ -348,7 +618,7 @@ def build_insufficient_data_result(
     """Creates a low-confidence fallback result."""
 ```
 
-### Artifact Store
+### Artifact Store (Local Implementation)
 
 ```python
 # reporting/artifacts.py

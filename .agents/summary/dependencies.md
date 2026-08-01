@@ -44,11 +44,81 @@ graph TD
 
 | Package | Version Range | Purpose | Used In |
 |---|---|---|---|
-| `pydantic` | `>=2.0,<3.0` | Domain model validation with `extra="forbid"`, frozen models, field validators | `models.py`, `_provisional_seams.py`, all shared contracts |
-| `httpx` | `>=0.27,<1.0` | Async HTTP client for all external API calls | `adapters/binance.py`, `adapters/cryptopanic.py`, `adapters/rss.py`, `adapters/alternative_me.py` |
+| `pydantic` | `>=2.0,<3.0` | Domain model validation with `extra="forbid"`, frozen models, field validators | `models.py`, `config.py`, `_provisional_seams.py`, all shared contracts |
+| `httpx` | `>=0.27,<1.0` | Async HTTP client for all external API calls | `adapters/binance.py`, `adapters/cryptopanic.py`, `adapters/rss.py`, `adapters/alternative_me.py`, `adapters/port_adapters.py` |
 | `pandas` | `>=2.2,<3.0` | DataFrame operations for deterministic market indicators | `data/indicators.py`, `data/price_analysis.py`, `data/regime.py` |
 | `boto3` | `>=1.34,<2.0` | AWS SDK for Bedrock Runtime Converse API | `adapters/bedrock.py` |
 | `streamlit` | `>=1.36,<2.0` | Web UI framework (single-process with application) | `streamlit_app.py` (not yet implemented) |
+
+## Core Infrastructure Modules
+
+### `config.py` — Environment Parsing Boundary
+
+The single place where environment variables are parsed into a typed, frozen Pydantic model. All downstream code receives a `Settings` instance — never raw `os.environ` lookups.
+
+- **Entry point:** `Settings.from_env(env=None)` — reads from `os.environ` by default or an injected mapping.
+- **Enforced hard caps:**
+  - `llm_call_timeout_seconds` — max 45 seconds (validated ≤45)
+  - `max_evidence_for_arbiter` — max 30 items (validated in [1, 30])
+  - `max_question_length` — 2000 characters (default, used by `validate_request()`)
+- **Sanitized output:** `Settings.sanitized_snapshot(request)` → `RunConfigSnapshot` for `run_config.json` (records key *presence*, never values).
+- `Settings` has `ConfigDict(extra="forbid", frozen=True)` — no undeclared fields, immutable after creation.
+
+### `ports.py` — Protocol Hub
+
+Defines all async Protocol interfaces for dependency injection and testability. No concrete I/O lives here.
+
+| Protocol | Purpose | Key Methods |
+|---|---|---|
+| `Clock` | UTC + monotonic time injection | `now_utc()`, `monotonic()` |
+| `LLMClient` | Bedrock structured output abstraction | `converse_structured(operation, messages, schema, max_tokens, deadline, ...)` |
+| `SourceAdapter[SourceT]` | Generic source fetcher | `fetch(context, **params)` |
+| `MarketDataAdapter` | OHLCV bar provider | `fetch_daily_bars(asset, start, end, context)`, `fetch_snapshot(asset, context)` |
+| `ResearchSourceAdapter` | News/RSS record provider | `fetch(operation, context, **params) → list[RawSourceRecord]` |
+| `ProgressSink` | Execution event publishing | `publish(event)` |
+| `ArtifactStore` | Artifact persistence | `write_text(...)`, `write_json(...)`, `append_event(...)` |
+| `PersistencePort` | Run summary storage (future) | `save_summary(...)`, `get_summary(...)`, `save_artifact_references(...)` |
+| `ToolRegistry` | Allowlisted operation dispatch | `operations()`, `is_allowed(op)`, `invoke(op, **params)` |
+
+Also provides `StaticToolRegistry` — an immutable, configuration-backed implementation of `ToolRegistry` with duplicate/blank-name validation.
+
+### `clock.py` — Time Injection
+
+Provides `SystemClock` (production) and the `build_run_context(request, clock)` factory that:
+
+1. Calls `clock.now_utc()` and validates it is timezone-aware UTC.
+2. In `official` mode, freezes `analysis_as_of` to the current wall-clock time.
+3. Records `started_monotonic` and computes `deadline_monotonic` from the request's `deadline_seconds`.
+4. Returns an immutable `RunContext` used by all downstream stages.
+
+Tests inject `FixedClock` (from `tests/fakes.py`) to eliminate real sleeps and wall-clock dependencies.
+
+## Adapter Layer
+
+### Provider Adapters (`adapters/`)
+
+All external I/O is flat — one file per provider:
+
+| Adapter File | Provider | Auth | Reliability |
+|---|---|---|---|
+| `organizer_csv.py` | Competition OHLCV CSV | None | `high` |
+| `binance.py` | Binance public REST klines | None | `high` |
+| `cryptopanic.py` | CryptoPanic news aggregation | API token (optional) | `low` |
+| `alternative_me.py` | Fear & Greed Index | None | `low` |
+| `rss.py` | First-party news outlet RSS | None | `medium` |
+| `bedrock.py` | AWS Bedrock Converse API | Instance role | N/A (not evidence) |
+
+### `port_adapters.py` — Async Port Wrappers
+
+Bridges P2's synchronous fetchers to the async `ports.py` Protocol interfaces using `asyncio.to_thread` for sync→async bridging. This avoids blocking the event loop during file I/O or synchronous HTTP calls.
+
+| Adapter Class | Satisfies Protocol | Wraps |
+|---|---|---|
+| `CsvMarketAdapter` | `MarketDataAdapter` | `organizer_csv.load_organizer_csv` (sync file read via `asyncio.to_thread`) |
+| `BinanceMarketAdapter` | `MarketDataAdapter` | `binance.fetch_binance_daily` (sync httpx via `asyncio.to_thread`) |
+| `RssResearchAdapter` | `ResearchSourceAdapter` | `rss.fetch_rss_news` (sync httpx via `asyncio.to_thread`) → maps `EvidenceDraft` to `RawSourceRecord` |
+
+Pattern: each wrapper calls `asyncio.to_thread(sync_function, ...)` so the underlying synchronous `httpx.Client` or file I/O does not block the orchestrator's event loop.
 
 ## Development Dependencies
 
@@ -67,7 +137,7 @@ graph TD
 - **API:** Converse API with forced tool use for structured output
 - **Auth:** EC2 instance role (no stored credentials)
 - **Config keys:** `BEDROCK_PRIMARY_MODEL_ID`, `BEDROCK_FALLBACK_MODEL_ID`
-- **Constraints:** ≤45s timeout per call, 1 retry for throttling, 1 schema repair attempt
+- **Constraints:** ≤45s timeout per call (enforced by `Settings`), 1 retry for throttling, 1 schema repair attempt
 - **Used by:** Planner, Research Agent, Arbiter (each 1 call per run)
 
 ### Binance Public REST API
@@ -77,7 +147,7 @@ graph TD
 - **Data:** Daily UTC klines (OHLCV)
 - **Symbol mapping:** `{ASSET}USDT` (coin-agnostic)
 - **Constraints:** ≤45s timeout, graceful degradation on failure
-- **Used by:** Market Worker (via adapter)
+- **Used by:** Market Worker (via `BinanceMarketAdapter`)
 
 ### CryptoPanic API
 
@@ -103,7 +173,7 @@ graph TD
 - **Auth:** None
 - **Data:** News articles with publication timestamps
 - **Reliability:** `medium` (original publishers with URL and timestamp)
-- **Used by:** Research Agent (via adapter)
+- **Used by:** Research Agent (via `RssResearchAdapter`)
 
 ## Standard Library Usage
 
@@ -111,11 +181,11 @@ Key stdlib modules used (no additional packages needed):
 
 | Module | Usage |
 |---|---|
-| `asyncio` | Pipeline orchestration, fork-join, deadlines |
+| `asyncio` | Pipeline orchestration, fork-join, deadlines; `asyncio.to_thread` for sync→async in `port_adapters.py` |
 | `datetime` | Timezone-aware UTC timestamps throughout |
 | `pathlib` | File path handling |
 | `hashlib` | SHA-256 for content dedup and artifact checksums |
-| `time` | `time.monotonic()` for deadline arithmetic |
+| `time` | `time.monotonic()` for deadline arithmetic (via `Clock` protocol) |
 | `json` | Artifact serialization |
 | `re` | ID format validation (run_id, ev_id, cl_id patterns) |
 | `enum` | Asset, RunMode, SourceType, Reliability, etc. |
@@ -163,7 +233,7 @@ These are transitive dependencies that come with the declared packages:
 - **Contents:** Daily OHLCV CSVs for BTC, ETH, SOL, BNB, XRP
 - **File pattern:** `{ASSET}_daily_ohlcv.csv`
 - **Source label:** `public_market_data` (never attributed to any exchange)
-- **Used as:** Offline baseline data via `adapters/organizer_csv.py`
+- **Used as:** Offline baseline data via `adapters/organizer_csv.py` → `CsvMarketAdapter`
 
 ### Prompt Files
 
@@ -175,13 +245,20 @@ These are transitive dependencies that come with the declared packages:
 
 ## Environment Variables
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `BEDROCK_PRIMARY_MODEL_ID` | Yes | Primary Bedrock model ARN/ID |
-| `BEDROCK_FALLBACK_MODEL_ID` | No | Optional fallback model for throttling |
-| `CRYPTOPANIC_API_TOKEN` | No | CryptoPanic API access (degrades without) |
-| `AWS_REGION` | Yes (via instance) | Bedrock endpoint region |
-| `HOYA_DATA_DIR` | No | Override path to competition dataset |
+| Variable | Required | Purpose | Parsed By |
+|---|---|---|---|
+| `AWS_REGION` | Yes | Bedrock endpoint region | `Settings.from_env()` |
+| `BEDROCK_PRIMARY_MODEL_ID` | Yes | Primary Bedrock model ARN/ID | `Settings.from_env()` |
+| `ARTIFACT_ROOT` | Yes | Base path for run artifact directories | `Settings.from_env()` |
+| `BEDROCK_FALLBACK_MODEL_ID` | No | Optional fallback model for throttling | `Settings.from_env()` |
+| `CRYPTOPANIC_API_TOKEN` | No | CryptoPanic API access (degrades without) | `Settings.from_env()` |
+| `HOYA_DATA_DIR` | No | Override path to competition dataset | `adapters/organizer_csv.py` |
+| `HTTP_CONNECT_TIMEOUT_SECONDS` | No | httpx connect timeout (default 5.0) | `Settings.from_env()` |
+| `HTTP_READ_TIMEOUT_SECONDS` | No | httpx read timeout (default 20.0) | `Settings.from_env()` |
+| `MAX_EVIDENCE_FOR_ARBITER` | No | Evidence cap for Arbiter (default 30, hard max 30) | `Settings.from_env()` |
+| `LLM_CALL_TIMEOUT_SECONDS` | No | Per-call LLM timeout (default 45, hard max 45) | `Settings.from_env()` |
+| `ALLOW_RECORDED_DEMO_FALLBACK` | No | Enable demo mode recorded bundles | `Settings.from_env()` |
+| `LOG_LEVEL` | No | Logging verbosity (default INFO) | `Settings.from_env()` |
 
 **Security rules:**
 - `.env` is local-only, excluded from Git

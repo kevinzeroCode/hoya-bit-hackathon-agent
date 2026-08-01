@@ -35,6 +35,7 @@ flowchart TB
         RSS["RSS Feeds"]
         FG["Alternative.me F&G"]
         Bedrock["AWS Bedrock"]
+        PortAdapters["port_adapters.py<br/>port-conforming wrappers"]
     end
 
     subgraph Output["Output Layer (deterministic)"]
@@ -52,10 +53,12 @@ flowchart TB
     Arbiter --> Renderer
     Renderer --> Artifacts
 
-    CSV --> MW
-    Binance --> MW
+    CSV --> PortAdapters
+    Binance --> PortAdapters
+    RSS --> PortAdapters
+    PortAdapters --> MW
+    PortAdapters --> Research
     CP --> Research
-    RSS --> Research
     FG --> Research
     Bedrock --> Planner
     Bedrock --> Research
@@ -75,17 +78,23 @@ flowchart LR
     UI["UI Layer"] --> App["Application Layer"]
     App --> Orch["Orchestration"]
     Orch --> Core["Core Modules<br/>(data, evidence, reasoning, reporting)"]
-    Core --> Ports["Ports/Protocols"]
-    Ports --> Adapters["Adapter Implementations"]
+    Core --> Ports["Ports/Protocols<br/>ports.py"]
+    Ports --> Adapters["Adapter Implementations<br/>(incl. port_adapters.py)"]
     All["All Modules"] --> Models["models.py"]
 ```
 
-**Rules:**
+**Dependency rules:**
 - `models.py` imports no project module
+- `ports.py` imports `models` only — defines Protocol boundaries consumed by adapters and orchestration
+- `clock.py` imports `models` and `ports` — implements `Clock` protocol and `build_run_context()`
+- `config.py` may import `models`, never adapters or UI — single environment parsing boundary
 - Adapters own all network I/O; no `httpx`/`boto3` imports elsewhere
+- `port_adapters.py` wraps P2's sync fetchers to satisfy the async Protocol boundaries from `ports.py`
 - Data, evidence, and reporting modules are deterministic (no LLM, no network)
 - Only `reasoning/` modules consume the `LLMClient` protocol
 - UI imports only `ApplicationService` and `presenter` — never adapters or pipeline stages
+
+**Provisional seams note:** `_provisional_seams.py` is still present on `main` (not yet deleted). It was created before Task 1b landed and contains stand-in types (`ExecutionEvent`, `RunConfigSnapshot`, `RunSummary`, `RunContext`, `Clock`, `ProgressSink`, `TerminalState`, `AnalysisPipeline`, `PipelineOutcome`). The real implementations now coexist in `models.py`, `ports.py`, and `clock.py`. The swap procedure (deleting `_provisional_seams.py` and updating its importers) is tracked but not yet executed.
 
 ## H2-Lite Pipeline Flow
 
@@ -186,13 +195,18 @@ flowchart TD
 | Module | Owns | Must NOT Do |
 |---|---|---|
 | `models.py` | Shared Pydantic contracts | Import any project module |
-| `adapters/` | All network I/O | Business logic, reliability assignment |
+| `ports.py` | Protocol boundaries (Clock, LLMClient, MarketDataAdapter, ResearchSourceAdapter, ProgressSink) | Import adapters, UI, or orchestration; contain concrete I/O |
+| `config.py` | Environment parsing, typed `Settings`, sanitized `RunConfigSnapshot` emission | Import adapters or UI |
+| `clock.py` | UTC/monotonic injection via `SystemClock`, `build_run_context()` | Network I/O, import adapters |
+| `adapters/` | All network I/O (one file per provider) | Business logic, reliability assignment |
+| `adapters/port_adapters.py` | Port-conforming async wrappers over sync P2 fetchers | Own business logic; wrapped sources are CSV, Binance, RSS in MVP |
 | `data/` | Deterministic calculations | LLM calls, network I/O |
 | `evidence/` | Dedup, ranking, policy enforcement | LLM calls, network I/O |
 | `reasoning/` | LLM interaction, plan validation | Write artifacts, assign reliability |
 | `reporting/` | Deterministic rendering, atomic writes | LLM calls, invent new facts |
 | `orchestration/` | Stage coordination, deadline management | Compute indicators, render reports |
 | `application.py` | Composition, run identity, artifact ordering | Provider parsing, UI rendering |
+| `_provisional_seams.py` | Legacy stand-in types (pre-Task 1b) — pending deletion | Be imported by new code; real types live in models/ports/clock |
 
 ## Deployment Architecture
 

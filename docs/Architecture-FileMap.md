@@ -10,7 +10,7 @@
 
 > ⚠️ **這份文件會最快腐爛。** 它記的是**現況**。檔案落地、改責任、被合併時，
 > 請當作那個檔的 definition-of-done 的一部分來更新它的 row。
-> **狀態掃描時間：2026-08-01，基準 commit `d15f6da`（`main`）。**
+> **狀態掃描時間：2026-08-01，commit `f7536fb`（`main`）。**
 
 ## 1. Context
 
@@ -72,13 +72,13 @@
 | 記號 | 意義 |
 |---|---|
 | ✅ | **已在 `main` 上**，有測試且通過 |
-| 🟡 | **已寫但在別的分支**（`feat/p2-report-integration`），待搬進 `src/hoya_agent/` |
+| ✅⚠️ | **已在 `main` 上**，但為臨時/過渡性質，待後續替換或裁決 |
 | ○ | **計畫中**，尚未寫；括號內為 ④ 的 stage 編號 |
 | ⛔ | **明確不做 / 已裁決移除**——保留 row 當麵包屑，讓追舊參照的人不撲空 |
 
-> **現況一句話：** `main` 上 22 個 `.py`（157 passed + 15 subtests，Python 3.12.13 離線實跑）。
-> **推理層已完成**，**契約層（`models.py`）尚未存在**，**資料/證據層寫好但在別的分支**，
-> **編排、報告、UI 完全未開始**。
+> **現況一句話：** `main` 上核心契約（`models.py` 40 類）、runtime seams（`config/clock/ports`）、
+> S2 vertical slice（`application/renderer/artifacts`）、data/evidence 全層、orchestration 首段、
+> 及完整推理層均已落地。422 passed / 6 skipped，Python 3.12.13 離線實跑，ruff clean。
 
 ---
 
@@ -89,38 +89,35 @@
 | 檔案 | 狀態 | 職責 | 互動對象 |
 |---|---|---|---|
 | `__init__.py` | ✅ | 空的 package marker | — |
-| `models.py` | ○ (S1) | **全隊共用契約的唯一擁有者**：`AnalysisRequest`、`ResearchPlan`、`RunContext`、`MarketBar`、`MarketSnapshot`、`RawSourceRecord`、`EvidenceDraft`、`EvidenceItem`、`EvidenceLedger`、`ConflictIndicator`、`Claim`、`ClaimEvidenceLink`、`AnalysisResult`、`DegradationEvent`、`ExecutionEvent`、`RunConfigSnapshot`、`RunSummary`、`WorkerResult`、`TimeRange`、`MarketContext`＋R16 的 `TrustScorecard`/`MarketRegime`/`InvalidationCondition`；所有列舉（見 [Features.md §5.2](Features.md)）；全部 `extra="forbid"` | **不 import 任何專案模組**；被所有模組 import |
-| `config.py` | ○ (S1) | 環境變數解析一次 → typed `Settings`；sanitized snapshot（optional key 只記布林值）；鎖定名稱 `BEDROCK_PRIMARY_MODEL_ID`/`BEDROCK_FALLBACK_MODEL_ID`/`CRYPTOPANIC_API_TOKEN` | `models.py`；被 `application.py`、adapter factory 讀 |
-| `clock.py` | ○ (S1) | 可注入的 UTC 與 `time.monotonic()` 入口 | `ports.Clock`；被 `orchestration/deadline.py`、`application.py` 用 |
-| `ports.py` | ○ (S1) | Protocol 邊界：`Clock`、`LLMClient`、`SourceAdapter`、`MarketDataAdapter`、`ResearchSourceAdapter`、`ProgressSink`、`ArtifactStore`、`ToolRegistry`、未來 persistence port | `models.py` 的型別；被 `adapters/*` 實作、被核心模組消費 |
-| `application.py` | ○ (S2) | **組裝根**：驗證 request、凍結 `analysis_as_of`、造 `run_id`、建 run 目錄、寫首份 `run_config.json`、組裝具體相依、叫 pipeline、回 `RunSummary` | `config.Settings`、`clock`、`orchestration/pipeline.py`、`reporting/artifacts.py`、所有 `adapters/*`（唯一處） |
-
-> ⚠️ **`models.py` 是全隊唯一的真阻塞點。** 它不在時，`reasoning/` 用 `evidence/types.py` 的
-> provisional dataclass 與 `tests/unit/reasoning/_stubs.py` 頂著（欄位名刻意與契約一致，
-> 所以之後是機械式替換，不是重寫）。
+| `models.py` | ✅ | **全隊共用契約的唯一擁有者**（40 類，1603 行）：`AnalysisRequest`、`ResearchPlan`、`RunContext`、`MarketBar`、`MarketSnapshot`、`RawSourceRecord`、`EvidenceDraft`、`EvidenceItem`、`EvidenceLedger`、`ConflictIndicator`、`Claim`、`ClaimEvidenceLink`、`AnalysisResult`、`DegradationEvent`、`ExecutionEvent`、`RunConfigSnapshot`、`RunSummary`、`WorkerResult`、`TimeRange`、`MarketContext`＋R16 的 `TrustScorecard`/`MarketRegime`/`InvalidationCondition`；所有列舉（見 [Features.md §5.2](Features.md)）；全部 `extra="forbid"` | **不 import 任何專案模組**；被所有模組 import |
+| `config.py` | ✅ | 環境變數解析一次 → typed `Settings`（155 行）；sanitized snapshot（optional key 只記布林值）；鎖定名稱 `BEDROCK_PRIMARY_MODEL_ID`/`BEDROCK_FALLBACK_MODEL_ID`/`CRYPTOPANIC_API_TOKEN` | `models.py`；被 `application.py`、adapter factory 讀 |
+| `clock.py` | ✅ | 可注入的 UTC 與 `time.monotonic()` 入口（41 行）；`SystemClock` + `build_run_context` | `ports.Clock`；被 `orchestration/deadline.py`、`application.py` 用 |
+| `ports.py` | ✅ | Protocol 邊界（137 行）：`Clock`、`LLMClient`、`SourceAdapter`、`MarketDataAdapter`、`ResearchSourceAdapter`、`ProgressSink`、`ArtifactStore`、`ToolRegistry`（`StaticToolRegistry`）、未來 persistence port | `models.py` 的型別；被 `adapters/*` 實作、被核心模組消費 |
+| `application.py` | ✅ | **組裝根**（324 行，S2 vertical slice）：驗證 request、凍結 `analysis_as_of`、造 `run_id`、建 run 目錄、寫首份 `run_config.json`、組裝具體相依、叫 pipeline、回 `RunSummary` | `config.Settings`、`clock`、`orchestration/pipeline.py`、`reporting/artifacts.py`、所有 `adapters/*`（唯一處） |
+| `_provisional_seams.py` | ✅⚠️ | **臨時 runtime seams**（179 行）：`ExecutionEvent`、`RunConfigSnapshot`、`RunSummary`、`RunContext`、`Clock`、`ProgressSink`、`TerminalState`、`AnalysisPipeline`、`PipelineOutcome`。欄位名與 `evidence-contracts.md` §13/§14 一致。**Task 1b 的正式 seams 落地後由 swap 程序刪除** | 被 `application.py`、`reporting/artifacts.py` 消費；與 `ports.py`/`clock.py` 並存直到 swap |
 
 ### 4.2 `orchestration/` — 順序、時間、狀態
 
 | 檔案 | 狀態 | 職責 | 互動對象 |
 |---|---|---|---|
-| `orchestration/__init__.py` | ○ (S4) | package marker | — |
+| `orchestration/__init__.py` | ✅ | package marker | — |
+| `orchestration/pipeline.py` | ✅ | **`OrganizerCsvPipeline`**（322 行）：實作 `AnalysisPipeline` seam；CSV-only offline 路徑；`to_contract_ledger()` 橋接 `evidence/types.py` 至 `models.py`；Task 3 將擴充為 `DeadlineManager` + Market/Research fork-join | `data/market_worker.py`、`evidence/processor.py`、`reporting/*`、`models.*` |
 | `orchestration/deadline.py` | ○ (S4) | `DeadlineManager`：由 `time.monotonic()` 與 request deadline 推導所有 stage 的**絕對**里程碑（[Features.md §5.6](Features.md)）；剩餘時間計算；短 deadline 的比例縮放並保留末 20% 給 finalize；🚫 retry/repair 不得延長 | `clock.Clock`；被 `pipeline.py` 與所有 adapter 呼叫點消費 |
 | `orchestration/run_state.py` | ○ (S4) | in-memory stage state（`pending\|running\|completed\|degraded\|failed\|cancelled`）與 terminal run state；`WorkerResult.status` → lifecycle 映射；progress event 發布 | `ports.ProgressSink`、`models.ExecutionEvent`；被 `pipeline.py` 寫、被 `ui/presenter.py` 讀 |
-| `orchestration/pipeline.py` | ○ (S4) | **stage 順序的唯一擁有者**：Planner → `asyncio.gather(Market, Research, return_exceptions=True)` → Evidence Processor → ConflictExtension → Arbiter → Renderer；逾時取消與 await；跳過順序 H3 → optional context → 反方二次搜尋 | `deadline.py`、`run_state.py`、`data/market_worker.py`、`reasoning/*`、`evidence/processor.py`、`reporting/*` |
 
 ### 4.3 `data/` — deterministic 市場層（🚫 永不呼叫 LLM）
 
 | 檔案 | 狀態 | 職責 | 互動對象 |
 |---|---|---|---|
-| `data/__init__.py` | ○ (S5) | package marker | — |
-| `data/market_series.py` | 🟡 (S5) | 載入/驗證 UTC 日 K；**CSV↔Binance 來源切換點**（2026-06-01）的唯一擁有者；剔除未完成日 K，另表示為 intraday snapshot；🚫 不 forward-fill | `adapters/organizer_csv.py`、`adapters/binance.py`（經 `ports.MarketDataAdapter`）；被 `market_worker.py` 用 |
-| `data/indicators.py` | 🟡 (S5) | **公式的唯一擁有者**：區間報酬、已實現波動、最大回撤、量能變化、rolling z-score、range position；純函數、golden fixture 覆蓋 | `pandas`；被 `market_worker.py`、`regime.py` 呼叫 |
-| `data/market_worker.py` | 🟡 (S5) | deterministic 分支組裝：跑 adapter → 算指標 → 每個指標轉成 high-reliability `EvidenceDraft`（帶參數與範圍）；回 `WorkerResult`；**🚫 沒有任何到 `LLMClient` 的 import 或呼叫路徑** | `market_series.py`、`indicators.py`、`regime.py`、`models.EvidenceDraft`；被 `pipeline.py` 呼叫 |
-| `data/regime.py` | 🟡 (S9) | **R16 Market Regime**：純 OHLCV 判 `trending_up\|trending_down\|range_bound\|high_volatility\|mixed`；門檻一律對該資產**自身** rolling 歷史；保留觸發指標值與門檻；缺 bar → `unavailable` | `indicators.py`；由 `market_worker.py` 發成 `EvidenceDraft` |
-| `data/price_analysis.py` | 🟡 ⚠️ | P2 原型的分析彙整層 | **不在 `structure.md` 的 canonical tree**——搬入前必須先裁決：併進 `indicators.py`／`market_worker.py`，或修改 `structure.md`。🚫 不得兩邊各說各話 |
-| `data/analogs.py` | ⛔ ⚠️ | 歷史類比基準率（`price-data-analysis-outputs.html` 的 A7 指名它） | **不在 canonical tree**，且 `structure.md` 明文「不為單一 helper 新增檔案」。**裁決：併進 `data/indicators.py`**，除非另行修改 steering |
-| `data/types.py` | ⛔ | P2 的 provisional frozen dataclass | **折進 `models.py`**。搬檔時原地保留、等 `models.py` 落地後做機械替換；🚫 最終不進 canonical tree |
-| `data/text_clean.py` | ⛔ | 文字正規化 | **移到 `evidence/text_clean.py`** —— canonical `data/` 只放市場序列與指標 |
+| `data/__init__.py` | ✅ | package marker | — |
+| `data/types.py` | ✅ | `MarketBar` dataclass：日 K 結構型別 | 被 `market_series.py`、`indicators.py`、`market_worker.py` 用 |
+| `data/market_series.py` | ✅ | 載入/驗證 UTC 日 K；**CSV↔Binance 來源切換點**（2026-06-01）的唯一擁有者；`bars_asof`、`merge_with_cutover`；剔除未完成日 K，另表示為 intraday snapshot；🚫 不 forward-fill | `adapters/organizer_csv.py`、`adapters/binance.py`（經 `ports.MarketDataAdapter`）；被 `market_worker.py` 用 |
+| `data/indicators.py` | ✅ | **公式的唯一擁有者**：區間報酬、已實現波動、最大回撤、量能變化、rolling z-score、range position；純函數、golden fixture 覆蓋 | `pandas`；被 `market_worker.py`、`regime.py` 呼叫 |
+| `data/market_worker.py` | ✅ | deterministic 分支組裝：跑 adapter → 算指標 → 每個指標轉成 high-reliability `EvidenceDraft`（帶參數與範圍）；回 `WorkerResult`；**🚫 沒有任何到 `LLMClient` 的 import 或呼叫路徑** | `market_series.py`、`indicators.py`、`regime.py`、`models.EvidenceDraft`；被 `pipeline.py` 呼叫 |
+| `data/regime.py` | ✅ | **R16 Market Regime**：純 OHLCV 判 `trending_up\|trending_down\|range_bound\|high_volatility\|mixed`；門檻一律對該資產**自身** rolling 歷史；保留觸發指標值與門檻；缺 bar → `unavailable` | `indicators.py`；由 `market_worker.py` 發成 `EvidenceDraft` |
+| `data/price_analysis.py` | ✅ | 跨幣比較分析：anomaly detection、attribution、comparison 純函數 | `indicators.py`、`types.py`；被 `market_worker.py` 用 |
+| `data/text_clean.py` | ✅ | 來源文字正規化（空白、Unicode、長度截斷） | 被 `evidence/processor.py`、`reasoning/research_agent.py` 用 |
+| `data/analogs.py` | ⛔ | 歷史類比基準率 | **不在 canonical tree**，且 `structure.md` 明文「不為單一 helper 新增檔案」。**裁決：併進 `data/indicators.py`**，除非另行修改 steering |
 
 ### 4.4 `adapters/` — 外部 I/O（唯一可 `import httpx` / `import boto3` 之處；保持扁平）
 
@@ -128,27 +125,29 @@
 |---|---|---|---|
 | `adapters/__init__.py` | ✅ | package marker | — |
 | `adapters/bedrock.py` | ✅ | **LLM 邊界的唯一擁有者**（371 行）：`BedrockLLMClient.converse_structured()`；強制 tool call 取結構化輸出（`STRUCTURED_TOOL_NAME`）；`effective_timeout()` 對 `MAX_CALL_TIMEOUT_SECONDS=45.0` 與剩餘 stage 時間取小；`is_retryable_error()` 白名單；`build_repair_messages()` 做**一次** schema repair；備援模型；`drain_events()` 供 log | `boto3`、`config.Settings`；實作 `ports.LLMClient`；被 `reasoning/{planner,research_agent,arbiter}.py` 消費 |
-| `adapters/organizer_csv.py` | 🟡 (S5) | 讀 `HOYA_BIT_crypto_market_dataset/data/{ASSET}_daily_ohlcv.csv`；驗 `date,open,high,low,close,volume`、UTC 日界、正價、high/low 一致；來源名 `public_market_data`、group `organizer-public-market-data`；🚫 不推定上游交易所 | `models.MarketBar`；實作 `ports.MarketDataAdapter`；被 `data/market_series.py` 用 |
-| `adapters/binance.py` | 🟡 (S5) | Spot public REST `GET /api/v3/klines`（UTC 日 K）與 `GET /api/v3/ticker/24hr`（snapshot/quote volume）；固定 `{ASSET}USDT` 對照；只取 ≤ `analysis_as_of`；group `binance.com` | `httpx`；實作 `ports.MarketDataAdapter` |
-| `adapters/cryptopanic.py` | 🟡 (S6) | 依 currency 與 lookback 取新聞；保留原文 URL/發布者/標題/published time/`fetched_at`；`independence_group` 取**原始發布者網域**（不是 `cryptopanic.com`）；未取原頁則維持 `low`；缺 token → 停用 adapter 而非讓 run 失敗 | `httpx`、`config`；實作 `ports.ResearchSourceAdapter` |
-| `adapters/rss.py` | 🟡 (S6) | 新聞 RSS 解析 → `RawSourceRecord` | `httpx`；實作 `ports.ResearchSourceAdapter` |
+| `adapters/organizer_csv.py` | ✅ | 讀 `HOYA_BIT_crypto_market_dataset/data/{ASSET}_daily_ohlcv.csv`；驗 `date,open,high,low,close,volume`、UTC 日界、正價、high/low 一致；來源名 `public_market_data`、group `organizer-public-market-data`；🚫 不推定上游交易所 | `models.MarketBar`；實作 `ports.MarketDataAdapter`；被 `data/market_series.py` 用 |
+| `adapters/binance.py` | ✅ | Spot public REST `GET /api/v3/klines`（UTC 日 K）與 `GET /api/v3/ticker/24hr`（snapshot/quote volume）；固定 `{ASSET}USDT` 對照；只取 ≤ `analysis_as_of`；group `binance.com` | `httpx`；實作 `ports.MarketDataAdapter` |
+| `adapters/cryptopanic.py` | ✅ | 依 currency 與 lookback 取新聞；保留原文 URL/發布者/標題/published time/`fetched_at`；`independence_group` 取**原始發布者網域**（不是 `cryptopanic.com`）；未取原頁則維持 `low`；缺 token → 停用 adapter 而非讓 run 失敗 | `httpx`、`config`；實作 `ports.ResearchSourceAdapter` |
+| `adapters/rss.py` | ✅ | 新聞 RSS 解析 → `RawSourceRecord` | `httpx`；實作 `ports.ResearchSourceAdapter` |
+| `adapters/alternative_me.py` | ✅ | `/fng/` 無金鑰；產出 `asset=null` 的**全市場** context；`source_type=social`、`reliability=low`、group `alternative.me`；stale 標記但不再降級 | `httpx` |
+| `adapters/port_adapters.py` | ✅ | Port-conforming async wrappers（112 行）：`CsvMarketAdapter`、`BinanceMarketAdapter`、`RssResearchAdapter`——將 raw adapters 包裝為 `ports.MarketDataAdapter` / `ports.ResearchSourceAdapter` 介面 | `organizer_csv.py`、`binance.py`、`rss.py`；實作 `ports.*Adapter` |
+| `adapters/_assets.py` | ✅ | 資產符號 ↔ provider 代碼對照（供 rss/cryptopanic 用） | 只被研究類 adapter 使用 |
 | `adapters/official.py` | ○ (S6) | 依資產查 checked-in 官方 blog/RSS allowlist；**best-effort**，查不到回 `source_unavailable`；只有網域符合設定且有發布時間戳才算 high | `httpx`、設定中的 allowlist |
-| `adapters/alternative_me.py` | 🟡 (S6) | `/fng/` 無金鑰；產出 `asset=null` 的**全市場** context；`source_type=social`、`reliability=low`、group `alternative.me`；stale 標記但不再降級 | `httpx` |
-| `adapters/_assets.py` | 🟡 (S6) | 資產符號 ↔ provider 代碼對照（供 rss/cryptopanic 用） | 只被研究類 adapter 使用 |
-| `adapters/okx.py` | 🟡 ⚠️ | P2 寫的第二個交易所 adapter | **不在 canonical tree，且與「單一 baseline live market source」的核准決定衝突。搬入前須先裁決；預設不搬。** |
+| `adapters/okx.py` | ⛔ | P2 寫的第二個交易所 adapter | **不在 canonical tree，且與「單一 baseline live market source」的核准決定衝突。已裁決不搬入 MVP。** |
 | `adapters/coingecko.py` | ⛔ | CoinGecko live adapter | **steering 已定為 post-hackathon Future Work，MVP 不實作。🚫 不要從 P2 分支拉這個檔。** |
+
 
 ### 4.5 `evidence/` — deterministic 證據層（🚫 永不呼叫 LLM）
 
 | 檔案 | 狀態 | 職責 | 互動對象 |
 |---|---|---|---|
 | `evidence/__init__.py` | ✅ | package marker | — |
-| `evidence/types.py` | ✅ ⚠️ | **臨時契約替身**（78 行）：`EvidenceDraft`、`EvidenceItem`、`EvidenceLedger`（含 `source_type_count()`、`independence_group_count()`、`top(n)`）；檔頭明寫欄位名刻意與 `evidence-contracts.md` 一致 | 目前被 `reasoning/*` 與（未來）`data/*` import。**`models.py` 落地後折進去，本檔刪除**——屆時保留這一 row 當麵包屑 |
+| `evidence/types.py` | ✅ ⚠️ | **凍結的臨時契約替身**（78 行）：`EvidenceDraft`、`EvidenceItem`、`EvidenceLedger`（含 `source_type_count()`、`independence_group_count()`、`top(n)`）；欄位名刻意與 `evidence-contracts.md` 一致。**已決定凍結並保留至機械 swap**——downstream consumers 遷移完成後才刪除 | 被 `reasoning/*`、`data/*`、`orchestration/pipeline.py` import。與 `models.py` 並存；`pipeline.py` 的 `to_contract_ledger()` 負責橋接 |
 | `evidence/policies.py` | ✅ | **鐵則 5 的靜態表**（123 行）：`SourceClass` 列舉、`reliability_for()`、`news_reliability(original_page_fetched=)`、`registered_domain()`、`independence_group()`、`ConfidenceSignals` + `max_confidence()`；`ORGANIZER_GROUP` 常數 | 只依標準庫；被 `processor.py`、`trust.py`、`reasoning/arbiter.py` 消費 |
+| `evidence/processor.py` | ✅ | **deterministic 序列**（`design.md §9`）：驗證 draft → 正規化 URL/時間/空白/資產/source type → 算 `content_hash` 並**精確**去重 → 推導 independence group → 指派靜態 reliability 與 cache/stale → 配 ID → 偵測 material conflict → 排序。輸出 `EvidenceLedger` + `ConflictIndicator[]` | `policies.py`、`models.*`；被 `pipeline.py` 呼叫；輸出立刻交給 `reporting/artifacts.py` 落盤 |
+| `evidence/evidence_json.py` | ✅⚠️ | P2 原型的 evidence JSON writer。**使用非 canonical schema**（`"schema": "evidence-ledger/p2-prototype-v1"`，top-level `asset`/`generated_at`/`llm_provider`/`summary`/`evidence`），與 `evidence-contracts.md` §12 衝突。**dual-writer 問題待裁決——`reporting/artifacts.py` 是 canonical writer** | 被 P2 舊流程呼叫；🚫 不應被 canonical pipeline 使用 |
 | `evidence/ledger.py` | ○ (S6) | 帳本操作：`ev_001…` ID 配發、依 `evidence_id` 排序、依 reliability/直接性/時效/多樣性排名、`top(n)` 選取 | `models.EvidenceLedger`、`policies.py` |
-| `evidence/processor.py` | 🟡 (S6) | **deterministic 序列**（`design.md §9`）：驗證 draft → 正規化 URL/時間/空白/資產/source type → 算 `content_hash` 並**精確**去重 → 推導 independence group → 指派靜態 reliability 與 cache/stale → 配 ID → 偵測 material conflict → 排序。輸出 `EvidenceLedger` + `ConflictIndicator[]` | `policies.py`、`ledger.py`、`models.*`；被 `pipeline.py` 呼叫；輸出立刻交給 `reporting/artifacts.py` 落盤 |
 | `evidence/trust.py` | ○ (S9) | **R16 Trust Scorecard**：對每個 `conclusion` 由 ledger + links 純函數推導五面向（independence / diversity / reliability_mix / consistency / freshness）＋原始計數；ordinal `strong\|moderate\|weak\|unavailable`；必須與 confidence rubric 一致（<2 group 不得 `strong`；material conflict → consistency `weak`）；🚫 無網路、無 LLM、無檔案系統 | `models.EvidenceLedger`、`ClaimEvidenceLink`、`Claim`、`policies.py`；結果掛在 `AnalysisResult` 上供 renderer 用 |
-| `evidence/text_clean.py` | 🟡 (S6) | 來源文字正規化（由 P2 的 `data/text_clean.py` 搬來） | 被 `processor.py`、`reasoning/research_agent.py` 用 |
 
 ### 4.6 `reasoning/` — bounded LLM 層（🚫 不寫任何 artifact）
 
@@ -169,9 +168,9 @@
 
 | 檔案 | 狀態 | 職責 | 互動對象 |
 |---|---|---|---|
-| `reporting/__init__.py` | ○ (S2) | package marker | — |
-| `reporting/artifacts.py` | ○ (S2) | **四個固定檔名的唯一擁有者**：`final_report.md`/`evidence.json`/`execution_log.jsonl`/`run_config.json`；「同目錄暫存檔 → flush → `os.replace`」原子寫入；run 開始開 append-only log；缺檔時在 stdout 與所有仍可寫的 artifact **指名確切檔名**；finalize 時補 terminal state 與 checksum | 實作 `ports.ArtifactStore`；被 `application.py`、`pipeline.py`、`evidence/processor.py` 的下游呼叫 |
-| `reporting/renderer.py` | ○ (S2, S9 擴充) | 繁中 11 段 deterministic 模板；**只讀 `AnalysisResult` + `EvidenceLedger`**，🚫 不加帳本外的新事實；insufficient-data 的 deterministic fallback 報告；R16 三個呈現區塊（regime headline、per-conclusion scorecard、量化 invalidation）；最後呼叫 `lint.py` | `models.AnalysisResult`、`EvidenceLedger`、`lint.py` |
+| `reporting/__init__.py` | ✅ | package marker | — |
+| `reporting/artifacts.py` | ✅ | **四個固定檔名的唯一擁有者**（S2）：`final_report.md`/`evidence.json`/`execution_log.jsonl`/`run_config.json`；「同目錄暫存檔 → flush → `os.replace`」原子寫入；run 開始開 append-only log；缺檔時在 stdout 與所有仍可寫的 artifact **指名確切檔名**；finalize 時補 terminal state 與 checksum | 實作 `ports.ArtifactStore`；被 `application.py`、`pipeline.py`、`evidence/processor.py` 的下游呼叫 |
+| `reporting/renderer.py` | ✅ | 繁中 11 段 deterministic 模板（402 行，S2）；**只讀 `AnalysisResult` + `EvidenceLedger`**，🚫 不加帳本外的新事實；insufficient-data 的 deterministic fallback 報告；R16 三個呈現區塊（regime headline、per-conclusion scorecard、量化 invalidation）；最後呼叫 `lint.py` | `models.AnalysisResult`、`EvidenceLedger`、`lint.py` |
 | `reporting/lint.py` | ○ (S3) | **禁語 lint（最後防線）**：純字串比對攔「建議買入／建議賣出／加倉／減倉／做多／做空／資產配置」等指示性投資用語；🚫 不依賴 `models.py`（所以可以先寫） | 被 `renderer.py` 在最後一步呼叫；lint 事件進 execution log |
 
 ### 4.8 `ui/` 與入口
@@ -182,16 +181,17 @@
 | `ui/presenter.py` | ○ (S3) | domain → view model：stage 進度列、成功/失敗來源、degradation notes、terminal state、run-mode 標籤、**H3-未實作**狀態、recorded-fallback 警示。**只造 display model，🚫 無商業邏輯** | `models.RunSummary`、`orchestration/run_state.py` 的 progress event、`reasoning/conflict_extension.UNIMPLEMENTED_LABEL` |
 | `streamlit_app.py` | ○ (S3) | 唯一 UI 入口：題目輸入、一至二幣選擇、run mode 選擇、run 中停用按鈕（確保一次提交＝一次呼叫）、六列進度、Report/Evidence/Log 三分頁、四項下載鈕。**只 import `ApplicationService` 與 `ui/presenter`**，🚫 不 import 具體 adapter 或 pipeline 內部 | `application.ApplicationService`、`ui/presenter.py` |
 
+
 ### 4.9 資料、prompt 與建置檔（**資料，不是程式碼**）
 
 | 路徑 | 狀態 | 角色 |
 |---|---|---|
+| `pyproject.toml` | ✅ | Python 3.12、相依、pytest marker、src layout、editable install |
 | `prompts/planner-v1.md` | ✅ | Planner prompt 本體；版本與 checksum 進 `run_config.json` |
 | `prompts/research-extraction-v1.md` | ✅ | 研究抽取 prompt 本體 |
 | `prompts/arbiter-v1.md` | ✅（S9 待改） | Arbiter prompt 本體；S9 要加「invalidation 門檻只能引用 deterministic Evidence」 |
 | `HOYA_BIT_crypto_market_dataset/data/*.csv` | ✅ | 主辦方五幣 Daily OHLCV 基準（0 缺漏日、0 NaN、0 筆 OHLC 違反） |
-| `tests/fixtures/` | ○ | 不可變的 CSV/API/LLM 輸入。**production code 🚫 不得 import** |
-| `pyproject.toml` | ○ (S1) | Python 3.12、相依、pytest marker、src layout、editable install |
+| `tests/fixtures/` | ✅ | 不可變的 CSV/API/LLM 輸入與 vertical-slice pair。**production code 🚫 不得 import** |
 | `Dockerfile`、`.dockerignore`、`compose.yaml` | ○ (S3 後半) | 單一 non-root image；只開 Streamlit port；掛持久化 artifact volume |
 | `.env.example` | ✅ | 只有名稱佔位，🚫 無值 |
 | `artifacts/{run_id}/` | ○（執行期產生） | 每 run 的四個檔；**已 gitignore** |
@@ -200,15 +200,23 @@
 
 | 路徑 | 狀態 | 內容 |
 |---|---|---|
-| `tests/conftest.py` | ○ (S1) | 共用 fixture；S1 要把 `tests/contract/conftest.py` 與 `tests/unit/reasoning/conftest.py` 的臨時 path bootstrap 收上來並刪掉那兩個 |
-| `tests/fakes.py` | ○ (S1) | fixed clock、fake LLM、fake adapter、in-memory artifact/persistence、static fake `ToolRegistry`、in-memory progress sink |
-| `tests/unit/reasoning/_stubs.py` | ✅ ⚠️ | reasoning 測試用的**臨時**型別替身。**`models.py` 落地後刪除**（見 ④ S1 的 deviation） |
+| `tests/conftest.py` | ✅ | 共用 fixture：path bootstrap、shared markers |
+| `tests/fakes.py` | ✅ | `FixedClock`、`FakeLLM`、`FakeSourceAdapter`、in-memory artifact/persistence、static fake `ToolRegistry`、in-memory progress sink |
+| `tests/unit/test_models.py` | ✅ | 40 contract models 驗證：field validation、extra=forbid、enum constraints |
+| `tests/unit/test_config.py` | ✅ | Settings 解析、sanitized snapshot、missing keys |
+| `tests/unit/test_runtime_seams.py` | ✅ | clock、ports、provisional seams 型別相容性 |
+| `tests/unit/reporting/` | ✅ | `test_renderer.py`、`test_artifacts.py`：11 段報告驗證、atomic write、fallback report |
+| `tests/unit/orchestration/test_evidence_mapping.py` | ✅ | `to_contract_ledger()` 橋接驗證 |
+| `tests/unit/data_evidence/` | ✅ | 所有 adapter 與 indicator 的 unit tests（golden fixtures、boundary/NaN） |
+| `tests/unit/reasoning/_stubs.py` | ✅ ⚠️ | reasoning 測試用的**臨時**型別替身。**`models.py` 已落地，待後續 swap 時刪除** |
 | `tests/unit/reasoning/*` (5 檔) | ✅ | planner / research_agent / arbiter / conflict_extension / prompt_library |
 | `tests/unit/evidence/test_policies.py` | ✅ | 靜態 reliability 表與 independence group |
 | `tests/contract/test_bedrock_client.py` | ✅ | Bedrock Converse 形狀、逾時、repair、備援（**對 stub，不是真模型**） |
-| `tests/unit/` 其餘 | ○ | schema、指標、deadline、processor、renderer、lint、trust、regime |
+| `tests/integration/test_vertical_slice.py` | ✅ | S2 四項 artifact 端到端、deterministic fallback |
+| `tests/integration/test_s1_seam_bridge.py` | ✅ | provisional seam ↔ real seam 欄位名一致性（swap 完成後刪除） |
+| `tests/integration/test_organizer_csv_pipeline.py` | ✅ | `OrganizerCsvPipeline` 離線 BTC run 產出四項 artifacts |
+| `tests/unit/` 其餘 | ○ | deadline、trust、regime 的額外邊界 |
 | `tests/contract/` 其餘 | ○ | 各 adapter 的 `httpx.MockTransport` 契約 |
-| `tests/integration/` | ○ | 垂直切片、fork-join、降級、run mode、provenance |
 | `tests/acceptance/` | ○ | Gold 雙資產、deadline 預算、artifact 契約 |
 | `tests/live/` | ○ | 真實 provider 與 Bedrock；需 `@pytest.mark.live` **且** `RUN_LIVE_TESTS=1` |
 
@@ -220,6 +228,7 @@
 | `p2-etl-mvp/` | ⛔ | P2 分支的平行目錄。**永遠不進 `main`**——B/C 各自 `git checkout origin/feat/p2-report-integration -- <自己那半>` 再 `git mv` 進 `src/hoya_agent/` |
 | `docs/superpowers/*` | — | 設計已註明的**歷史紀錄**（已被 `.kiro/specs` 取代）。保留原文，🚫 不視為現行契約 |
 | `docs/ai/SPEC_DIFF_PLAN.md`、`STAGED_DELIVERY_PROPOSAL.md` | — | `design.md` 曾誤引為不存在的檔（已修正指向 `tasks.md`）。檔案實際存在，但**不是現行契約** |
+
 
 ---
 
@@ -391,18 +400,27 @@ renderer ─▶ ① regime headline ② per-conclusion scorecard ③ 量化 inva
 
 ---
 
-## 7. 這份地圖目前指出的三個未決事項
+## 7. 這份地圖目前指出的未決與已決事項
 
-搬檔案之前必須先裁決，否則會產生「兩邊各說各話」的樹：
+### 已決（保留 row 當麵包屑）
 
-1. **`data/price_analysis.py`、`data/analogs.py`** 不在 canonical tree。
+1. **`evidence/types.py` 的退場時機**：已決定**凍結並保留**直到所有 downstream consumers
+   （`reasoning/*`、`data/*`、`orchestration/pipeline.py`）完成機械式 swap 遷移至 `models.py`。
+   `pipeline.py` 的 `to_contract_ledger()` 是橋接層，確保兩套型別並存期間的正確轉換。
+
+### 待裁決
+
+1. **`data/analogs.py`** 不在 canonical tree。
    → 併進 `data/indicators.py`／`market_worker.py`，或修改 `structure.md`。二選一。
 2. **`adapters/okx.py`** 不在 canonical tree，且與「單一 baseline live market source + 誠實降級」的
-   核准決定衝突。→ 預設不搬。
-3. **`evidence/types.py` 的退場時機**：它現在是 `main` 上的實際契約。
-   `models.py` 落地後必須有一次明確的機械替換 + 刪檔，否則會長期並存兩套契約。
+   核准決定衝突。→ 已預設不搬。
+3. **`evidence/evidence_json.py` dual-writer 問題**：此檔使用非 canonical schema
+   （`"schema": "evidence-ledger/p2-prototype-v1"`），其 payload 結構與 `evidence-contracts.md` §12
+   衝突。`reporting/artifacts.py` 是 canonical `evidence.json` writer。兩個 writer 不得同時對
+   同一個 graded 固定檔名寫入。→ 裁決：canonical pipeline 必須只使用 `reporting/artifacts.py`；
+   `evidence_json.py` 僅供 P2 舊流程過渡，不進入正式 pipeline path。
 
-（同樣的三點也記在 `docs/ACTIVE_WORK.md` 的「待 P1 裁決」。此處保留是為了讓檔案地圖自洽。）
+（同樣的事項也記在 `docs/ACTIVE_WORK.md` 的「待 P1 裁決」。此處保留是為了讓檔案地圖自洽。）
 
 ---
 

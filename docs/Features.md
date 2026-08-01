@@ -297,6 +297,7 @@ HOYA Market Agent 有**四項主要功能**：**取證（Evidence Acquisition）
 | `analysis_as_of` | run 開始即凍結；`official` 一律當下 UTC 且不可自訂 |
 | `deadline_seconds` | 正式 run 為 `900` |
 | `run_mode` | `official` \| `rehearsal` \| `demo` |
+| `run_id` | `run_YYYYMMDD_HHMMSS_<suffix>` 格式；每個 run 唯一 |
 | `enable_conditional_debate` | 預設 `false`；傳 `true` 也記為 disabled/ignored |
 
 ### 5.2 列舉（跨 Python / JSON / prompt / fixture / test **完全同名**）
@@ -309,11 +310,11 @@ HOYA Market Agent 有**四項主要功能**：**取證（Evidence Acquisition）
 | `Reliability` | `high` \| `medium` \| `low` |
 | `Stance`（**只在 Link 上**） | `supports` \| `opposes` \| `neutral` |
 | `ClaimType` | `fact` \| `inference` \| `conclusion` |
-| Stage state | `pending` \| `running` \| `completed` \| `degraded` \| `failed` \| `cancelled` |
-| Terminal run state | `completed` \| `degraded` \| `failed` \| `cancelled` |
-| `WorkerResult.status` | `completed` \| `partial` \| `failed` |
+| `StageState` | `pending` \| `running` \| `completed` \| `degraded` \| `failed` \| `cancelled` |
+| `TerminalState` | `completed` \| `degraded` \| `failed` \| `cancelled` |
+| `WorkerStatus` | `completed` \| `partial` \| `failed` |
 | `TrustLevel`（R16） | `strong` \| `moderate` \| `weak` \| `unavailable` |
-| `RegimeLabel`（R16） | `trending_up` \| `trending_down` \| `range_bound` \| `high_volatility` \| `mixed` |
+| `RegimeLabel`（R16） | `trending_up` \| `trending_down` \| `range_bound` \| `high_volatility` \| `mixed` \| `unavailable` |
 | `InvalidationOperator`（R16） | `lt` \| `lte` \| `gt` \| `gte` |
 
 ID 格式：`ev_001`、`cl_001`、`run_YYYYMMDD_HHMMSS_<suffix>`。所有持久化時間戳為 ISO 8601 UTC + `Z`。
@@ -374,8 +375,10 @@ deadline 較短時，`DeadlineManager` 依比例縮放各 stage，並保留最�
 ### 5.7 環境變數名稱（鎖定；`run_config.json` 只記存在與否）
 
 **必要：** `AWS_REGION`、`BEDROCK_PRIMARY_MODEL_ID`、`ARTIFACT_ROOT`
-**選用：** `BEDROCK_FALLBACK_MODEL_ID`、`CRYPTOPANIC_API_TOKEN`、`HTTP_CONNECT_TIMEOUT_SECONDS`、
-`HTTP_READ_TIMEOUT_SECONDS`、`MAX_EVIDENCE_FOR_ARBITER`（硬上限 30）、`ALLOW_RECORDED_DEMO_FALLBACK`、`LOG_LEVEL`
+**選用：** `BEDROCK_FALLBACK_MODEL_ID`、`CRYPTOPANIC_API_TOKEN`、`HOYA_DATA_DIR`、
+`HTTP_CONNECT_TIMEOUT_SECONDS`、`HTTP_READ_TIMEOUT_SECONDS`、`MAX_EVIDENCE_FOR_ARBITER`（硬上限 30）、
+`LLM_CALL_TIMEOUT_SECONDS`（硬上限 45）、`ALLOW_RECORDED_DEMO_FALLBACK`、`LOG_LEVEL`、
+`MAX_QUESTION_LENGTH`、`CLOCK_TOLERANCE_SECONDS`
 
 ---
 

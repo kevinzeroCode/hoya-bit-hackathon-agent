@@ -23,15 +23,20 @@
    - **Reality:** Both exist. `evidence_json.py` is a P2 prototype writer with a different schema (`schema: "evidence-ledger/p2-prototype-v1"`). The canonical writer is `reporting/artifacts.py`. This is documented in the work-in-progress steering but represents an unresolved code duplication.
    - **Recommendation:** Documentation accurately reflects current state; this is an implementation cleanup task, not a doc error.
 
-2. **`_provisional_seams.py` placement**
-   - `interfaces.md` describes Protocols as living in `_provisional_seams.py` (will move to `ports.py`)
-   - `architecture.md` references `ports.py` in the dependency direction diagram
-   - **Reality:** `ports.py` does not yet exist. `_provisional_seams.py` is the current location.
-   - **Recommendation:** Both docs are accurate — they note the future target. No correction needed.
+2. **`_provisional_seams.py` still exists alongside real implementations**
+   - `interfaces.md` originally described Protocols as living in `_provisional_seams.py` (will move to `ports.py`)
+   - **Reality:** `ports.py` NOW EXISTS with the canonical Protocol definitions (Clock, LLMClient, SourceAdapter, MarketDataAdapter, ResearchSourceAdapter, ProgressSink, ArtifactStore, PersistencePort, ToolRegistry, StaticToolRegistry). However, `_provisional_seams.py` has NOT been removed. The provisional file coexists with the real seams, creating import-path ambiguity.
+   - **Action needed:** The swap procedure (documented in `docs/ai/S2_CONTRACT_EXPECTATIONS.md` §4) should be executed to remove `_provisional_seams.py` and update imports in `application.py`, `reporting/artifacts.py`, and integration tests.
 
 3. **`p2-etl-mvp/` prototype tree**
    - Listed in `codebase_info.md` project layout but not deeply documented elsewhere
-   - **Rationale:** It's a parallel prototype being superseded by `src/hoya_agent/`. Intentionally light documentation — the canonical code is in `src/`.
+   - **Reality:** Still present in the repo with 76 ruff errors. Being superseded by `src/hoya_agent/`.
+   - **Recommendation:** Should be removed or .gitignored once all needed code has been migrated.
+
+4. **`docs/Architecture-FileMap.md` is STALE**
+   - Still shows `config.py`, `clock.py`, and `ports.py` as "planned" / not-yet-implemented.
+   - **Reality:** All three files are now implemented and tested. The file map should be updated to reflect this.
+   - **Recommendation:** Update `docs/Architecture-FileMap.md` to show these as implemented.
 
 ---
 
@@ -39,7 +44,7 @@
 
 ### ✅ Well-Covered Areas
 
-- Core domain models (all 29 Pydantic models documented)
+- Core domain models (all 40 Pydantic models/classes documented, up from 29 in initial pass)
 - Pipeline execution flow (complete sequence diagram)
 - Error handling and degradation paths
 - External service contracts
@@ -49,6 +54,12 @@
 - Frozen path warnings
 - Development workflow
 - Deployment architecture
+- Configuration parsing (`config.py` — Settings class, from_env(), sanitized_snapshot())
+- Clock injection (`clock.py` — SystemClock, build_run_context with official cutoff freeze)
+- Protocol interfaces (`ports.py` — all 8+ protocols with full signatures)
+- Port-conforming adapters (`adapters/port_adapters.py` — CsvMarketAdapter, BinanceMarketAdapter, RssResearchAdapter)
+- Test infrastructure (`tests/fakes.py` — FixedClock, FakeLLM, FakeSourceAdapter, FakeResearchSourceAdapter, FakeMarketDataAdapter)
+- Test bootstrapping (`tests/conftest.py` — src path injection)
 
 ### ⚠️ Areas with Limited Detail
 
@@ -57,66 +68,85 @@
    - **Impact:** Low — documented as not-yet-built. Will need a UI section when implemented
    - **Recommendation:** Add to components.md when `streamlit_app.py` is created
 
-2. **`config.py` / `Settings`**
-   - **Gap:** Planned but not yet implemented (Task 1b). Settings parsing documented only via env vars in dependencies.md
-   - **Impact:** Medium — developers need to know how configuration flows
-   - **Recommendation:** Update interfaces.md when `config.py` lands
-
-3. **`orchestration/deadline.py` and `orchestration/run_state.py`**
-   - **Gap:** Planned files that don't exist yet. Deadline logic is described conceptually in workflows/architecture but no implementation details
+2. **`orchestration/deadline.py`**
+   - **Gap:** Planned file that doesn't exist yet. Deadline logic is described conceptually in workflows/architecture but no implementation
    - **Impact:** Medium — deadline management is critical for competition
-   - **Recommendation:** Add to components.md when these files land
+   - **Recommendation:** Add to components.md and interfaces.md when this file lands
+
+3. **`orchestration/run_state.py`**
+   - **Gap:** Planned file that doesn't exist yet. Run state tracking is conceptual only
+   - **Impact:** Medium — needed for full pipeline wiring
+   - **Recommendation:** Add to components.md when this file lands
 
 4. **`reporting/lint.py`**
-   - **Gap:** Planned in structure.md but unowned. Referenced by renderer's `lint=hook` parameter. No implementation documented
-   - **Impact:** Low — the lint hook protocol is documented in interfaces.md
+   - **Gap:** Planned in structure.md but unowned. Referenced by renderer's `lint=hook` parameter. No implementation exists
+   - **Impact:** Low — the lint hook protocol is documented in interfaces.md; the test suite validates the concept
 
-5. **Test fixture structure**
-   - **Gap:** Only mentions `tests/fixtures/vertical_slice/` with 2 files. No detailed fixture catalog
-   - **Impact:** Low — fixtures are implementation artifacts, not architectural
-   - **Recommendation:** Add fixture documentation if more fixtures are added
+5. **`tests/acceptance/` directory**
+   - **Gap:** Does not exist yet. Planned for Day 2 with five-coin matrix, run-mode validation, 13-minute delivery gate
+   - **Impact:** Medium — acceptance tests are a Day 2 freeze gate requirement
+   - **Recommendation:** Create when acceptance test criteria are ready to implement
 
-6. **`ui/presenter.py`**
+6. **`tests/live/` directory**
+   - **Gap:** Does not exist yet. For manual opt-in live rehearsal tests
+   - **Impact:** Low — these are opt-in and executed manually before competition
+   - **Recommendation:** Create before first live rehearsal
+
+7. **`ui/presenter.py`**
    - **Gap:** Planned domain-to-Streamlit view model layer, not yet implemented
-   - **Impact:** Low — UI is a later task
+   - **Impact:** Low — UI is a later task dependent on streamlit_app.py
 
-7. **P2-ETL-MVP detailed documentation**
-   - **Gap:** The parallel prototype tree (`p2-etl-mvp/`) has significant code but is intentionally under-documented in these docs
-   - **Rationale:** It's being superseded by `src/hoya_agent/`. Documenting it in detail would create confusion about which code is canonical
-   - **Recommendation:** If any prototype code is still needed, document the specific migration path rather than the prototype itself
+---
 
-### 🔴 Documentation Gaps That Could Affect Development
+## Code Health Observations
 
-1. **Full pipeline wiring (Task 3 completion)**
-   - The documented pipeline is CSV-only (`OrganizerCsvPipeline`). The full pipeline with Market Worker fork-join, Research Agent, and Arbiter wiring is not yet implemented.
-   - All workflow diagrams show the PLANNED flow, which is architecturally correct but not yet matching running code.
-   - **Recommendation:** Mark clearly that workflows.md shows the target architecture, not just current state.
+### Ruff Status
+- **87 errors on `main`** — 76 in the `p2-etl-mvp/` prototype tree and ~11 inside `src/`/`tests/` from integration merges
+- S2 and S1 paths themselves are clean; errors are from the unremoved prototype and cross-PR integration
+- **Recommendation:** Remove or exclude `p2-etl-mvp/` from lint scope and fix remaining src/tests errors
 
-2. **Cross-artifact validation**
-   - Evidence-ID resolution across artifacts, confidence caps requiring ledger inputs, and threshold equality validation are documented as deferred to Tasks 5/6/8.
-   - These are well-documented as deferred but represent significant validation logic not yet in code.
+### Model Completeness
+- `models.py` now contains **40 classes** (12 enums + 28 model/dataclass definitions), properly covering all S1 contracts including:
+  - Research planning: `ResearchStep`, `ResearchPlan`
+  - Runtime context: `RunContext`, `RunSummary`, `RunConfigSnapshot`
+  - Source records: `RawSourceRecord`
+  - Worker/pipeline: `WorkerResult`, `WorkerStatus`, `StageState`, `TerminalState`
+- This is complete for S1 and sufficient for all downstream consumers
 
-3. **`metric_name` / `metric_value` on EvidenceItem**
-   - `data_models.md` documents `EvidenceItem` with 16 fields matching `models.py`
-   - The `evidence/types.py` dataclass has `metric_name`/`metric_value` fields that `models.EvidenceItem` lacks
-   - The pipeline uses `MappedLedger.metric_index` as a workaround
-   - **Recommendation:** This discrepancy is documented in work-in-progress steering. Once resolved, update data_models.md.
+### Redundancy to Clean Up
+- `_provisional_seams.py` duplicates type definitions now canonically in `models.py` and `ports.py`
+- `evidence/evidence_json.py` duplicates artifact-writing responsibility of `reporting/artifacts.py`
+- Both are documented technical debt awaiting the swap procedure
+
+---
+
+## Documentation Staleness
+
+| Document | Status | Issue |
+|---|---|---|
+| `docs/Architecture-FileMap.md` | 🔴 STALE | Shows config.py, clock.py, ports.py as "planned" — all are now implemented |
+| `.agents/summary/interfaces.md` | ⚠️ PARTIALLY STALE | Still says protocols are in `_provisional_seams.py (will move to ports.py)` — they are now IN `ports.py` |
+| `.agents/summary/components.md` | ⚠️ NEEDS UPDATE | Missing entries for config.py, clock.py, ports.py, port_adapters.py components |
+| `.agents/summary/data_models.md` | ⚠️ NEEDS UPDATE | Documents 29 models but models.py now has 40; missing RunContext, RunSummary, RawSourceRecord, ResearchStep, ResearchPlan, WorkerStatus, StageState, TerminalState and Settings |
 
 ---
 
 ## Recommendations
 
-### High Priority
-1. Update documentation when Task 1b (`config.py`, `clock.py`, `ports.py`) lands
-2. Update when the full pipeline wiring (Task 3 completion) is done
-3. Add Streamlit UI documentation when `streamlit_app.py` is created
+### High Priority (before next task starts)
+1. ~~Update documentation when Task 1b (`config.py`, `clock.py`, `ports.py`) lands~~ → **LANDED.** Now need to update `components.md`, `interfaces.md`, and `data_models.md` to reflect their content
+2. Update `docs/Architecture-FileMap.md` to show config/clock/ports as implemented
+3. Execute the `_provisional_seams.py` swap procedure (remove file, update imports)
+4. Fix or exclude `p2-etl-mvp/` ruff errors (remove tree or add to ruff exclude)
 
 ### Medium Priority
-4. Document the prototype → canonical migration status more explicitly
-5. Add a "current vs planned" indicator to workflow diagrams
-6. Document the `lint.py` implementation when owned and written
+5. Update when the full pipeline wiring (Task 3 completion) is done
+6. Add Streamlit UI documentation when `streamlit_app.py` is created
+7. Create `tests/acceptance/` and `tests/live/` directories with initial structure
+8. Document `orchestration/deadline.py` and `orchestration/run_state.py` when implemented
+9. Document the `lint.py` implementation when owned and written
 
 ### Low Priority
-7. Create a detailed test fixture catalog if the fixture set grows significantly
-8. Add deployment runbook details when EC2 setup is finalized
-9. Document Dockerfile and docker-compose.yml when created
+10. Create a detailed test fixture catalog if the fixture set grows significantly
+11. Add deployment runbook details when EC2 setup is finalized
+12. Document Dockerfile and docker-compose.yml when created

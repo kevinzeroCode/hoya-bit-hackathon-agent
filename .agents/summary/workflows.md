@@ -236,6 +236,23 @@ flowchart LR
     H -->|No| Done["Done"]
 ```
 
+### Test Infrastructure
+
+- **`tests/conftest.py`** — Handles `sys.path` bootstrap, inserting the `src/` directory so that `hoya_agent` is importable from any test without requiring an editable install. This is the root-level conftest loaded by pytest before any test module.
+
+- **`tests/fakes.py`** — Provides shared deterministic fakes used across all test layers (unit, contract, integration, acceptance):
+
+  | Fake | Satisfies Protocol | Purpose |
+  |---|---|---|
+  | `FixedClock` | `Clock` | Returns a fixed UTC `now_utc()` and monotonic value; supports `advance(seconds)` for deadline tests |
+  | `FakeLLM` | `LLMClient` | Pops pre-configured `BaseModel` responses (or raises exceptions) from a queue; records all calls |
+  | `FakeSourceAdapter` | `SourceAdapter` | Returns a canned result and records call parameters |
+  | `FakeMarketDataAdapter` | `MarketDataAdapter` | Returns canned bars/snapshot; records `(method, params)` tuples |
+  | `InMemoryProgressSink` | `ProgressSink` | Collects `ExecutionEvent` instances in a list |
+  | `InMemoryArtifactStore` | `ArtifactStore` | Stores artifacts in a `dict` keyed by `(run_id, filename)` |
+
+  Additional helpers: `InMemoryRunPersistence` (satisfies `PersistencePort`), `FakeResearchSourceAdapter` (typed variant of `FakeSourceAdapter`), `fake_tool_registry(**ops)` (builds a `StaticToolRegistry`), and `UTC_EPOCH` constant.
+
 ---
 
 ## Deployment Workflow

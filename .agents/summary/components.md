@@ -8,6 +8,9 @@ graph TB
         App["ApplicationService<br/>application.py"]
         Models["Domain Models<br/>models.py"]
         Seams["Provisional Seams<br/>_provisional_seams.py"]
+        Config["Settings<br/>config.py"]
+        ClockMod["SystemClock<br/>clock.py"]
+        Ports["Ports<br/>ports.py"]
     end
 
     subgraph Adapters["Adapters (src/hoya_agent/adapters/)"]
@@ -18,6 +21,7 @@ graph TB
         AltMe["alternative_me.py<br/>fetch_fear_greed"]
         RSSA["rss.py<br/>fetch_rss_news"]
         Assets["_assets.py<br/>mentions()"]
+        PortAdapters["port_adapters.py<br/>CsvMarketAdapter, BinanceMarketAdapter, RssResearchAdapter"]
     end
 
     subgraph DataLayer["Data Layer (src/hoya_agent/data/)"]
@@ -51,6 +55,19 @@ graph TB
     subgraph Orchestration["Orchestration (src/hoya_agent/orchestration/)"]
         Pipeline["pipeline.py<br/>OrganizerCsvPipeline"]
     end
+
+    %% Dependency arrows
+    App --> Config
+    App --> ClockMod
+    App --> Ports
+    App --> Pipeline
+    Pipeline --> MWorker
+    Pipeline --> Processor
+    PortAdapters --> OrgCSV
+    PortAdapters --> BinanceA
+    PortAdapters --> RSSA
+    Ports --> Models
+    Config --> Models
 ```
 
 ## Component Details
@@ -68,6 +85,74 @@ graph TB
 - Detects question/asset mismatch and logs warning
 
 **Injected dependencies:** `clock`, `pipeline`, `prompt_version`, `configured_sources`, `optional_keys_present`
+
+---
+
+### Settings (`config.py`)
+
+**Responsibility:** Frozen typed configuration parsed once from environment variables. Enforces hard caps and validates request parameters. Never leaks secrets into artifacts or logs.
+
+**Key behaviors:**
+- Parses environment variables once at startup into an immutable typed object
+- Enforces hard caps: 45-second LLM timeout, 30 evidence items max for Arbiter
+- Validates requests: maximum question length enforcement
+- Generates sanitized `RunConfigSnapshot` for artifact persistence (records key presence as booleans, never values)
+- Configuration names are fixed: `BEDROCK_PRIMARY_MODEL_ID`, `BEDROCK_FALLBACK_MODEL_ID`, `CRYPTOPANIC_API_TOKEN`
+
+**Cannot:** Import adapters or UI modules; expose secret values; be mutated after construction.
+
+---
+
+### SystemClock (`clock.py`)
+
+**Responsibility:** Concrete implementation of the `Clock` protocol. Provides UTC wall-clock time and monotonic time for deadline arithmetic.
+
+**Key behaviors:**
+- `now_utc()`: returns timezone-aware UTC `datetime`
+- `monotonic()`: returns `time.monotonic()` value for deadline calculations
+- `build_run_context()` factory: freezes official `analysis_as_of` at the moment of run start
+- Tests inject `FixedClock` (deterministic, no real time dependency)
+
+**Cannot:** Be used directly for sleeping or delays; produce naive datetimes.
+
+---
+
+### Ports (`ports.py`)
+
+**Responsibility:** All shared `Protocol` interfaces that define boundaries between layers. Also contains the concrete `StaticToolRegistry`.
+
+**Protocols defined:**
+- `Clock` — UTC time and monotonic time
+- `LLMClient` — Bedrock structured output calls
+- `SourceAdapter` — generic external source interface
+- `MarketDataAdapter` — OHLCV bar retrieval (CSV or live)
+- `ResearchSourceAdapter` — news/announcement record retrieval
+- `ProgressSink` — stage progress reporting (UI consumption)
+- `ArtifactStore` — atomic file writes for competition artifacts
+- `PersistencePort` — execution log streaming
+- `ToolRegistry` — allowlisted operation lookup for Planner/Research Agent
+
+**Concrete class:** `StaticToolRegistry` — immutable, allowlist-backed registry. Operations are fixed at construction and cannot be extended at runtime.
+
+**Cannot:** Contain concrete I/O implementations (those live in `adapters/`); import `httpx` or `boto3`.
+
+---
+
+### Port Adapters (`adapters/port_adapters.py`)
+
+**Responsibility:** Async wrappers that implement the `MarketDataAdapter` and `ResearchSourceAdapter` protocols from `ports.py`. Thin bridge layer, no business logic.
+
+**Adapters:**
+- `CsvMarketAdapter` — wraps `organizer_csv.load_organizer_csv()` for offline CSV retrieval via `asyncio.to_thread()`
+- `BinanceMarketAdapter` — wraps `binance.fetch_binance_daily()` for live kline retrieval via `asyncio.to_thread()`
+- `RssResearchAdapter` — wraps `rss.fetch_rss_news()` for first-party feed retrieval via `asyncio.to_thread()`
+
+**Key behaviors:**
+- All use `asyncio.to_thread()` for sync→async bridging (underlying adapters are synchronous `httpx` calls)
+- No business logic — delegates entirely to the underlying adapter module
+- Returns typed results matching the port protocol contracts
+
+**Cannot:** Compute indicators; assign reliability; make decisions about evidence; bypass configured timeouts.
 
 ---
 

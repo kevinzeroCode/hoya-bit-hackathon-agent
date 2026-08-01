@@ -14,16 +14,20 @@ Two-day hackathon competition prototype that receives a question + asset(s) and 
 
 ```
 src/hoya_agent/
-├── models.py              # 29 Pydantic domain models — the canonical contract
+├── models.py              # 40 Pydantic domain models — the canonical contract
+├── config.py              # Typed Settings from env; sanitized snapshots; hard caps
+├── clock.py               # SystemClock + build_run_context (official cutoff freeze)
+├── ports.py               # All Protocol interfaces + StaticToolRegistry
 ├── application.py         # Entry point: run identity, artifact ordering, terminal state
-├── _provisional_seams.py  # Temp runtime types (Clock, Pipeline protocol, events)
+├── _provisional_seams.py  # Temp runtime types (coexists with ports.py/clock.py until swap)
 ├── adapters/              # All external I/O (flat, one file per provider)
 │   ├── bedrock.py         # AWS Bedrock Converse — structured output via tool use
 │   ├── binance.py         # Daily UTC klines → MarketBar
 │   ├── cryptopanic.py     # News aggregation (low reliability)
 │   ├── organizer_csv.py   # Competition OHLCV benchmark data
 │   ├── alternative_me.py  # Fear & Greed (low, market-wide, asset=None)
-│   └── rss.py             # Original publisher feeds (medium reliability)
+│   ├── rss.py             # Original publisher feeds (medium reliability)
+│   └── port_adapters.py   # Port-conforming async wrappers (CSV, Binance, RSS)
 ├── data/                  # Deterministic computation — no LLM, no network
 │   ├── indicators.py      # return, volatility, drawdown, volume z-score
 │   ├── market_worker.py   # OHLCV bars → high-reliability EvidenceDrafts
@@ -100,7 +104,7 @@ tests/unit/reasoning/
 
 ## Configuration
 
-Environment variables (via `config.py` when implemented):
+Environment variables (via `config.py`):
 
 | Variable | Required | Notes |
 |---|---|---|
@@ -130,8 +134,10 @@ python -m pytest tests/live -m live -vv -s
 
 - `asyncio_mode = "auto"` — async test functions auto-detected
 - Tests use injected `FixedClock` and `FakeLLM` — no real sleeps or API calls
+- `tests/fakes.py` provides shared test doubles: `FixedClock`, `FakeLLM`, `FakeSourceAdapter`, etc.
 - Golden fixtures with `pytest.approx` for indicator calculations
 - Markers: `integration`, `acceptance`, `live`
+- `tests/acceptance/` and `tests/live/` directories do not exist yet; planned for Day 2
 
 ## Detailed Documentation
 

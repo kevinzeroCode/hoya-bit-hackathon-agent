@@ -50,6 +50,8 @@ This index is designed as the **primary context file** for AI assistants working
 - Module ownership table (what each module owns and must NOT do)
 - Deployment architecture (Docker → ECR → EC2)
 - List of frozen paths (do not modify without owner consent)
+- `config.py`, `clock.py`, and `ports.py` as implemented core seams
+- `port_adapters.py` as the async adapter bridge layer
 
 **Use when:** You need to understand how components connect, what the execution flow looks like, how deadlines work, or where a new piece of code should go.
 
@@ -60,8 +62,12 @@ This index is designed as the **primary context file** for AI assistants working
 
 **Contains:**
 - Component relationship Mermaid diagram
-- 15+ component descriptions covering:
+- 18+ component descriptions covering:
   - ApplicationService (entry point, run identity, artifact ordering)
+  - Settings / config.py (typed environment parsing, sanitized snapshots, validation)
+  - SystemClock / clock.py (injectable UTC/monotonic clock, official cutoff freeze)
+  - Ports / ports.py (Protocol interfaces: Clock, LLMClient, SourceAdapter, MarketDataAdapter, ResearchSourceAdapter, ProgressSink, ArtifactStore, ToolRegistry, PersistencePort)
+  - Port Adapters / port_adapters.py (CsvMarketAdapter, BinanceMarketAdapter, RssResearchAdapter)
   - Planner (bounded plan generation with deterministic fallback)
   - Research Agent (adapter execution + LLM extraction)
   - Arbiter (claim generation, structural validation, confidence caps)
@@ -73,9 +79,10 @@ This index is designed as the **primary context file** for AI assistants working
   - Renderer (11-section Traditional Chinese report)
   - Artifact Store (atomic writes, streaming log)
   - BedrockLLMClient (structured output, repair, fallback)
-  - Pipeline (current CSV-only increment)
+  - Pipeline (current CSV-only increment + contract bridge)
   - Prompt Library (versioned prompt loading)
   - Conflict Extension (disabled H3 stub)
+  - StaticToolRegistry (immutable operation map with allowlist enforcement)
 
 **Use when:** You need to understand what a specific module does, what it can and cannot do, or how it relates to other modules.
 
@@ -85,10 +92,12 @@ This index is designed as the **primary context file** for AI assistants working
 **Purpose:** All function signatures, Protocol definitions, adapter contracts, and external API specifications.
 
 **Contains:**
-- Protocol hierarchy diagram (AnalysisPipeline, Clock, ProgressSink, LLMClient)
-- Core protocol definitions with full Python signatures
-- Market data adapter signatures (binance, organizer_csv)
-- News/research adapter signatures (cryptopanic, rss, alternative_me)
+- Protocol hierarchy diagram (AnalysisPipeline, Clock, ProgressSink, LLMClient, MarketDataAdapter, ResearchSourceAdapter, ArtifactStore, PersistencePort, ToolRegistry)
+- Core protocol definitions with full Python signatures (now in `ports.py`)
+- `build_run_context()` function signature (clock.py — official cutoff freeze)
+- `Settings.from_env()` and `Settings.sanitized_snapshot()` signatures (config.py)
+- Market data adapter signatures (binance, organizer_csv) and port-adapter wrappers (CsvMarketAdapter, BinanceMarketAdapter)
+- News/research adapter signatures (cryptopanic, rss, alternative_me) and port-adapter wrapper (RssResearchAdapter)
 - Common return type: WorkerResult
 - Data layer interfaces (indicators, market_worker, regime)
 - Evidence layer interfaces (processor, policies)
@@ -106,19 +115,16 @@ This index is designed as the **primary context file** for AI assistants working
 
 **Contains:**
 - Model hierarchy class diagram (showing relationships)
-- Enumeration table (9 enums with all values)
-- Core model details:
-  - AnalysisRequest (frozen, validation rules)
-  - EvidenceItem (16 fields, cache consistency)
-  - EvidenceDraft (pre-processor form)
-  - EvidenceLedger (sorted, no-duplicate invariants)
-  - Claim (DAG layering rules: fact/inference/conclusion)
-  - ClaimEvidenceLink (stance, resolution rules)
-  - AnalysisResult (aggregate validators, frozen)
-- Creativity layer models (MarketRegime, TrustScorecard, InvalidationCondition)
-- Supporting models (ConflictIndicator, DegradationEvent, TimeRange, MarketContext)
-- Runtime models (ExecutionEvent, RunConfigSnapshot, RunContext, PipelineOutcome)
-- Data layer types (MarketBar, WorkerResult, MarketWindows)
+- Enumeration table (12 enums with all values: Asset, RunMode, SourceType, Reliability, Stance, ClaimType, TrustLevel, RegimeLabel, InvalidationOperator, WorkerStatus, StageState, TerminalState)
+- 40 model/class definitions total across:
+  - Core request/evidence/claim models (AnalysisRequest, EvidenceItem, EvidenceDraft, EvidenceLedger, Claim, ClaimEvidenceLink, AnalysisResult)
+  - Research planning models (ResearchStep, ResearchPlan)
+  - Creativity layer models (MarketRegime, TrustScorecard, InvalidationCondition, plus 5 dimension sub-models)
+  - Supporting models (ConflictIndicator, DegradationEvent, TimeRange, MarketContext, EvidenceListRow, RawSourceRecord)
+  - Runtime models (ExecutionEvent, RunConfigSnapshot, RunContext, RunSummary, WorkerResult)
+  - Data layer types (MarketBar, MarketWindows)
+  - Configuration model (Settings with frozen fields + validators)
+- `project_evidence_list()` helper function
 
 **Use when:** You need to construct or validate a model instance, understand field constraints, or check the relationship between models.
 
@@ -156,7 +162,7 @@ This index is designed as the **primary context file** for AI assistants working
 - Version pinning strategy
 - Transitive dependency notes
 - Data dependencies (competition dataset, prompt files)
-- Environment variable reference
+- Environment variable reference (including new vars: HTTP_CONNECT_TIMEOUT_SECONDS, HTTP_READ_TIMEOUT_SECONDS, MAX_EVIDENCE_FOR_ARBITER, LLM_CALL_TIMEOUT_SECONDS, ALLOW_RECORDED_DEMO_FALLBACK, LOG_LEVEL)
 
 **Use when:** You need to add a dependency, configure an external service, check what env vars are available, or understand what's explicitly excluded.
 
@@ -222,3 +228,6 @@ Here are examples of how to use this documentation effectively:
 - **"What env vars do I need for deployment?"** → `dependencies.md` (Environment Variables section)
 - **"How are confidence levels determined?"** → `workflows.md` (Confidence cap workflow) + `data_models.md` (ConfidenceSignals)
 - **"What's the report structure?"** → `components.md` (Renderer) + `interfaces.md` (Renderer interface)
+- **"How does config.py parse settings?"** → `components.md` (Settings) + `interfaces.md` (Settings.from_env)
+- **"What protocols must a new adapter implement?"** → `interfaces.md` (MarketDataAdapter/ResearchSourceAdapter) + `components.md` (Port Adapters)
+- **"How is the official cutoff frozen?"** → `components.md` (SystemClock) + `interfaces.md` (build_run_context)

@@ -22,30 +22,32 @@
 Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC2。
 **每個檔的細節請看檔案地圖，本文不重列。**
 
-> ⚠️ **狀態掃描時間：2026-08-01（下午重掃），基準 commit `1377673`（`main`）。**
+> ⚠️ **狀態掃描時間：2026-08-01（晚間重掃），基準 commit `main`。**
 > 各階段的「現況」區塊記的是**真的跑過**的事實，不是計畫。
 
-### 1.1 現況快照（2026-08-01 下午）
+### 1.1 現況快照（2026-08-01 晚間）
 
-半天之內 S0、S1、S5 全部落地，S6 大部分落地。**原本「四個人三個在等契約」的局面已經解除。**
+S0、S1、S2、S5、S7 全部落地，S6 大部分落地。**原本「四個人三個在等契約」的局面已經解除。**
 
 | 階段 | 狀態 | 一句話 |
 |---|---|---|
 | **S0** preflight | ✅ | Bedrock 真的通了（Haiku 4.5 @ us-west-2），最高風險已拆除 |
-| **S1** 契約與接縫 | ✅ | `models.py`＋`config/clock/ports/fakes` 都在 `main`，契約驗收零落差 |
+| **S1** 契約與接縫 | ✅ | `models.py`＋`config.py`/`clock.py`/`ports.py`/`tests/fakes.py`/`tests/conftest.py` 都在 `main`，契約驗收零落差 |
+| **S2** 垂直切片 | ✅ | fixture vertical slice 已合併（PR #12）；`application.py`、`reporting/`、`_provisional_seams.py` 都在 `main` |
 | **S5** 市場證據 | ✅ | `data/` 與行情 adapters 已整合進 `src/hoya_agent/` |
 | **S6** 研究與 Evidence | 🟡 | 大部分已整合；缺 `research_extractor` 合併、`ledger.py`、`official.py` |
 | **S7** bounded reasoning | ✅ | 早於 S1 完成並凍結 |
 | **S9** 創意層 | 🟡 | `regime.py` 已在 `main`；`trust.py` 未寫 |
-| **S2 / S3 / S4 / S8 / S9B / S10 / S11** | 🔴 | 未開始 |
+| **S3 / S4 / S8 / S9B / S10 / S11** | 🔴 | 未開始 |
 
-**`main` 目前：501 passed。** 但 **`ruff check .` 有 87 個錯誤**（PR #8 整合大量 P2 程式碼後出現），
+**`main` 目前：501+ passed（`pyproject.toml` 存在，44 個 `.py` 檔在 `src/hoya_agent/`）。**
+但 **`ruff check .` 有 87 個錯誤**（PR #8 整合大量 P2 程式碼後出現），
 違反 §3.3 的 Definition-of-Done「`ruff check .` 乾淨」。48 個可自動修。
 **這是目前唯一的紅字，建議在下一個階段開工前清掉**，否則之後每個人都會踩到既有噪音、
 分不清哪些是自己引入的。
 
-**下一個關鍵路徑是 S2**（fixture 垂直切片）——它擋住 S3 Bronze 與 S4 編排，
-而 S0／S1／S5 已經不擋任何人。
+**下一個關鍵路徑是 S3**（Streamlit Bronze）——S2 已完成，S3 擋住 S4 編排與 S8 Silver，
+而 S0／S1／S2／S5 已經不擋任何人。
 
 ---
 
@@ -199,7 +201,7 @@ S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 �
 
 - ~~**S0 與 S1 可並行**~~ — **兩者皆已完成（2026-08-01），不再是排程因素。**
 - **S4 / S5 / S6 可三路並行**（路徑互不重疊，見 §2.5）；**S5 已完成**。
-- **現在的關鍵路徑是 S2 → S3 ★Bronze**。S2 未完成前，S3 與 S4 都動不了。
+- **S2 已完成（PR #12），關鍵路徑現在是 S3 → S4 → S8 ★Silver。**
 - **S7 已經完成**，且是在 S1 之前完成的——這是本專案最大的一個順序偏離，見 S7 的現況區塊。
 - **S9（創意層）與 S9B（雙幣比較）互不相依、可並行**，兩者都在 S8 之後、S10 之前的 additive 窗口。
   兩者都對 Bronze 與 Silver 非阻塞，但都必須在 S10 觸發 Feature Freeze 前完成，
@@ -354,10 +356,16 @@ class ApplicationService(Protocol):
 
 ### S2 — Fixture 垂直切片與 artifact 契約
 
-> **現況：🔴 未開始。**
-> **已實作：** 無（`reporting/` 目錄尚不存在）。
-> **可接手的既有產出：** P2 的 `p2-etl-mvp/render_report.py` 與 HTML 模板已寫好並產出過
-> `render/out/hoya-report-BTC.html`——渲染邏輯可參考，但**輸出格式必須改回 Markdown**（HTML 非 MVP artifact）。
+> **現況：✅ 已完成（2026-08-01，PR #12 合併進 `main`）。422 passed tests at merge time。**
+> **已實作：** `application.py`、`reporting/artifacts.py`、`reporting/renderer.py`、
+> `_provisional_seams.py`、`tests/fixtures/vertical_slice/`（`evidence.json` + `analysis_result.json`）、
+> `tests/integration/test_vertical_slice.py`。
+> **⚠️ S2 在 Task 1b 之前落地**，因此 `_provisional_seams.py` 充當 runtime type stand-in
+> （`ExecutionEvent`、`RunConfigSnapshot`、`RunSummary`、`RunContext`、`Clock`、`ProgressSink`
+> 等型別暫住在此）。正式 seams 已在 1b 於 `models.py`/`ports.py` 定義完成，
+> **swap procedure 尚未執行**——待排的機械替換見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md §4`。
+> **三個形狀已固化不可改名：** `run_config.json` snapshot、`execution_log.jsonl` event、
+> `evidence.json` container。
 > **指派：** 任務 A（Kiro，Task 2）＋任務 D（reporting/ 路徑）。
 
 **目標**：在完全沒有網路、Bedrock 與 AWS 憑證的情況下，讓一個 fixture 請求穿過**真正的**
@@ -410,13 +418,13 @@ class ApplicationService(Protocol):
 ### S3 — Streamlit Bronze 檢查點 + 禁語 lint + 容器殼 ★ **Bronze Exit**
 
 > **現況：🔴 canonical 樹未開始，但 `p2-etl-mvp/` 有一份可運作的原型可接手。**
-> **canonical 樹缺：** `ui/`、`streamlit_app.py`、`reporting/`（整個目錄）都不存在。
+> **canonical 樹缺：** `ui/`、`streamlit_app.py`、`reporting/lint.py` 都不存在（`reporting/artifacts.py` 與 `renderer.py` 已由 S2 落地）。
 > **可接手的既有產出（`p2-etl-mvp/`，已在 `main`）：** `app.py`（Streamlit 前端，支援 1–2 幣）、
 > `Dockerfile`（`python:3.12-slim`）、`render/report_template.html`、
 > `run_agent.py`／`run_live.py` 統一入口。**這不是重寫，是搬遷 + 改輸出格式。**
 > **注意兩件事：** ① 原型輸出 HTML，MVP artifact 必須是 **Markdown** 的 `final_report.md`；
 > ② `reporting/lint.py`（禁語 lint）是純字串比對、不依賴任何契約，**可以最先寫**。
-> **指派：** 任務 D。**相依：** S2（但 lint 與容器殼不必等）。
+> **指派：** 任務 D。**相依：** S2 ✅（已完成；lint 與容器殼不必等）。
 
 **目標**：讓評審能在瀏覽器裡完成一次完整的離線 run 並下載四份 artifacts。**這是 Bronze 驗收閘門。**
 
@@ -462,7 +470,7 @@ Docker 支援不重新定義 Bronze 閘門——**Bronze 不要求 Docker 驗收
 ### S4 — Deadline-aware fork-join 編排
 
 > **現況：🔴 未開始（`orchestration/` 目錄不存在）。**
-> **指派：** 任務 A。**相依：** S2。
+> **指派：** 任務 A。**相依：** S2 ✅（已完成，可立即開工）。
 
 **目標**：讓時間與狀態成為一個地方的決定。
 
@@ -984,7 +992,8 @@ H3 三處都標示未實作；secret scan 通過。
 | ~~4~~ | ~~designated baseline **research** source 是哪一個~~ | ~~S8 Silver 驗收之前~~ | ✅ **已定案（S0 實測）**：第一手新聞 RSS + Google News 依幣種搜尋（免 key、五幣覆蓋）；CryptoPanic 取得 token 後可升為主 |
 | 8 | `p2-etl-mvp/` 的退場時機 | **S3 完成之前** | 新增項。PR #8 已把核心搬進 `src/`，但 `p2-etl-mvp/` 71 個檔仍留在 `main`，與原訂「這個目錄永不進 `main`」相反。S3 接手 `app.py`／`Dockerfile` 後應整個刪除，避免兩套並存 |
 | 9 | `ruff check .` 的 87 個錯誤 | **下一階段開工前** | 新增項。違反 §3.3 的 DoD。48 個可 `--fix`，其餘多為既有程式碼與新 lint 設定的落差 |
-| 8 | `reasoning/arbiter.py` 的 `select_evidence()` 需加 per-asset 配額，但它是**凍結路徑** | **S9B 動工之前** | 需原 P3（該檔 owner）同意；🚫 不得逕行修改。這是正確性修復，不是調參 |
+| 10 | `_provisional_seams.py` swap procedure | **S3 或 S4 開工前** | 新增項。S2 落地時 Task 1b 尚未存在，所以 runtime types 暫住 `_provisional_seams.py`。現在 `models.py`（40 classes）與 `ports.py` 都已在 `main`，swap procedure 見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md §4`，觸及 `application.py`、`reporting/artifacts.py`、`tests/integration/test_vertical_slice.py`，最後刪除 stand-in 與 bridge test |
+| 8b | `reasoning/arbiter.py` 的 `select_evidence()` 需加 per-asset 配額，但它是**凍結路徑** | **S9B 動工之前** | 需原 P3（該檔 owner）同意；🚫 不得逕行修改。這是正確性修復，不是調參 |
 | 5 | 15 分鐘是否含題目輸入與評審檢視時間 | 主辦方確認前不阻塞 | 實作一律**從 run 開始**計時 |
 | 6 | 主辦方 CSV 算不算一個獨立 `independence_group` | 同上 | 暫計為一個（`organizer-public-market-data`） |
 | 7 | 「第一手/官方來源」的界定 | 同上 | 暫指原始資料產生者：交易所 API、專案官方公告、主辦方 CSV |

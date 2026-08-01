@@ -39,15 +39,20 @@
 
 ---
 
-## 現況速覽（2026-08-01，基準 commit `d15f6da`）
+## 現況速覽（2026-08-01，基準 commit `f7536fb`）
 
 | 項目 | 狀態 |
 |---|---|
-| `main` 的 Python 樹 | ✅ 22 個 `.py`，**157 passed + 15 subtests**（Python 3.12.13 離線實跑） |
+| `main` 的 Python 樹 | ✅ **44 個 `.py`**，**501+ tests passing**（Python 3.12.13） |
+| `pyproject.toml` | ✅ 已存在（含 `[dev]` extras） |
+| 共用契約 `models.py`（S1） | ✅ **已存在，40 個 Pydantic classes**（Task 1a + corrective 完成） |
+| Runtime seams `config.py`、`clock.py`、`ports.py` | ✅ 已存在（Task 1b 落地） |
+| S2 fixture vertical slice | ✅ **COMPLETE on main**（`application.py`、`reporting/`、四項 artifacts 離線整合測試） |
 | 推理層（S7） | ✅ **已完成並凍結**（`adapters/bedrock.py` + `reasoning/` + `prompts/`） |
-| 共用契約 `models.py`（S1） | 🔴 **尚不存在** —— 全隊唯一的真阻塞點 |
-| 市場與證據層（S5/S6） | 🟡 已寫但在 `feat/p2-report-integration`，待收斂進 `src/hoya_agent/` |
-| 編排、報告、UI（S2/S3/S4） | 🔴 完全未開始 |
+| 市場與證據層（S5/S6） | ✅ **INTEGRATED on main**（`data/`、`evidence/`、adapters: organizer_csv, binance, cryptopanic, rss, alternative_me, port_adapters） |
+| 編排（S3） | 🟡 CSV-only pipeline 存在（`orchestration/pipeline.py` OrganizerCsvPipeline）；full deadline/fork-join 未開始 |
+| 報告（S2/Renderer） | ✅ `reporting/renderer.py` + `reporting/artifacts.py` on main |
+| UI（S4） | 🔴 未開始 |
 | **真實 Bedrock 呼叫（S0）** | 🔴 **仍是零次 —— 全案最高風險項** |
 
 > ⚠️ **如果你只讀一段，讀這一段：**
@@ -63,13 +68,13 @@
 
 | 里程碑 | 階段 | 成果 |
 |---|---|---|
-| M0 可執行性 | S0 · S1 | 外部服務證實可用；契約凍結；四人可並行 |
-| **M1 Bronze** ★ | S2 · S3 | **完全離線**從 Streamlit 產出並下載四項 artifacts |
-| M2 能力層 | S4 · S5 · S6 · S7 | deadline 編排、市場證據、研究證據、bounded reasoning |
-| **M3 Silver** ★ | S8 | 一次 live schema-valid Bedrock run **＋** 一次獨立的 deterministic fallback |
-| M4 洞察 | S9 | Trust Scorecard、Market Regime、量化 invalidation（非阻塞） |
-| **M5 Gold local Exit** ★ | S10 | 兩個不同資產各一次獨立單幣 run → **觸發 Feature Freeze** |
-| M6 交付 | S11 | ECR/EC2 部署 + 一次 15 分鐘計時彩排 + 提交驗證 |
+| M0 可執行性 | S0 · S1 | ✅ 契約凍結（models.py 40 classes）；⚠️ 外部服務尚未證實可用（Bedrock 零次呼叫） |
+| **M1 Bronze** ★ | S2 · S3 | ✅ **完全離線**從 fixture 產出並驗證四項 artifacts（S2 complete, CSV pipeline exists） |
+| M2 能力層 | S4 · S5 · S6 · S7 | ✅ S5/S6 integrated on main；✅ S7 frozen；🟡 S4 deadline 編排未開始 |
+| **M3 Silver** ★ | S8 | 🔴 一次 live schema-valid Bedrock run **＋** 一次獨立的 deterministic fallback |
+| M4 洞察 | S9 | 🔴 Trust Scorecard、Market Regime、量化 invalidation（非阻塞） |
+| **M5 Gold local Exit** ★ | S10 | 🔴 兩個不同資產各一次獨立單幣 run → **觸發 Feature Freeze** |
+| M6 交付 | S11 | 🔴 ECR/EC2 部署 + 一次 15 分鐘計時彩排 + 提交驗證 |
 
 ---
 

@@ -226,13 +226,15 @@ UI widget / session state / 檔案下載（Streamlit）、原子 rename（`os.re
 - 只暴露 demo 需要的那個 Streamlit port；掛一個持久化的本機 artifact volume（🚫 不寫進 image layer）。
 - push immutable tag 到 ECR，EC2 用 `docker compose` 拉**確切測過的那個 tag**。
 
-> ⚠️ **目前的實況**：`pyproject.toml` **尚不存在**（屬 ④ Stage 1）。在它落地前，跑測試用臨時 venv：
+> ✅ **目前的實況**（2026-08-01, commit `f7536fb`）：`pyproject.toml` **已存在**，使用標準 `src/` layout。
+> 安裝與測試：
 > ```bash
-> uv venv --python 3.12 .venv
-> uv pip install --python .venv/Scripts/python.exe pydantic pytest pytest-asyncio boto3 httpx
-> PYTHONPATH=src ./.venv/Scripts/python.exe -m pytest tests -q
+> python -m pip install -e ".[dev]"
+> python -m pytest tests/unit tests/contract tests/integration -q
 > ```
-> **🚫 在 Stage 1 之前不要自己建 `pyproject.toml`**——那會開出第三棵樹（見 ACTIVE_WORK 的協調規則 2）。
+> 版本範圍：`pydantic>=2.0,<3.0`、`httpx>=0.27,<1.0`、`pandas>=2.2,<3.0`、`boto3>=1.34,<2.0`、
+> `streamlit>=1.36,<2.0`；dev extras：`pytest>=8.0,<9.0`、`pytest-asyncio>=0.23,<1.0`、
+> `pytest-cov>=5.0,<6.0`、`ruff>=0.4,<1.0`。
 
 ---
 
@@ -357,6 +359,11 @@ python -m pytest tests/unit tests/contract tests/integration -q
 **它一次證明了：** 契約可用 · 組裝根成立 · artifact 寫入契約成立 · 缺檔揭露契約成立 ·
 繁中 11 段模板成立 · 禁語 lint 成立 · UI↔application 邊界成立 · `rehearsal` 標示誠實。
 
+> ✅ **狀態（2026-08-01, commit `f7536fb`）：切片 A（S2 fixture vertical slice）已 COMPLETE 並合併至 `main`。**
+> `application.py`、`reporting/artifacts.py`、`reporting/renderer.py`、fixture pair 與離線四 artifact
+> integration test 已驗證通過（422 passed / 6 skipped, `ruff check .` clean on Python 3.12.13）。
+> 剩餘的 provisional seam 收斂（`_provisional_seams.py` 退役）屬 Task 1b 後的 swap 工作。
+
 ### 風險 B — Bedrock 從來沒有真的被呼叫過一次
 
 > ⚠️ `docs/ACTIVE_WORK.md`（2026-08-01）：**「Bedrock 實際呼叫 — 仍未驗證過任何一次，
@@ -435,8 +442,8 @@ python -m pytest tests/unit tests/contract tests/integration -q
 
 **建置與環境**
 ```bash
-uv python install 3.12 && uv venv --python 3.12 .venv
 python -m pip install -e ".[dev]"
+python -m pytest tests/unit tests/contract tests/integration -q
 ruff check .
 ```
 

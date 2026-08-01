@@ -43,10 +43,21 @@
 ```
 hoya-bit-hackathon-agent/
 ├── src/hoya_agent/          # Production source code
-│   ├── models.py            # 29 Pydantic domain models (canonical contracts)
+│   ├── models.py            # 40 Pydantic domain models (canonical contracts, 1603 LOC)
+│   ├── config.py            # Typed Settings from environment variables
+│   ├── clock.py             # SystemClock + build_run_context helper
+│   ├── ports.py             # All Protocol interfaces (adapters, LLM, workers, clock)
 │   ├── application.py       # ApplicationService entry point
-│   ├── _provisional_seams.py# Temporary runtime type stubs (pre-Task 1b)
+│   ├── _provisional_seams.py# Temporary runtime type stubs (pre-Task 1b swap)
 │   ├── adapters/            # External I/O (flat, one file per provider)
+│   │   ├── bedrock.py       # AWS Bedrock Converse — structured output via tool use
+│   │   ├── binance.py       # Daily UTC klines → MarketBar
+│   │   ├── cryptopanic.py   # News aggregation (low reliability)
+│   │   ├── organizer_csv.py # Competition OHLCV benchmark data
+│   │   ├── alternative_me.py# Fear & Greed (low, market-wide, asset=None)
+│   │   ├── rss.py           # Original publisher feeds (medium reliability)
+│   │   ├── _assets.py       # Asset symbol utilities
+│   │   └── port_adapters.py # Port-conforming wrappers for all adapters
 │   ├── data/                # Deterministic market indicators & series
 │   ├── evidence/            # Ledger, policies, processor
 │   ├── reasoning/           # Planner, ResearchAgent, Arbiter, H3 stub
@@ -54,11 +65,11 @@ hoya-bit-hackathon-agent/
 │   └── orchestration/       # Pipeline coordination
 ├── prompts/                 # Versioned LLM prompt markdown files
 ├── tests/                   # Layered test suite
+│   ├── conftest.py          # Minimal sys.path bootstrap
+│   ├── fakes.py             # Shared test fakes (FixedClock, FakeLLM, FakeSourceAdapter, etc.)
 │   ├── unit/                # Schema, policy, indicator, renderer tests
 │   ├── contract/            # Mocked adapter/Bedrock interaction tests
 │   ├── integration/         # Module collaboration & degradation paths
-│   ├── acceptance/          # End-to-end requirement validation
-│   ├── live/                # Manual opt-in live API tests
 │   └── fixtures/            # Immutable test data (JSON, CSV)
 ├── p2-etl-mvp/             # Parallel prototype (will be superseded)
 ├── HOYA_BIT_crypto_market_dataset/  # Competition OHLCV CSV data
@@ -72,12 +83,12 @@ hoya-bit-hackathon-agent/
 | Metric | Value |
 |---|---|
 | Total files | ~627 |
-| Core source files | ~40 |
+| Core source files | ~44 |
 | Test files | ~50 |
-| Core models (models.py) | 29 classes/enums |
-| Adapter count | 7 (bedrock, binance, cryptopanic, organizer_csv, alternative_me, rss, _assets) |
+| Core models (models.py) | 40 classes/enums, 1603 LOC |
+| Adapter count | 8 (bedrock, binance, cryptopanic, organizer_csv, alternative_me, rss, _assets, port_adapters) |
 | Prompt files | 3 versioned (planner-v1, research-extraction-v1, arbiter-v1) |
-| Test layers | 5 (unit, contract, integration, acceptance, live) |
+| Test layers | 5 (unit, contract, integration, acceptance, live) — acceptance/ and live/ not yet created |
 
 ## Run Modes
 
