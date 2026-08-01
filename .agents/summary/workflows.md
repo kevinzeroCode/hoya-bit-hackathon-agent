@@ -434,4 +434,3 @@ the frozen prompt. During Evidence merge, orchestration joins the fetched record
 back by `record_id`, restores adapter-owned provenance, and rejects any draft that
 cannot be joined or validated. This keeps source policy deterministic while
 allowing the canonical extraction schema to enter the ledger.
-
