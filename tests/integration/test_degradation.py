@@ -198,4 +198,3 @@ async def test_arbiter_failure_preserves_ledger_and_deterministic_fallback() -> 
     assert outcome.ledger.items
     assert outcome.terminal_state is TerminalState.degraded
     assert any("deterministic fallback" in note for note in outcome.degradation_notes)
-
