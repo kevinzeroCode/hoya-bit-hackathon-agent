@@ -8,8 +8,16 @@
 
 ## 執行前置
 
-1. **確認本機有 Python 3.12。** `tech.md` 鎖定 3.12，本機目前是 3.11.9。
-   沒裝的話 Task 1a 最後的 `pip install -e ".[dev]"` 與測試步驟會失敗。
+1. **先裝 Python 3.12 —— 這是唯一的硬阻塞。** `tech.md` 鎖定 3.12，Kiro 會照著寫
+   `requires-python = ">=3.12"`；本機目前只有 3.11.9，屆時 `pip install -e ".[dev]"`
+   會直接失敗，Kiro 的 TDD 驗證步驟就跑不完，等於產出無法驗證。
+
+   ```bash
+   py -3.12 --version     # 沒有輸出就是還沒裝
+   ```
+
+   兩條路擇一：裝 Python 3.12（建議，五分鐘），或請 P1 裁決把 `tech.md` 放寬到 3.11。
+   **不要**讓 Kiro 寫 3.12 然後跳過驗證步驟——那會產出一批沒跑過測試的契約。
 2. 從最新的 `main` 開分支：
 
    ```bash
@@ -39,6 +47,48 @@ Kiro 會自動載入七份 `inclusion: always` 的 steering 檔案，以及該 t
 消費端需求，請盡量滿足；若與 evidence-contracts.md 衝突，以 evidence-contracts.md 為準。
 先寫會失敗的測試，跑到確認失敗，再實作。
 ```
+
+## 備用路徑：用 CLI 下指令
+
+Kiro 有 `chat` 子指令（已在本機驗證，v0.12.333）：
+
+```
+kiro chat [options] [prompt]
+  -m --mode <mode>      ask | edit | agent | 自訂 mode，預設 agent
+  -a --add-file <path>  把檔案釘進 context
+  -r --reuse-window / -n --new-window
+```
+
+它**不是 headless**——會開／重用 Kiro 視窗，不會把結果印回終端。好處是指令可重現、
+可以寫進文件讓四個人跑一模一樣的東西，而且照樣產生可截圖的 session。
+
+先在專案根目錄執行唯讀的前置檢查（`ask` 模式不會動檔案）：
+
+```powershell
+kiro chat -m ask "在開始寫任何檔案之前先回答三題：1. 你目前載入了哪些 steering 檔案？2. Task 1a 要建立哪幾個檔案？3. 有哪些路徑是你不得修改的？"
+```
+
+答不出七份 steering、或講不出「不得修改 `src/hoya_agent/reasoning/`」，就代表 steering
+沒載入。**先別讓它動手**，回頭查 frontmatter。
+
+確認後再執行：
+
+```powershell
+kiro chat -m agent -a .kiro/specs/hoya-market-agent/tasks.md -a docs/ai/P3_CONTRACT_EXPECTATIONS.md "執行 spec 中的 Task 1a。欄位名與驗證規則一律以 .kiro/steering/evidence-contracts.md 為唯一權威。先寫會失敗的測試，跑到確認失敗，再實作。不要動 Task 1b 與 Task 2 的檔案。"
+```
+
+## 執行中要盯的四件事
+
+逐步審核模式的價值在於你真的會看。重點看這四個：
+
+1. **它有沒有先寫測試再實作。** 如果第一個產出就是 `models.py`，它跳過了 TDD——叫停，
+   要求先補測試。
+2. **欄位名對不對。** 隨機抽三個對照 `evidence-contracts.md`：`source_name`（不是 `source`）、
+   `independence_group`、`content_reference`。錯一個就全錯，因為四個人都會照著寫。
+3. **`EvidenceItem` 有沒有混進 stance 欄位。** 這是規範最強調的一條，也是最容易被
+   「這樣比較方便」的直覺破壞的一條。
+4. **它有沒有去碰凍結路徑。** 只要看到 `src/hoya_agent/reasoning/` 或 `tests/contract/`
+   出現在 diff 裡，立刻停。
 
 ## 完成後立刻做的契約驗收（約 15 分鐘）
 
