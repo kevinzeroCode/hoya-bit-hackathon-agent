@@ -20,7 +20,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
-from data.indicators import realized_volatility
+from data.indicators import realized_volatility, simple_return
 from data.market_series import bars_asof, closes
 from data.types import MarketBar
 from evidence.policies import SourceClass, reliability_for
@@ -241,3 +241,57 @@ def build_attribution_evidence(
         url=source_url, as_of=bars_asof(target_bars, analysis_as_of)[-1].date,
     )
     return WorkerResult("completed", [draft], [])
+
+
+# ── cross-asset comparison (1–2 coin contract; NEVER base-asset volume) ──────
+
+def build_comparison_evidence(
+    asset_a: str, asset_b: str, bars_a: Sequence[MarketBar], bars_b: Sequence[MarketBar],
+    *, analysis_as_of: date, ret_window: int = 14, corr_window: int = 90, ratio_window: int = 252,
+    source_name: str = "public_market_data", independence_group: str = "organizer-public-market-data",
+    source_url: str | None = None,
+) -> WorkerResult:
+    """Deterministic cross-asset comparison facts (return / relative strength / correlation /
+    beta). Coin-agnostic, stanceless. Cross-coin uses ONLY returns/ratios/percentiles —
+    never base-asset volume (units differ)."""
+    ca = closes(bars_asof(bars_a, analysis_as_of))
+    cb = closes(bars_asof(bars_b, analysis_as_of))
+    try:
+        ret_a, ret_b = simple_return(ca, ret_window), simple_return(cb, ret_window)
+        corr = rolling_correlation(ca, cb, corr_window)
+        beta = rolling_beta(ca, cb, corr_window)
+        pct = relative_strength_percentile(ca, cb, ratio_window)
+    except (ValueError, statistics.StatisticsError) as exc:
+        return WorkerResult("failed", [], [f"comparison unavailable for {asset_a} vs {asset_b}: {exc}"])
+
+    as_of = bars_asof(bars_a, analysis_as_of)[-1].date
+    stronger = asset_a if ret_a > ret_b else asset_b
+    drafts = [
+        _draft(
+            asset_a,
+            f"{asset_a} 近 {ret_window} 日報酬 {ret_a:+.2%}、{asset_b} {ret_b:+.2%}"
+            f"（{stronger} 相對較強，差 {abs(ret_a - ret_b) * 100:.2f} 個百分點，截至 {as_of} UTC）",
+            ref=f"relative {ret_window}d return {asset_a} vs {asset_b}",
+            params=f"compare {asset_a} vs {asset_b}; return_window={ret_window}",
+            metric=f"relative_return_{ret_window}d", source_name=source_name,
+            group=independence_group, url=source_url, as_of=as_of,
+        ),
+        _draft(
+            asset_a,
+            f"{asset_a} 近 {corr_window} 日與 {asset_b} 相關性 {corr:.2f}、beta {beta:.2f}"
+            f"（相關性越高越隨 {asset_b} 同向移動）",
+            ref=f"correlation/beta {asset_a} vs {asset_b} over {corr_window}d",
+            params=f"compare {asset_a} vs {asset_b}; corr_window={corr_window}; log returns",
+            metric="pair_correlation", source_name=source_name,
+            group=independence_group, url=source_url, as_of=as_of,
+        ),
+        _draft(
+            asset_a,
+            f"{asset_a}/{asset_b} 價格比值處於自身近 {ratio_window} 日第 {pct * 100:.0f} 百分位",
+            ref=f"relative-strength ratio percentile {asset_a}/{asset_b}",
+            params=f"compare {asset_a} vs {asset_b}; ratio percentile over {ratio_window}d",
+            metric="relative_strength_pctile", source_name=source_name,
+            group=independence_group, url=source_url, as_of=as_of,
+        ),
+    ]
+    return WorkerResult("completed", drafts, [])

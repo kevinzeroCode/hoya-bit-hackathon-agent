@@ -105,3 +105,20 @@ def test_base_rates_magnitude_matches_doc():
     br = analog_base_rates(btc)
     assert br.vol_higher_frac == pytest.approx(0.775, abs=0.02)  # doc 77.5%
     assert 0.4 < br.up_frac < 0.65  # doc: direction ≈ coin-flip
+
+
+@pytest.mark.skipif(not _HAVE_DATA, reason="organizer dataset not reachable")
+def test_comparison_evidence_cross_asset():
+    from datetime import date as _date
+
+    from data.price_analysis import build_comparison_evidence
+    eth = load_organizer_csv(_DATA_DIR / "ETH_daily_ohlcv.csv")
+    btc = load_organizer_csv(_DATA_DIR / "BTC_daily_ohlcv.csv")
+    r = build_comparison_evidence("ETH", "BTC", eth, btc, analysis_as_of=_date(2026, 5, 31))
+    assert r.status == "completed"
+    assert len(r.drafts) == 3
+    for d in r.drafts:
+        assert d.source_type == "market" and d.reliability == "high"
+    facts = " ".join(d.normalized_fact for d in r.drafts)
+    assert "相關性" in facts and "百分位" in facts   # correlation + relative-strength included
+    assert "volume" not in facts.lower()             # never base-asset volume across coins

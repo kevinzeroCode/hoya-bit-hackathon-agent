@@ -31,7 +31,11 @@ from adapters.organizer_csv import default_data_dir, load_organizer_csv
 from adapters.reddit import fetch_reddit_posts
 from adapters.rss import fetch_rss_news
 from data.market_worker import build_market_evidence
-from data.price_analysis import build_attribution_evidence, build_event_timeline_evidence
+from data.price_analysis import (
+    build_attribution_evidence,
+    build_comparison_evidence,
+    build_event_timeline_evidence,
+)
 from data.regime import build_regime_evidence, classify_regime
 from data.text_clean import clean_text
 from evidence.processor import build_ledger
@@ -64,6 +68,20 @@ class Bundle:
     live_ok: bool
     notes: list[str] = field(default_factory=list)
     source_lines: list[str] = field(default_factory=list)
+    drafts: list = field(default_factory=list)
+
+
+@dataclass
+class ComparisonBundle:
+    asset_a: str
+    asset_b: str
+    as_of: date
+    ledger: EvidenceLedger
+    regime_a: object
+    regime_b: object
+    provider: str
+    notes: list[str] = field(default_factory=list)
+    comparison_facts: list[str] = field(default_factory=list)
 
 
 def _rss_records(asset: str, client: httpx.Client, lookback_days: int = 30) -> list[NewsRecord]:
@@ -173,4 +191,23 @@ def collect_evidence(
 
     ledger = build_ledger(drafts)
     return Bundle(asset=asset, as_of=as_of, bars=bars, regime=regime, ledger=ledger,
-                  provider=provider, live_ok=live_ok, notes=notes, source_lines=lines)
+                  provider=provider, live_ok=live_ok, notes=notes, source_lines=lines, drafts=drafts)
+
+
+def collect_comparison(asset_a: str, asset_b: str, *, offline: bool = False) -> ComparisonBundle:
+    """Lightweight 1–2 coin comparison (keeps the 1–2 coin contract). Each coin runs the
+    full pipeline; cross-asset comparison evidence (relative return / correlation / beta /
+    relative strength) is added. Cross-coin uses only returns/ratios — never base volume."""
+    a, b = asset_a.upper(), asset_b.upper()
+    ba = collect_evidence(a, offline=offline)
+    bb = collect_evidence(b, offline=offline)
+    as_of = min(ba.as_of, bb.as_of)
+    comp = build_comparison_evidence(a, b, ba.bars, bb.bars, analysis_as_of=as_of)
+    drafts = list(ba.drafts) + list(bb.drafts) + list(comp.drafts)
+    ledger = build_ledger(drafts)
+    facts = [d.normalized_fact for d in comp.drafts]
+    return ComparisonBundle(
+        asset_a=a, asset_b=b, as_of=as_of, ledger=ledger,
+        regime_a=ba.regime, regime_b=bb.regime, provider=ba.provider,
+        notes=ba.notes + bb.notes + comp.degradation, comparison_facts=facts,
+    )
