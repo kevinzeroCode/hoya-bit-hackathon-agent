@@ -219,8 +219,12 @@ class ApplicationService:
         checksums = {
             name: digest for name, digest in store.checksums().items() if name != RUN_CONFIG
         }
-        final_snapshot = snapshot.model_copy(
-            update={
+        # Validate the merged payload instead of using model_copy(update=...), which
+        # deliberately skips Pydantic validation and could let an official run
+        # claim fixture/recorded data.
+        final_snapshot = RunConfigSnapshot.model_validate(
+            {
+                **snapshot.model_dump(mode="python"),
                 "stage_durations_ms": dict(outcome.stage_durations_ms),
                 "used_cached_evidence": any(item.is_cached for item in ledger.items),
                 "has_stale_evidence": any(item.is_stale for item in ledger.items),
