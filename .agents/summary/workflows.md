@@ -415,3 +415,12 @@ flowchart TD
 ## 2026-08-01 workflow update
 
 Analysis calls stop at 720 seconds, leaving artifact finalization budget. Market and Research execute as an independent fork-join; failures degrade honestly. Dual assets share one run/cutoff/ledger, aligned UTC bars, and a balanced Arbiter projection. See `s8-s9-s9b.md`.
+
+## Run/Data-Mode Finalization
+
+The pipeline reports its actual `effective_data_mode` at completion. Finalization
+validates the complete `RunConfigSnapshot` again before rewriting
+`run_config.json`. Rehearsal may remain `fixture`; demo may degrade from requested
+`live` to `recorded_fallback`; official plus any non-live effective data mode is
+rejected by the canonical model validator instead of being silently copied into an
+artifact. Integration coverage lives in `tests/integration/test_run_modes.py`.
