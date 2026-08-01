@@ -1,4 +1,4 @@
-"""Diagnose why the Arbiter's Bedrock call fails, printing the REAL underlying
+r"""Diagnose why the Arbiter's Bedrock call fails, printing the REAL underlying
 error (the pipeline wraps it as LLMUnavailableError and hides the cause).
 
 Run with your Bedrock env set (never paste the key anywhere):
