@@ -87,3 +87,17 @@ def test_relevant_but_no_facts_is_degradation():
 def test_no_records_returns_failed():
     result = extract_news_facts([], llm=FakeLLMClient(_GOOD))
     assert result.status == "failed"
+
+
+def test_parses_json_wrapped_in_markdown_fences():
+    # Bedrock/Claude often wraps JSON in ```json ... ``` — must still parse.
+    fenced = "```json\n" + _GOOD + "\n```"
+    result = extract_news_facts([_record()], llm=FakeLLMClient(fenced))
+    assert result.status == "completed"
+    assert len(result.drafts) == 2
+
+
+def test_parses_json_with_prose_preamble():
+    prose = "Here is the JSON you requested:\n" + _GOOD + "\nHope this helps."
+    result = extract_news_facts([_record()], llm=FakeLLMClient(prose))
+    assert len(result.drafts) == 2
