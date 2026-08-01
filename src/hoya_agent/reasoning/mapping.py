@@ -54,58 +54,66 @@ def to_analysis_result(
     generation: ArbiterGeneration, *, request: Any, ledger: Any
 ) -> AnalysisResult | None:
     """Convert a validated Arbiter generation into a strict AnalysisResult, or None."""
-    analysis_as_of = _attr(request, "analysis_as_of")
     try:
-        claims = [
-            Claim(
-                claim_id=c.claim_id,
-                claim_type=ClaimType(c.claim_type),
-                assets=[Asset(a) for a in c.assets],
-                time_range=_time_range(c, analysis_as_of),
-                text=c.text,
-                based_on_claim_ids=list(c.based_on_claim_ids),
-                confidence=Reliability(c.confidence),
-                limitations=list(c.limitations),
-                invalidation_conditions=list(c.invalidation_conditions),
-            )
-            for c in generation.claims
-        ]
-        links = [
-            ClaimEvidenceLink(
-                claim_id=link.claim_id,
-                evidence_id=link.evidence_id,
-                stance=Stance(link.stance),
-                reason=link.reason,
-            )
-            for link in generation.claim_evidence_links
-        ]
-        invalidations = [
-            InvalidationCondition(
-                text=inv.text,
-                metric=inv.metric,
-                operator=InvalidationOperator(inv.operator) if inv.operator else None,
-                threshold=inv.threshold,
-                basis_evidence_id=inv.basis_evidence_id,
-            )
-            for inv in generation.invalidation_conditions
-        ]
-        return AnalysisResult(
-            run_id=_attr(request, "run_id"),
-            question=_attr(request, "question"),
-            assets=[Asset(a) for a in (_attr(request, "assets") or ())],
-            analysis_as_of=analysis_as_of,
-            direct_answer=generation.direct_answer,
-            market_context=None,
-            claims=claims,
-            claim_evidence_links=links,
-            confidence=Reliability(generation.confidence),
-            confidence_rationale=generation.confidence_rationale or "由 Arbiter 依證據產生。",
-            limitations=list(generation.limitations),
-            invalidation_conditions=invalidations,
-            watch_items=list(generation.watch_items),
-            insufficient_data=generation.insufficient_data,
-            degradation_notes=list(generation.degradation_notes),
-        )
+        return build_analysis_result(generation, request=request, ledger=ledger)
     except (ValidationError, ValueError, TypeError):
         # Any malformed model output degrades to the deterministic fallback.
         return None
+
+
+def build_analysis_result(
+    generation: ArbiterGeneration, *, request: Any, ledger: Any
+) -> AnalysisResult:
+    """Same mapping as `to_analysis_result` but raises on invalid output, so callers
+    that want the reason (for a degradation note) can catch it."""
+    analysis_as_of = _attr(request, "analysis_as_of")
+    claims = [
+        Claim(
+            claim_id=c.claim_id,
+            claim_type=ClaimType(c.claim_type),
+            assets=[Asset(a) for a in c.assets],
+            time_range=_time_range(c, analysis_as_of),
+            text=c.text,
+            based_on_claim_ids=list(c.based_on_claim_ids),
+            confidence=Reliability(c.confidence),
+            limitations=list(c.limitations),
+            invalidation_conditions=list(c.invalidation_conditions),
+        )
+        for c in generation.claims
+    ]
+    links = [
+        ClaimEvidenceLink(
+            claim_id=link.claim_id,
+            evidence_id=link.evidence_id,
+            stance=Stance(link.stance),
+            reason=link.reason,
+        )
+        for link in generation.claim_evidence_links
+    ]
+    invalidations = [
+        InvalidationCondition(
+            text=inv.text,
+            metric=inv.metric,
+            operator=InvalidationOperator(inv.operator) if inv.operator else None,
+            threshold=inv.threshold,
+            basis_evidence_id=inv.basis_evidence_id,
+        )
+        for inv in generation.invalidation_conditions
+    ]
+    return AnalysisResult(
+        run_id=_attr(request, "run_id"),
+        question=_attr(request, "question"),
+        assets=[Asset(a) for a in (_attr(request, "assets") or ())],
+        analysis_as_of=analysis_as_of,
+        direct_answer=generation.direct_answer,
+        market_context=None,
+        claims=claims,
+        claim_evidence_links=links,
+        confidence=Reliability(generation.confidence),
+        confidence_rationale=generation.confidence_rationale or "由 Arbiter 依證據產生。",
+        limitations=list(generation.limitations),
+        invalidation_conditions=invalidations,
+        watch_items=list(generation.watch_items),
+        insufficient_data=generation.insufficient_data,
+        degradation_notes=list(generation.degradation_notes),
+    )

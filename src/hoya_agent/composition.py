@@ -24,7 +24,7 @@ from hoya_agent.adapters.live_sources import binance_bar_loader, fear_greed_draf
 from hoya_agent.orchestration.pipeline import DeadlineAwarePipeline, OrganizerCsvPipeline
 from hoya_agent.ports import Clock
 from hoya_agent.reasoning.arbiter import Arbiter, ArbiterSettings
-from hoya_agent.reasoning.mapping import to_analysis_result
+from hoya_agent.reasoning.mapping import build_analysis_result
 from hoya_agent.reasoning.schemas import ArbiterGeneration
 
 _BINANCE_URL = "https://api.binance.com/api/v3/klines"
@@ -80,10 +80,15 @@ class MappingArbiter:
             deadline=deadline,
             degradation_notes=degradation_notes,
         )
-        result = to_analysis_result(generation, request=request, ledger=ledger)
         notes = list(notes)
-        if result is None:
-            notes.append("Arbiter 輸出無法映射為有效 AnalysisResult,改用決定論資料不足報告。")
+        try:
+            result = build_analysis_result(generation, request=request, ledger=ledger)
+        except Exception as exc:  # noqa: BLE001 - surface why the mapping failed
+            result = None
+            notes.append(
+                f"Arbiter 輸出無法映射為有效 AnalysisResult({type(exc).__name__}):"
+                f"{str(exc)[:400]}"
+            )
         return result, notes
 
 
