@@ -591,9 +591,18 @@ CSV↔live 切換點被明確表示且帶 `fetched_at`；`market_worker` 無 LLM
 > 而 `src/hoya_agent/reasoning/research_agent.py` 是 S7 的另一套實作，**兩者尚未合併**；
 > ② `evidence/ledger.py` 未寫；③ `adapters/official.py` 未寫。
 > **`reddit.py` 已定案不搬**（PR #8 一併移除）。
-> **指派：** 任務 C。**相依：** S1 ✅、S5 ✅（皆已滿足，可立即開工）。
+> **指派：** 任務 C。**相依：** S1 ✅、S5 ✅（皆已滿足,可立即開工）。
+>
+> **➕ 加入(2026-08-01,additive、契約安全):事實接地驗證(fact-grounding)。**
+> 新模組 `evidence/grounding.py`(純 deterministic、🚫 無 `boto3`/`httpx`):抽取 LLM 抽出事實
+> 中的「硬原子」(百分比/金額/數字/日期)並比對是否出現在 `content_reference`,擋掉模型自行
+> 補寫的數值/日期(跨語言:英文原文「fell 8%」可佐證中文「下跌 8%」)。分級 verified/partial/
+> unverified(contradicted 需語意複核,屬 reasoning 層)。**設計紅線:不動靜態 `reliability`、
+> 不加 `EvidenceItem` 欄位**——只走 confidence 上限 + `degradation_notes`/execution_log 揭露
+> (路線 A)。若日後要把 grounding 狀態秀在 UI(路線 B,加欄位),需改 `evidence-contracts.md`
+> 並經團隊簽核、且趁 Feature Freeze 前。已有 golden 測 `tests/unit/evidence/test_grounding.py`。
 
-**目標**：把新聞與社群的雜訊變成無立場、可查證、去重過的證據。
+**目標**:把新聞與社群的雜訊變成無立場、可查證、去重過的證據。
 
 **元件與職責**（→ [檔案地圖 §4.4](Architecture-FileMap.md)、[§4.5](Architecture-FileMap.md)）
 - `adapters/{cryptopanic,rss,official,alternative_me}.py`、`adapters/_assets.py`。
