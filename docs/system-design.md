@@ -376,3 +376,11 @@ CI 不依賴 live API。提交前另執行 formatting/lint、dependency review�
 ## 2026-08-01 implementation update
 
 The local implementation now follows the six-stage H2-Lite path with a 720-second analysis hard stop, Market/Research fork-join, deterministic Trust/Regime, and one-run dual-asset comparison. The full ledger remains the artifact of record; only the Arbiter projection is quota-balanced. Live Silver acceptance remains pending. See [implementation note](S8-S9-S9B-implementation.md).
+
+## S8 data-mode finalization
+
+The orchestration outcome may carry the effective data origin. Application
+finalization persists it to `run_config.json` and `RunSummary`, and revalidates
+the entire snapshot so an `official` run cannot be labelled `fixture` or
+`recorded_fallback`. This validation is part of artifact honesty, not a UI-only
+badge.
