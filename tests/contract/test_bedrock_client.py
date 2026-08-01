@@ -126,6 +126,35 @@ class RequestBuildingTests(unittest.TestCase):
         tools = request["toolConfig"]["tools"]
         self.assertEqual(len(tools), 1, "exactly one tool may be offered")
         self.assertIn("properties", tools[0]["toolSpec"]["inputSchema"]["json"])
+        self.assertEqual(request["system"], [{"text": "sys"}])
+
+    def test_empty_system_prompt_is_omitted_rather_than_sent_blank(self):
+        """Bedrock rejects ``system[0].text`` of length 0.
+
+        ``converse_structured`` defaults ``system_prompt`` to "", so an
+        unconditional system block makes every caller that omits it fail
+        client-side with ``ParamValidationError`` before the request is sent.
+        Verified against the live API: "Invalid length for parameter
+        system[0].text, value: 0, valid min length: 1".
+        """
+        request = build_converse_request(
+            model_id="anthropic.primary",
+            system_prompt="",
+            messages=[{"role": "user", "content": [{"text": "hi"}]}],
+            json_schema=DemoResult.model_json_schema(),
+            max_tokens=256,
+        )
+        self.assertNotIn("system", request)
+
+    def test_whitespace_only_system_prompt_is_omitted(self):
+        request = build_converse_request(
+            model_id="anthropic.primary",
+            system_prompt="   \n\t ",
+            messages=[{"role": "user", "content": [{"text": "hi"}]}],
+            json_schema=DemoResult.model_json_schema(),
+            max_tokens=256,
+        )
+        self.assertNotIn("system", request)
 
     def test_repair_message_quotes_errors_without_dropping_history(self):
         original = [{"role": "user", "content": [{"text": "原始問題"}]}]
