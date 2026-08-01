@@ -40,7 +40,7 @@
 Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC2。
 **每個檔的細節請看檔案地圖，本文不重列。**
 
-> ⚠️ **狀態掃描時間：2026-08-01，基準 commit `3d4020f`。**
+> ⚠️ **狀態掃描時間：2026-08-01，基準 commit `3158031`（加計 PR #25）。**
 > 本快照以實際 `main` 檔案、已執行驗收與外部 gate 為準；較舊章節若衝突，以本節為準。
 
 ### 1.1 現況快照（authoritative）
@@ -789,7 +789,7 @@ H3 不做任何 Bull/Bear/Judge 呼叫。
 ### S8 — H2-Lite 整合與降級路徑 ★ **Silver Exit**
 
 > **現況：🟡 gate 程式已補，Silver live gate 尚未實跑通過。**
-> 分支 `agent/s8-silver-gate` 從 `main@3d4020f` 補上 run/data-mode 傳遞與最終
+> PR #25 補上 run/data-mode 傳遞與最終
 > `RunConfigSnapshot` 重新驗證，並新增 run-mode、provenance、research timeout、
 > invalid Evidence、Arbiter failure，以及兩個 opt-in live gate。
 > 本次執行環境無 GitHub/外部網路、AWS credentials，且只有 Python 3.9/3.14
