@@ -73,6 +73,7 @@ language: zh-Hant
 - `reason` 要說明「這條證據為何能支撐/反對這個 claim」，不是把 `normalized_fact` 再抄一遍。
 - `neutral` 可提供背景，但**不能**用來滿足 conclusion 的證據覆蓋要求。
 - 所有 `evidence_id` 必須在 Ledger 中存在。
+- **`evidence_id` 一律是 `ev_` 開頭的 Ledger 條目；絕對不可填入 `cl_`（claim id）。** 一個 claim（inference/conclusion）要引用它所依據的其他 claim 時，只能寫進該 claim 的 `based_on_claim_ids`，**不要**用 Claim-Evidence Link 表達；link 只用來把 claim 連到真正的 `ev_` 證據。inference 與 conclusion 也必須各自連到至少一條 `ev_` 支持證據。
 
 ### 反方證據是硬性要求
 
@@ -180,6 +181,7 @@ language: zh-Hant
 送出前自我檢查：
 
 - [ ] 每個數字都能指到某個 `evidence_id`？
+- [ ] 每筆 link 的 `evidence_id` 都是 `ev_` 開頭（**沒有任何 `cl_`**）？claim 依賴只寫在 `based_on_claim_ids`？
 - [ ] fact/inference/conclusion 三層有真實推理增量，且無循環？
 - [ ] 每個 conclusion 都有支持性 link（或已標 `insufficient_data`）？
 - [ ] 反方證據已呈現，或已在 limitations 說明其不存在？
