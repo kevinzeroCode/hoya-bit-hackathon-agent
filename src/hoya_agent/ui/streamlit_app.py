@@ -26,7 +26,7 @@ from hoya_agent.application import ApplicationService, build_request
 from hoya_agent.clock import SystemClock
 from hoya_agent.models import Asset, RunMode
 from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline
-from hoya_agent.ui.presenter import summary_view
+from hoya_agent.ui.presenter import summary_view, trust_funnel
 
 UTC = timezone.utc
 # Organizer CSV ends 2026-05-31; Bronze replays that frozen cutoff (offline).
@@ -94,6 +94,25 @@ def _render_result(view: dict) -> None:
 
     if view["insufficient"]:
         st.warning("此增量無 Arbiter,依規格輸出 deterministic「資料不足」報告(方向性結論待 P3)。", icon="⚠️")
+
+    # Trust funnel: how scattered evidence distils into few independent voices.
+    raw_ledger = _artifact_text(view, "evidence.json")
+    if raw_ledger:
+        f = trust_funnel(json.loads(raw_ledger))
+        st.subheader("信任漏斗(多源資訊的信任提煉)")
+        g1, g2, g3, g4 = st.columns(4)
+        g1.metric("證據(去重後)", f["evidence_count"])
+        g2.metric("來源類型", f["source_type_count"], help="、".join(f["source_types"]) or "—")
+        g3.metric("獨立來源群", f["independence_group_count"], help="轉載/同源已併為同一群")
+        g4.metric("矛盾訊號", f["conflict_count"])
+        mix = f["reliability_mix"]
+        st.caption(
+            f"可信度組成 — 🟢 high {mix['high']}　·　🟡 medium {mix['medium']}　·　⚪ low {mix['low']}"
+        )
+        st.progress(
+            (f["independence_group_count"] / f["evidence_count"]) if f["evidence_count"] else 0.0,
+            text="獨立性:獨立來源群 / 證據筆數(越高代表越不是轉載堆疊)",
+        )
 
     # Report / Evidence / Execution Log as three tabs (spec §3.2 S3).
     tab_report, tab_evidence, tab_log = st.tabs(["📄 報告", "🧾 Evidence Ledger", "🪵 Execution Log"])
