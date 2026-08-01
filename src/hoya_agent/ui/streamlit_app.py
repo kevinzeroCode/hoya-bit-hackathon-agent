@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -85,14 +86,57 @@ def _run_offline(assets: list[Asset], question: str, run_mode: RunMode, progress
     return asyncio.run(service.run(request, progress=progress))
 
 
-def _run_live(assets: list[Asset], question: str, progress=None) -> object:
-    """Real-time run: live Binance market + Fear & Greed sentiment, no Bedrock/key.
+def _bedrock_env() -> tuple[str, str] | None:
+    """Return (region, model_id) if Bedrock is configured via env, else None.
 
-    `official` mode freezes the cutoff to now, so the analysis is of live data
-    up to this moment. News extraction and Arbiter reasoning (credentialed
-    Bedrock) are the next layer; this already gives real-time, multi-source
-    evidence deterministically.
+    Credentials themselves come from the standard AWS chain (EC2 IAM role or local
+    env) — never read or stored here. Only presence of region + model id gates
+    whether we attempt the reasoning layer.
     """
+    region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION")
+    model_id = os.getenv("BEDROCK_PRIMARY_MODEL_ID")
+    if region and model_id:
+        return region.strip(), model_id.strip()
+    return None
+
+
+def _live_pipeline(now):
+    """Bedrock-reasoning pipeline when configured; else deterministic live data.
+
+    Any failure building the reasoning path degrades to the deterministic market
+    + sentiment pipeline, which itself renders an honest report — the run never
+    crashes.
+    """
+    bedrock = _bedrock_env()
+    if bedrock is not None:
+        try:
+            from hoya_agent.composition import build_bedrock_llm, build_live_pipeline
+
+            region, model_id = bedrock
+            llm = build_bedrock_llm(
+                region=region,
+                primary_model_id=model_id,
+                fallback_model_id=os.getenv("BEDROCK_FALLBACK_MODEL_ID") or None,
+            )
+            return build_live_pipeline(clock=SystemClock(), llm=llm, analysis_as_of=now), True
+        except Exception:  # noqa: BLE001 - fall back to deterministic live data
+            pass
+    return (
+        OrganizerCsvPipeline(
+            load_bars=binance_bar_loader(now),
+            extra_drafts=fear_greed_drafts(now),
+            analysis_date=now.date(),
+            market_source_name="binance_spot",
+            market_independence_group="binance",
+            market_source_url="https://api.binance.com/api/v3/klines",
+        ),
+        False,
+    )
+
+
+def _run_live(assets: list[Asset], question: str, progress=None) -> object:
+    """Real-time run: live Binance market + Fear & Greed; Arbiter reasons when
+    Bedrock is configured (EC2 IAM role / env), otherwise deterministic evidence."""
     now = datetime.now(UTC)
     request = build_request(
         question=question or "即時市場狀況與資料整合",
@@ -101,19 +145,13 @@ def _run_live(assets: list[Asset], question: str, progress=None) -> object:
         now=now,
         run_id_suffix="live",
     )
+    pipeline, with_bedrock = _live_pipeline(now)
+    sources = ["binance_spot", "fear_greed"] + (["bedrock"] if with_bedrock else [])
     service = ApplicationService(
         artifact_root=Path(tempfile.mkdtemp(prefix="hoya-live-")),
         clock=SystemClock(),
-        pipeline=OrganizerCsvPipeline(
-            load_bars=binance_bar_loader(now),
-            extra_drafts=fear_greed_drafts(now),
-            analysis_date=now.date(),
-            # Real provenance: this series is live Binance spot, NOT the organizer CSV.
-            market_source_name="binance_spot",
-            market_independence_group="binance",
-            market_source_url="https://api.binance.com/api/v3/klines",
-        ),
-        configured_sources=["binance_spot", "fear_greed"],
+        pipeline=pipeline,
+        configured_sources=sources,
     )
     return asyncio.run(service.run(request, progress=progress))
 
