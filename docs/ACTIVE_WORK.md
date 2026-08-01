@@ -86,10 +86,15 @@
 
 ## 進行中的認領
 
-### P1（整合／發布）
+> **P1–P4 是舊的角色代號；現行分工以「四份平行任務」的專長切分為準。**
+> 對照：`agent 用 Kiro → A`、`分析指標 → B`、`資訊整理 → C`、`UI → D`。
+> 底下各節與「已完成並凍結」表裡的 P2／P3 標記保留為**歷史紀錄**——
+> 指的是「誰寫了那批 code」，不是現在誰負責哪一份。
+
+### P1（整合／發布）＝ agent 用 Kiro
 
 > **現在的工作＝任務 A**，但**先做 gate**：把 `task/6-bedrock-reasoning` 合進 `main`，
-> 其他三人才能開工。細節見「四份平行任務」。
+> B 和 C 才能開工。細節見「四份平行任務」。
 
 - **Task 1a — 凍結規範性資料契約**（`pyproject.toml`、`models.py`、`tests/unit/test_models.py`）
   - 分支：`task/1a-contracts-core`
@@ -109,79 +114,128 @@
   - `data/`：indicators、market_series、market_worker、price_analysis、regime、text_clean
   - `evidence/`：policies（reliability 靜態表）、processor、types
   - `render_report.py` + HTML 模板（已產出 `render/out/hoya-report-BTC.html`）
-- **未認領的是「收斂」而非「重寫」**：把上述搬進 `src/hoya_agent/`。等 `models.py`。
+- **未認領的是「收斂」而非「重寫」**：把上述搬進 `src/hoya_agent/`。
+- **這棵樹現在拆給兩個人**：`data/` 與行情 adapters → 任務 B（分析指標）；
+  `evidence/` 與新聞社群 adapters → 任務 C（資訊整理）。兩人的協調規則見「四份平行任務」。
 - 動手前務必先看這條分支，**不要重做已經寫好且測試通過的東西**。
 
 ### P3（推理／報告）
 
-> **現在的工作＝任務 C**（推理層去重 + `reporting/lint.py`）。等 P1 的 gate 合併完就能開工，
-> **不必等 `models.py`**——lint 是純字串比對，去重動的是既有檔案。
+> `reasoning/` 的工作已依專長重新拆開：**LLM 邊界與去重併進任務 A**（agent 用 Kiro），
+> **多事實抽取 `research_agent.py` 併進任務 C**（資訊整理），
+> **`reporting/lint.py` 併進任務 D**（UI）。
 
-- **Task 6 已完成**，待 P1 審核合併（分支 `task/6-bedrock-reasoning`）。
-- 型別替換（`_stubs.py` → 真 `models.py`）與 Bedrock live 冒煙留到 A 合併後。
+- **Task 6 已完成**，待 gate 合併（分支 `task/6-bedrock-reasoning`）。
+- 型別替換（`_stubs.py` → 真 `models.py`）留到 A 合併後。
   `renderer.py` 屬 Task 2，要等 Kiro 跑完。
 
-### P4（UI／Demo／部署）
+### P4（UI／Demo／部署）＝ UI
 
-> **現在的工作＝任務 D**。**四個人裡唯一連 gate 都不用等的**——不碰 `src/hoya_agent/`，
-> 現在就能開工，而且 Bedrock 模型開通有前置時間，越早越好。
+> **現在的工作＝任務 D，而且排在全隊最前面。** 不是因為它擋人，是因為它若失敗，
+> 其他三份全部白做——Bedrock 到今天為止一次都沒有真的呼叫過。它也不需要等 gate。
 
-- 分支：`task/0-service-preflight`
+- 分支：`task/0-preflight-and-ui`
 - 最高優先的一件事：**跑出專案史上第一次真實 Bedrock Converse 呼叫**（目前是零次）。
+- 可直接接手 P2 已寫好的 `render_report.py` 與 HTML 模板，不必從零開始。
 
 ## 四份平行任務（2026-08-01 重新分配）
 
 > 先前的排程讓三個人同時卡在 `models.py`。以下重新切成**四份路徑互不重疊的任務**，
 > 四個人可以同時動工。關鍵在於把「搬檔案」和「換型別」拆開——
 > 搬移與 import 改寫**不需要** `models.py`，只有最後的型別替換需要。
+>
+> **開工順序不是照依賴排的，是照風險排的。** Bedrock 到今天為止一次都沒有真的呼叫過；
+> 若模型開通沒過或 model ID 不對，整個 H2-Lite 架構是死的，A／B／C 做得再好都沒用。
+> 所以 **D 的 Bedrock preflight 排在所有事情前面**，而且它剛好不需要等任何人。
 
-### 唯一的 gate（約 30–60 分鐘，做完四份就全部解鎖）
+### 唯一的 gate（約 30–60 分鐘，做完就解鎖 B 和 C）
 
-**P1 先把 `task/6-bedrock-reasoning` 合併進 `main`。** 它已測過（134 passed + 15 subtests）、
-路徑合乎 `structure.md`、不需修改。合併後 `main` 第一次有一棵真的樹，其餘三人才有目標可搬。
+**「agent 用 Kiro」的人先把 `task/6-bedrock-reasoning` 合併進 `main`。**
+它已測過（134 passed + 15 subtests）、路徑合乎 `structure.md`、不需修改。
+合併後 `main` 第一次有一棵真的樹，B 和 C 才有目標可搬。
 合併時唯一會撞的是 `src/hoya_agent/__init__.py` 與 `adapters/__init__.py`，兩個都是空殼。
 
-### 四份任務與路徑佔用（互不重疊，可同時 commit）
+**D（UI）不受這個 gate 影響，現在就能開工。**
 
-| | 任務 | 分支 | 獨佔路徑 |
+### 四份任務與路徑佔用（依四人專長切分，互不重疊，可同時 commit）
+
+分工依據是四個人實際的專長：**UI／資訊整理／agent 用 Kiro／分析指標**。
+P2 現有那 48 個檔照這個切法會自然裂成兩半——`data/` 與行情 adapters 屬分析指標，
+`evidence/` 與新聞社群 adapters 屬資訊整理。已確認**沒有跨界共用檔案**
+（`_assets.py` 只被 reddit／rss 用，`text_clean.py` 只被 research 抽取用）。
+
+| 專長 | 任務 | 分支 | 獨佔路徑 |
 |---|---|---|---|
-| **A／P1** | 地基與契約 | `task/1a-contracts-core` | `pyproject.toml`、`src/hoya_agent/models.py`、`tests/unit/test_models.py` |
-| **B／P2** | 資料層搬家 | `task/4-data-layer-move` | `src/hoya_agent/{adapters（除 bedrock.py）,data,evidence}/`、`tests/unit/{data,evidence}/`、`tests/contract/adapters/` |
-| **C／P3** | 推理層去重 + 報告 lint | `task/6b-reasoning-consolidation` | `src/hoya_agent/reasoning/`、`src/hoya_agent/reporting/lint.py` |
-| **D／P4** | AWS preflight + UI 骨架 | `task/0-service-preflight` | `scripts/`、`streamlit_app.py`、`Dockerfile`、`compose.yaml`、`docs/evidence/` |
+| **agent 用 Kiro** | A 契約與骨幹 | `task/1a-contracts-core` | `pyproject.toml`、`models.py`、`config.py`、`clock.py`、`ports.py`、`orchestration/`、`reasoning/`（除 `research_agent.py`）、所有 `__init__.py` |
+| **分析指標** | B 市場數據層 | `task/4-market-data-layer` | `data/`、`adapters/{organizer_csv,binance,okx}.py`、`tests/unit/data/` |
+| **資訊整理** | C 證據與敘事層 | `task/5-evidence-layer` | `evidence/`、`adapters/{_assets,cryptopanic,reddit,rss,alternative_me}.py`、`reasoning/research_agent.py`、`tests/unit/evidence/` |
+| **UI** | D 呈現與交付 | `task/0-preflight-and-ui` | `streamlit_app.py`、`ui/`、`reporting/`、`scripts/`、`Dockerfile`、`compose.yaml`、`docs/evidence/` |
 
-**A — 地基與契約（P1）**
-用 Kiro 依 `docs/ai/KIRO_TASK_1A_PROMPT.md` 跑 Task 1a，產出 `pyproject.toml`（含依賴：
-`httpx`、`pydantic`、`boto3`、`pytest`、`ruff`）與凍結版 `models.py`。
-**驗收**：`uv venv --python 3.12 .venv` + `pip install -e ".[dev]"` 成功，`test_models.py` 全綠。
+**A — 契約與骨幹（agent 用 Kiro）**
+> 一句話：用 Kiro 把全隊共用的型別凍結下來，並讓 `main` 從零個 `.py` 變成一棵裝得起來的樹。
 
-**B — 資料層搬家（P2）**
-`p2-etl-mvp/{adapters,data,evidence}` → `src/hoya_agent/`，import 從頂層平面式改成
-`from hoya_agent.data.x import ...`，扁平 `tests/` 分流進 `tests/unit/` 與 `tests/contract/`，
-刪 `adapters/coingecko.py`（steering 已定 MVP 不實作），`pyproject.toml` 的依賴交給 A。
-**先不動型別**——`data/types.py`、`evidence/types.py` 原地保留，等 A 合併後另開一輪機械替換。
-**驗收**：122 個測試在新路徑上原封不動全綠。
+先做 gate（見上），再用 Kiro 依 `docs/ai/KIRO_TASK_1A_PROMPT.md` 跑 Task 1a，產出
+`pyproject.toml`（依賴至少含 `httpx`、`pydantic`、`boto3`、`pytest`、`ruff`）與凍結版 `models.py`。
+接著收斂 LLM 邊界：留 `adapters/bedrock.py`，刪 `gpt_client.py`、`run_gpt_extract.py`，
+修掉 `llm_client.py` 裡 `AnthropicBedrockMantle` 那段錯誤 docstring。
+**驗收**：`uv venv --python 3.12 .venv` + `pip install -e ".[dev]"` 成功，`test_models.py` 全綠，
+`reasoning/` 只剩一套 LLM 邊界。
 
-**C — 推理層去重 + 報告 lint（P3）**
-依「待 P1 裁決」第一條收斂：LLM 邊界留 `adapters/bedrock.py`，把 P2 的
-`research_extractor.py`（多事實抽取）併進 `reasoning/`，改成依賴 `bedrock.py`；
-刪 `gpt_client.py`、`run_gpt_extract.py`；修掉 `AnthropicBedrockMantle` 那段錯誤 docstring。
-接著寫 `reporting/lint.py`（純字串比對，不依賴 `models.py`）。
-**驗收**：reasoning 只剩一套 LLM 邊界；lint 對「買進／加倉／做多」等詞全部攔下。
+**B — 市場數據層（分析指標）**
+> 一句話：把 OHLCV 變成可回溯的數字——指標計算、market regime 判定、量化 invalidation 門檻。
 
-**D — AWS preflight + UI 骨架（P4）**
-Task 0：Bedrock 模型開通、確認模型 ID、**跑出專案史上第一次真實 Converse 呼叫**（目前是零次，
-這是目前最大的未驗證風險）。接著 Streamlit 骨架先接假資料跑通三種 run mode 的標示，
-再補 `Dockerfile` / `compose.yaml`。全程不碰 `src/hoya_agent/` 的核心模組。
-**驗收**：一次成功的 Bedrock 呼叫截圖進 `docs/evidence/`；`streamlit run` 能開起來。
+`p2-etl-mvp/data/`（indicators、market_series、market_worker、price_analysis、regime）與
+`adapters/{organizer_csv,binance,okx}.py` 搬進 `src/hoya_agent/`，import 從頂層平面式改成
+`from hoya_agent.data.x import ...`，測試分流進 `tests/unit/data/` 與 `tests/contract/`。
+**先不動型別**——`data/types.py` 原地保留，等 A 合併後另開一輪機械替換。
+延伸工作：R16 創意層的 **Market Regime** 與 **量化 invalidation 門檻**本來就屬這一層。
+設計輸入看 `docs/price-data-analysis-outputs.html`（A1–A10 已用主辦方資料集實算過）。
+**驗收**：既有測試在新路徑上原封不動全綠。
+
+**C — 證據與敘事層（資訊整理）**
+> 一句話：把新聞社群的雜訊變成無立場、可查證的證據——來源可信度、去重與獨立性、多事實抽取、Trust Scorecard。
+
+`p2-etl-mvp/evidence/`（policies、processor）、`adapters/{_assets,cryptopanic,reddit,rss,alternative_me}.py`、
+`data/text_clean.py`（搬到 `evidence/text_clean.py`，canonical `data/` 只放市場序列與指標）搬進套件樹。
+刪 `adapters/coingecko.py`（steering 已定 MVP 不實作）。
+把 `research_extractor.py` 的 relevance filtering 與多事實拆解併進 `reasoning/research_agent.py`，
+改成依賴 A 的 `bedrock.py` 而非自有 `LLMClient` Protocol。
+延伸工作：R16 創意層的 **Trust Scorecard**（`evidence/trust.py`）本來就屬這一層。
+**驗收**：既有測試在新路徑上全綠；一篇文章能拆出多個 EvidenceDraft。
+
+**D — 呈現與交付（UI）**
+> 一句話：讓評審看得到也跑得動——Streamlit 三模式介面、繁中報告渲染、投資建議 lint、Docker 與 demo。
+
+**最高優先且不等任何人**：Bedrock 模型開通、確認模型 ID、**跑出專案史上第一次真實 Converse 呼叫**
+（目前是零次；若這件事失敗，A／B／C 三份全部白做，所以它排在所有事情前面）。
+接著 Streamlit 骨架先接假資料跑通三種 run mode 的標示，寫 `reporting/lint.py`
+（純字串比對，不依賴 `models.py`），再補 `Dockerfile` / `compose.yaml`。
+**可直接接手**：P2 已寫好 `p2-etl-mvp/render_report.py` 與 HTML 模板，並產出過
+`render/out/hoya-report-BTC.html`，不必從零開始。
+**驗收**：一次成功的 Bedrock 呼叫證據進 `docs/evidence/`；`streamlit run` 能開起來；
+lint 對「買進／加倉／做多／配置」等詞全部攔下。
+
+### 兩條協調規則（不遵守一定會撞）
+
+1. **`p2-etl-mvp/` 誰都不要刪。** B 和 C 會同時掏空這個目錄（B 拿 `data/` 與行情 adapters，
+   C 拿 `evidence/` 與新聞 adapters）。任何一方順手 `git rm -r p2-etl-mvp/`，另一方 rebase 就會炸開。
+   **兩人都只用 `git mv`，目錄本身留著，最後由 A 在合流時清掉。**
+2. **A 落地前，B 和 C 不要自己建 `pyproject.toml`。** 那是 A 的獨佔路徑，自己建等於開出第三棵樹。
+   要跑測試就用臨時 venv：
+
+   ```bash
+   uv venv --python 3.12 .venv
+   uv pip install --python .venv/Scripts/python.exe httpx pydantic boto3 pytest
+   PYTHONPATH=src .venv/Scripts/python.exe -m pytest tests -q
+   ```
 
 ### 合流順序（四份做完之後）
 
-1. A 先合 → `models.py` 進 `main`
+1. A 先合 → `models.py` 與 `pyproject.toml` 進 `main`
 2. B、C 各自 rebase 到 A 之上，做型別替換（P2 的 provisional dataclass 欄位名刻意與契約一致，是機械式取代）
-3. D 最後接真資料
-4. 然後才是 Task 2 fixture 垂直切片、Task 3 編排、Task 11 創意層
-   （註：Task 11 的 `data/regime.py`、`evidence/policies.py` P2 已寫過，先看過再動手）
+3. D 最後把 UI 從假資料接到真資料
+4. 然後才是 Task 2 fixture 垂直切片與 Task 3 編排
+   （R16 創意層已分進 B 和 C，不再是孤兒任務）
 
 ## 已知的環境問題
 
