@@ -4,18 +4,18 @@ inclusion: always
 
 # Work-in-Progress Guards
 
-Current coordination state for `main@d7245e4` after PR #18. Design authority remains
+Current coordination state for `main@21e6f14` with S8 completion on PR #26. Design authority remains
 in the other steering files; human-readable detail is in `docs/ACTIVE_WORK.md`.
 
 ## Status
 
-- Complete: S1, S2, S3, S4, S5, S7.
+- Complete: S1, S2, S3, S4, S5, S7, S8.
 - Offline-complete: S9 and S9B.
-- Partial: S0, S6 and S8.
+- Partial: S0 and S6.
 - Not complete: S10 and S11.
-- Never describe offline S8/S9/S9B smoke as live Silver, Gold or deployment success.
+- S8 Silver is backed by the 2026-08-02 integrated live result (`1 passed in 50.15s`); do not extend that claim to Gold or deployment.
 - The non-live pytest suite and `ruff check .` were verified on 2026-08-01 (S4 second pass):
-  1100 passed / 0 failed, Ruff clean. GitHub CI/status checks are still not configured.
+  latest S8 branch evidence is 1143 passed / 3 skipped, Ruff clean. GitHub CI/status checks are still not configured.
 
 ## Frozen paths
 
@@ -67,10 +67,9 @@ The complete Evidence Ledger remains the artifact of record and must not be trun
    `counter_signal_operations`, empty by default), so S6 must supply that source list when
    it assembles the live pipeline or the order will never trigger in a real run.
 3. S6 canonical baseline research acceptance and remaining normalization gaps.
-4. S8 one schema-valid live Bedrock run through baseline market/research plus an independent fallback run.
-5. S10 two separate single-asset Gold runs and deadline/artifact acceptance.
-6. S11 CI, ECR/EC2, rollback and one timed judged-flow rehearsal.
-7. Remove repository-wide Ruff debt and run the complete non-live suite.
+4. S10 two separate single-asset Gold runs and deadline/artifact acceptance.
+5. S11 CI, ECR/EC2, rollback and one timed judged-flow rehearsal.
+6. Configure GitHub CI/status checks and preserve the verified non-live/Ruff baseline.
 
 ## Hard guards
 
