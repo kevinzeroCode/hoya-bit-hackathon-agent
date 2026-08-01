@@ -143,7 +143,7 @@
   - **Acceptance:** The network-free application-service fixture path produces four parseable artifacts and honest `rehearsal` metadata without Bedrock or AWS. The report contains no facts absent from fixtures, missing analysis produces the deterministic fallback, and artifact-write failures follow the approved disclosure contract. Bronze is completed only after the Task 7 offline Streamlit checkpoint also passes.
   - **Commit:** `feat: add fixture artifact vertical slice`
 
-- [ ] **3. Implement deadline-aware fork-join orchestration** — core landed in PR #18; dedicated fake-clock/cancellation acceptance remains
+- [x] **3. Implement deadline-aware fork-join orchestration**
   - **Owner:** P1
   - **Wave / dependency:** Wave 2 / Task 2
   - **Spec:** 8.2, 9.1, 11, 12
@@ -154,16 +154,19 @@
     - Create: `src/hoya_agent/orchestration/pipeline.py`
     - Create: `tests/unit/orchestration/test_deadline.py`
     - Create: `tests/unit/orchestration/test_run_state.py`
+    - Create: `tests/unit/orchestration/test_skip_order.py`
     - Create: `tests/integration/test_fork_join.py`
-  - [ ] Write failing tests for the shared run deadline, per-stage deadlines, cancellation and the optional-work skip order `optional context -> counter-signal second search` using a fake clock/sleeper; H3 remains disabled rather than becoming optional runtime work.
-  - [ ] Implement `DeadlineManager` with remaining-time calculation and stage-scoped `asyncio.wait_for`; no real-time sleeps in tests and no stage may wait indefinitely.
-  - [ ] Write a failing fork-join test proving Market Worker and Research Agent overlap in time and `asyncio.gather(..., return_exceptions=True)` preserves completed sibling output.
-  - [ ] Implement in-memory stage states `pending|running|completed|degraded|failed|cancelled` and terminal run states `completed|degraded|failed|cancelled`.
-  - [ ] Test and implement `WorkerResult.completed -> completed`, `WorkerResult.partial -> degraded`, `WorkerResult.failed -> failed`, and task/deadline cancellation -> `cancelled`.
-  - [ ] Keep `analysis_as_of` immutable after run creation and stream stage transitions, terminal state, source success/failure and sanitized tool/agent summaries to `execution_log.jsonl` and final `run_config.json`.
-  - [ ] Keep cancellation compatibility in-process; do not add a cancellation UI, database, queue, persistent job record or remote orchestration service.
-  - [ ] Run `python -m pytest tests/unit/orchestration tests/integration/test_fork_join.py -q`.
-  - **Acceptance:** One branch timeout reaches Renderer with completed sibling Evidence and a degraded state; stage deadlines cancel pending calls; cancellation maps to `cancelled`; terminal state is logged and exported without being inferred by the UI.
+    - Create: `tests/integration/test_cancellation.py`
+    - Create: `tests/integration/test_skip_order_enforcement.py`
+  - [x] Write failing tests for the shared run deadline, per-stage deadlines, cancellation and the optional-work skip order `optional context -> counter-signal second search` using a fake clock/sleeper; H3 remains disabled rather than becoming optional runtime work. (`test_deadline.py`, `test_run_state.py`, `test_skip_order.py`; H3 stays in the order's vocabulary but is never classified or scheduled, so it is never reported as skipped.)
+  - [x] Implement `DeadlineManager` with remaining-time calculation and stage-scoped `asyncio.wait_for`; no real-time sleeps in tests and no stage may wait indefinitely. (`Stage` milestones scale from a reference 720 s window; finalize keeps `max(20%, min(60 s, half the run))`.)
+  - [x] Write a failing fork-join test proving Market Worker and Research Agent overlap in time and `asyncio.gather(..., return_exceptions=True)` preserves completed sibling output. (`test_fork_join.py`: branches await each other's `asyncio.Event`, so serial execution fails the test.)
+  - [x] Implement in-memory stage states `pending|running|completed|degraded|failed|cancelled` and terminal run states `completed|degraded|failed|cancelled`. (`RunStateMachine`; illegal transitions raise `ValueError`.)
+  - [x] Test and implement `WorkerResult.completed -> completed`, `WorkerResult.partial -> degraded`, `WorkerResult.failed -> failed`, and task/deadline cancellation -> `cancelled`. (`stage_state_for()`; one cancelled branch beside a completed sibling is `degraded`; an empty ledger with a cancelled market branch, or a caller-cancelled run, is `cancelled`. A caller-cancelled run finalizes all four artifacts labelled `cancelled` and then re-raises `CancelledError` — see `tests/integration/test_cancellation.py`.)
+  - [x] Keep `analysis_as_of` immutable after run creation and stream stage transitions, terminal state, source success/failure and sanitized tool/agent summaries to `execution_log.jsonl` and final `run_config.json`. (stage_start/stage_end with `duration_ms` now stream from `RunStateMachine`; per-stage *budgets* are not yet in `run_config.json` because `RunConfigSnapshot` is frozen — `budget_seconds()` has the data ready.)
+  - [x] Keep cancellation compatibility in-process; do not add a cancellation UI, database, queue, persistent job record or remote orchestration service.
+  - [x] Run `python -m pytest tests/unit/orchestration tests/integration/test_fork_join.py -q`. (66 passed; full non-live suite 1100 passed / 0 failed, `ruff check .` clean, 2026-08-01)
+  - **Acceptance:** One branch timeout reaches Renderer with completed sibling Evidence and a degraded state; stage deadlines cancel pending calls; cancellation maps to `cancelled`; terminal state is logged and exported without being inferred by the UI. **Met.** The skip order is enforced by trimming the `ResearchPlan` handed to the frozen Research Agent; which operations count as optional is declared by the composition root (`optional_operations` / `counter_signal_operations`, empty by default), so S6 supplies the source list when it assembles the live pipeline.
   - **Commit:** `feat: add deadline aware orchestration`
 
 - [x] **4. Implement deterministic OHLCV market evidence**

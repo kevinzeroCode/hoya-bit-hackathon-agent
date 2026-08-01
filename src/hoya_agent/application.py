@@ -30,6 +30,8 @@ from hoya_agent.models import (
     AnalysisRequest,
     Asset,
     DataMode,
+    DegradationEvent,
+    EvidenceLedger,
     ExecutionEvent,
     RunConfigSnapshot,
     RunContext,
@@ -37,7 +39,7 @@ from hoya_agent.models import (
     RunSummary,
     TerminalState,
 )
-from hoya_agent.orchestration.pipeline import AnalysisPipeline
+from hoya_agent.orchestration.pipeline import AnalysisPipeline, PipelineOutcome
 from hoya_agent.ports import Clock, ProgressSink
 from hoya_agent.reporting.advice_lint import advice_violations
 from hoya_agent.reporting.artifacts import (
@@ -154,7 +156,26 @@ class ApplicationService:
         for warning in _asset_mismatch_warnings(request):
             emit(self._event(context, "run", "request_asset_mismatch", "warning", message=warning))
 
-        outcome = await self._pipeline.execute(context, emit)
+        cancelled_error: asyncio.CancelledError | None = None
+        try:
+            outcome = await self._pipeline.execute(context, emit)
+        except asyncio.CancelledError as exc:
+            # Cancellation is never suppressed. It is finalized: the four artifacts
+            # are written from what already exists, honestly labelled `cancelled`,
+            # and then the error is re-raised at the end of this method. Everything
+            # between here and that re-raise must stay await-free, because a further
+            # await inside a cancelled task raises again immediately.
+            cancelled_error = exc
+            outcome = _cancelled_outcome(context, self._clock.now_utc())
+            emit(
+                self._event(
+                    context,
+                    "run",
+                    "run_cancelled",
+                    TerminalState.cancelled.value,
+                    message="run cancelled; finalizing artifacts before re-raising",
+                )
+            )
 
         # evidence.json as soon as the ledger exists, so a reasoning failure
         # cannot remove traceability.
@@ -222,7 +243,16 @@ class ApplicationService:
         store.disclose_missing(terminal_state)
 
         if progress_tasks:
-            await asyncio.gather(*progress_tasks)
+            if cancelled_error is None:
+                await asyncio.gather(*progress_tasks)
+            else:
+                # Best-effort UI publishes; awaiting them inside a cancelled task
+                # would raise before the re-raise below.
+                for task in progress_tasks:
+                    task.cancel()
+
+        if cancelled_error is not None:
+            raise cancelled_error
 
         return RunSummary(
             run_id=context.run_id,
@@ -315,6 +345,35 @@ def _asset_mismatch_warnings(request: AnalysisRequest) -> list[str]:
 
 def _fallback_reason(degradation_notes: Sequence[str]) -> str:
     return degradation_notes[0] if degradation_notes else "分析階段未產出可驗證結果"
+
+
+def _cancelled_outcome(context: RunContext, now: datetime) -> PipelineOutcome:
+    """A schema-valid outcome for a run cancelled before the pipeline returned.
+
+    There is no ledger to recover, so the empty one carries the reason. A stable
+    filename is not proof of a successful run, and an empty ledger with no stated
+    cause would be exactly that.
+    """
+    message = "Run 在分析完成前被取消，未取得可交付證據。"
+    return PipelineOutcome(
+        ledger=EvidenceLedger(
+            run_id=context.run_id,
+            analysis_as_of=context.analysis_as_of,
+            run_mode=context.run_mode,
+            degradation_events=[
+                DegradationEvent(
+                    stage="run",
+                    event_type="run_cancelled",
+                    source="application",
+                    message=message,
+                    timestamp=now,
+                )
+            ],
+        ),
+        result=None,
+        terminal_state=TerminalState.cancelled,
+        degradation_notes=[message],
+    )
 
 
 def _terminal_state(pipeline_state: TerminalState, store: LocalArtifactStore) -> TerminalState:

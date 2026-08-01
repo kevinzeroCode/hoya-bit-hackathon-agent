@@ -68,15 +68,18 @@
    - **Impact:** Low — documented as not-yet-built. Will need a UI section when implemented
    - **Recommendation:** Add to components.md when `streamlit_app.py` is created
 
-2. **`orchestration/deadline.py`**
-   - **Gap:** Planned file that doesn't exist yet. Deadline logic is described conceptually in workflows/architecture but no implementation
-   - **Impact:** Medium — deadline management is critical for competition
-   - **Recommendation:** Add to components.md and interfaces.md when this file lands
+2. **`orchestration/deadline.py`** — ✅ resolved 2026-08-01
+   - Now owns `Stage` budget milestones (planner/gather/evidence/reason/artifact) stored as
+     fractions of a reference 720 s analysis window, `deadline_for`, `remaining`, `budget_for`,
+     `budget_seconds`, `for_run`, and a `max(20%, min(60 s, half the run))` finalize reserve
+   - Covered by `tests/unit/orchestration/test_deadline.py` (17 tests, injected fake clock)
 
-3. **`orchestration/run_state.py`**
-   - **Gap:** Planned file that doesn't exist yet. Run state tracking is conceptual only
-   - **Impact:** Medium — needed for full pipeline wiring
-   - **Recommendation:** Add to components.md when this file lands
+3. **`orchestration/run_state.py`** — ✅ resolved 2026-08-01
+   - Now owns `RunStateMachine` (stage lifecycle + stage_start/stage_end streaming +
+     `stage_durations_ms`), `stage_state_for(WorkerStatus)` (`partial -> degraded`) and
+     `derive_terminal_state(states, run_cancelled=...)`
+   - One cancelled branch beside a completed sibling is `degraded`; a cancelled run is `cancelled`
+   - Covered by `tests/unit/orchestration/test_run_state.py` (22 tests)
 
 4. **`reporting/lint.py`**
    - **Gap:** Planned in structure.md but unowned. Referenced by renderer's `lint=hook` parameter. No implementation exists
@@ -143,7 +146,7 @@
 5. Update when the full pipeline wiring (Task 3 completion) is done
 6. Add Streamlit UI documentation when `streamlit_app.py` is created
 7. Create `tests/acceptance/` and `tests/live/` directories with initial structure
-8. Document `orchestration/deadline.py` and `orchestration/run_state.py` when implemented
+8. ~~Document `orchestration/deadline.py` and `orchestration/run_state.py` when implemented~~ — done 2026-08-01; both now carry per-stage budgets and the stage lifecycle (see items 2 and 3 above)
 9. Document the `lint.py` implementation when owned and written
 
 ### Low Priority

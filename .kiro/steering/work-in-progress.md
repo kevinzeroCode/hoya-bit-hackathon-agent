@@ -9,12 +9,13 @@ in the other steering files; human-readable detail is in `docs/ACTIVE_WORK.md`.
 
 ## Status
 
-- Complete: S1, S2, S5, S7.
+- Complete: S1, S2, S3, S4, S5, S7.
 - Offline-complete: S9 and S9B.
-- Partial: S0, S4, S6 and S8.
-- Not complete: S3, S10 and S11.
+- Partial: S0, S6 and S8.
+- Not complete: S10 and S11.
 - Never describe offline S8/S9/S9B smoke as live Silver, Gold or deployment success.
-- Full pytest/Ruff and GitHub CI/status checks are not currently verified.
+- The non-live pytest suite and `ruff check .` were verified on 2026-08-01 (S4 second pass):
+  1100 passed / 0 failed, Ruff clean. GitHub CI/status checks are still not configured.
 
 ## Frozen paths
 
@@ -43,6 +44,14 @@ The complete Evidence Ledger remains the artifact of record and must not be trun
 - `_provisional_seams.py` and `tests/integration/test_s1_seam_bridge.py` are deleted.
 - Application, artifact and orchestration code use canonical `models.py` / `ports.py`.
 - `DeadlineAwarePipeline`, `DeadlineManager` and run-state derivation are present.
+- 2026-08-01 (S4 second pass): `DeadlineManager` carries per-stage budget milestones
+  (`Stage`, `deadline_for`, `budget_for`, `budget_seconds`, `for_run`) with proportional
+  scaling and a `max(20%, min(60 s, half the run))` finalize reserve; `run_state.py` carries
+  `RunStateMachine` and `stage_state_for(WorkerStatus)`; the fork-join cancels unfinished
+  branches and then awaits them. Covered by `tests/unit/orchestration/test_deadline.py`,
+  `test_run_state.py` and `tests/integration/test_fork_join.py` (53 passed). A caller-cancelled
+  run finalizes all four artifacts labelled `cancelled` and then re-raises `CancelledError`
+  (`tests/integration/test_cancellation.py`).
 - Trust Scorecard, regime/unavailable, Evidence-backed invalidation and dual-asset comparison
   are present and covered by the PR #18 offline acceptance path.
 - Frozen reasoning and prompts were not changed by PR #18.
@@ -50,7 +59,13 @@ The complete Evidence Ledger remains the artifact of record and must not be trun
 ## Open work
 
 1. S3 canonical Streamlit Bronze, prohibited-advice lint and container shell.
-2. S4 fake-clock, cancellation and fork-join acceptance coverage.
+2. S4 is complete. The fixed optional-work skip order lives in
+   `orchestration/deadline.py` (`OptionalWork`, `SKIP_ORDER`, `plan_optional_work`) and is
+   enforced by `DeadlineAwarePipeline._apply_skip_order`, which trims skipped steps out of
+   the `ResearchPlan` before the frozen Research Agent receives it. Which operations count
+   as optional is declared by the composition root (`optional_operations` /
+   `counter_signal_operations`, empty by default), so S6 must supply that source list when
+   it assembles the live pipeline or the order will never trigger in a real run.
 3. S6 canonical baseline research acceptance and remaining normalization gaps.
 4. S8 one schema-valid live Bedrock run through baseline market/research plus an independent fallback run.
 5. S10 two separate single-asset Gold runs and deadline/artifact acceptance.

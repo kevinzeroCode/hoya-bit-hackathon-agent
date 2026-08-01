@@ -279,7 +279,7 @@ class StaticToolRegistry:
 
 ### AnalysisPipeline
 
-**Location:** `src/hoya_agent/_provisional_seams.py` (Task 3 will move to `orchestration/`)
+**Location:** `src/hoya_agent/orchestration/pipeline.py`
 
 ```python
 @runtime_checkable
@@ -292,14 +292,121 @@ class AnalysisPipeline(Protocol):
 ```
 
 **Implementors:**
-- `OrganizerCsvPipeline` (current — offline, CSV-only, no LLM)
-- Full pipeline (planned — with Market Worker + Research Agent fork-join)
+- `DeadlineAwarePipeline` (plan → market/research fork-join → ledger → Arbiter)
+- `OrganizerCsvPipeline` (offline, CSV-only, no LLM; also used as the market branch)
 
 **Contract:**
 - Must respect `context.deadline_seconds` hard stop
 - Must produce a valid `PipelineOutcome` even on total failure
 - Must emit stage start/end events via `emit`
 - `ledger` in outcome may be empty but must carry degradation events explaining why
+- May raise `asyncio.CancelledError`; `ApplicationService` finalizes the four
+  artifacts as `cancelled` and re-raises it
+
+---
+
+### DeadlineManager
+
+**Location:** `src/hoya_agent/orchestration/deadline.py`
+
+```python
+class Stage(str, Enum):
+    planner = "planner"
+    gather = "gather"
+    evidence = "evidence_processor"
+    reason = "reason"
+    artifact = "artifact"
+
+
+class DeadlineManager:
+    def __init__(self, clock: Clock, total_seconds: float, *,
+                 started_monotonic: float | None = None,
+                 analysis_hard_stop_seconds: float = 720.0) -> None: ...
+
+    @classmethod
+    def for_run(cls, context: RunContext, clock: Clock) -> DeadlineManager: ...
+
+    def deadline_for(self, stage: Stage | None = None) -> float: ...
+    def remaining(self, stage: Stage | None = None) -> float: ...
+    def budget_for(self, stage: Stage | None = None, *,
+                   timeout_seconds: float | None = None) -> float: ...
+    def can_start(self, *, reserve_seconds: float = 0.0) -> bool: ...
+    def budget_seconds(self) -> dict[str, float]: ...
+
+    async def run(self, awaitable: Awaitable[T], *, stage: Stage | None = None,
+                  timeout_seconds: float | None = None) -> T: ...
+
+
+class OptionalWork(str, Enum):
+    conditional_debate = "conditional_debate"          # H3 — never scheduled
+    optional_context = "optional_context"
+    counter_signal_second_search = "counter_signal_second_search"
+
+
+SKIP_ORDER: tuple[OptionalWork, ...]   # the order work is *given up* in
+
+
+def plan_optional_work(
+    pending: Iterable[OptionalWork | str], *,
+    remaining_seconds: float,
+    default_cost_seconds: float,
+    cost_seconds: Mapping[OptionalWork, float] | None = None,
+) -> OptionalWorkPlan: ...            # .keep / .skipped / .reasons
+
+
+def skip_note(work: OptionalWork) -> str: ...
+```
+
+**Contract:**
+- Milestones are Features §5.6 offsets held as fractions of a reference 720-second
+  window, so a shorter request deadline scales every stage
+- Finalize reserve is `max(20% of total, min(60 s, half the run))`
+- `remaining()` never returns a negative value; `run()` closes an un-started
+  coroutine and raises `DeadlineExceeded` when the budget is already gone
+- Callers receive a budget and never extend one
+- `Stage` values are budget milestones, **not** execution-log stage names
+- `plan_optional_work` drops from the front of `SKIP_ORDER` until the kept items fit;
+  costs come from the caller, unknown work raises `ValueError`, and the result is
+  deterministic. Enforcement is the pipeline's job, not the policy's.
+
+---
+
+### RunStateMachine
+
+**Location:** `src/hoya_agent/orchestration/run_state.py`
+
+```python
+def stage_state_for(status: WorkerStatus | str) -> StageState: ...
+
+def derive_terminal_state(states: Iterable[StageState], *,
+                          run_cancelled: bool = False) -> TerminalState: ...
+
+
+class RunStateMachine:
+    def __init__(self, *, context: RunContext, clock: Clock,
+                 emit: EventEmitter | None = None) -> None: ...
+
+    def state_of(self, stage: str) -> StageState: ...
+    def start(self, stage: str, *, message: str = "") -> None: ...
+    def settle(self, stage: str, state: StageState, *, message: str = "",
+               output_count: int | None = None,
+               error_category: str | None = None) -> StageState: ...
+    def settle_from_worker(self, stage: str, status: WorkerStatus | str, *,
+                           message: str = "",
+                           output_count: int | None = None) -> StageState: ...
+    def cancel(self, stage: str, *, message: str = "") -> StageState: ...
+    def cancel_run(self, *, message: str = "") -> TerminalState: ...
+    def stage_durations_ms(self) -> dict[str, int]: ...
+    def terminal_state(self) -> TerminalState: ...
+```
+
+**Contract:**
+- `pending → running → {completed|degraded|failed|cancelled}`; illegal transitions
+  raise `ValueError`. Settling without starting is legal (skipped optional work).
+- `WorkerStatus.partial` maps to `StageState.degraded` — never to `completed`
+- One cancelled/failed branch beside a completed sibling yields a **degraded** run;
+  `cancel_run()` or all-cancelled yields **cancelled**; all-failed yields **failed**
+- Stage keys are execution-log stage names (`market_worker`, `research_agent`, ...)
 
 ---
 

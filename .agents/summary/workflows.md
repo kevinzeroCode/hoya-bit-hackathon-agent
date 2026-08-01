@@ -124,6 +124,105 @@ flowchart TD
 
 ---
 
+## Deadline and Fork-Join Workflow
+
+```mermaid
+flowchart TD
+    Ctx["RunContext (frozen started_monotonic + deadline_monotonic)"]
+    Ctx --> DM["DeadlineManager.for_run()"]
+    DM --> Res["reserve = max(20%, min(60 s, half the run))"]
+    Res --> Win["analysis window = min(total - reserve, 720 s)"]
+    Win --> Mile["Stage milestones scaled from the 720 s reference<br/>planner 30 / gather 270 / evidence 360 / reason 510 / artifact 630"]
+
+    Mile --> Plan["Planner: budget = min(remaining(planner), 45 s)"]
+    Plan --> Fork["_fork_join(market, research, timeout=remaining(gather))"]
+
+    Fork --> Wait{"asyncio.wait: both done<br/>before the gather milestone?"}
+    Wait -->|Yes| Settle["Settle each stage from its result"]
+    Wait -->|No| Cancel["task.cancel() on the unfinished branch"]
+    Cancel --> Await["then gather(..., return_exceptions=True)"]
+    Await --> Keep["Cancelled branch returns a CancelledError *value*;<br/>the sibling's evidence still enters the ledger"]
+    Keep --> Settle
+
+    Settle --> Term{"RunStateMachine.terminal_state()"}
+    Term -->|"one branch cancelled/failed,<br/>sibling completed"| Deg["degraded"]
+    Term -->|"empty ledger + market branch cancelled<br/>→ cancel_run()"| Can["cancelled"]
+    Term -->|"all failed"| Fail["failed"]
+    Term -->|"all clean and analysis present"| Done["completed"]
+```
+
+**Caller-initiated cancellation** takes a different route, in `application.py`:
+
+```mermaid
+flowchart TD
+    Run["ApplicationService.run()"] --> Exec["await pipeline.execute()"]
+    Exec -->|"CancelledError"| Cap["catch it, build a cancelled PipelineOutcome<br/>(empty ledger carrying the reason)"]
+    Cap --> Fin["write evidence.json → render deterministic<br/>insufficient-data report → final_report.md →<br/>rewrite run_config.json with terminal_status=cancelled"]
+    Fin --> Prog["cancel best-effort progress tasks<br/>(🚫 do not await them)"]
+    Prog --> Re["re-raise the CancelledError"]
+```
+
+**Why the finalize path must be await-free:** inside an already-cancelled task, the
+next `await` raises `CancelledError` again immediately, so the remaining artifact
+writes would never happen. Every step between the catch and the re-raise is
+synchronous, and `progress_tasks` are cancelled rather than awaited.
+Finalizing is not suppressing — the error is always re-raised.
+
+**Invariants:**
+- `time.monotonic()` drives every budget; UTC timestamps are only persisted
+- The acquisition window has exactly one owner (the fork-join). Branches clamp only
+  their own per-call timeout, because two clamps on the same milestone make
+  "which one cancelled this branch" a race
+- Cancel first, then await. No pending task reaches the Evidence stage
+- `asyncio.CancelledError` is never suppressed — outer cancellation tears the
+  children down and re-raises
+- Below `MIN_ARBITER_SECONDS` (5 s) the Arbiter is skipped so the deterministic
+  finalize keeps its reserve; the run falls back deterministically and discloses it
+
+**Not yet triggered in a live run:** the *policy* and its enforcement point are complete
+and tested, but which operations count as optional is declared by the composition root
+(`optional_operations` / `counter_signal_operations`, empty by default). No production
+composition root builds `DeadlineAwarePipeline` yet, so S6 must supply that source list.
+
+---
+
+## Optional-Work Skip Order
+
+```mermaid
+flowchart TD
+    Plan["ResearchPlan.planned_steps"]
+    Plan --> Cls["classify each step by tool_operation"]
+    Cls -->|"in counter_signal_operations"| CS["counter_signal_second_search"]
+    Cls -->|"in optional_operations"| OC["optional_context"]
+    Cls -->|"neither"| BL["baseline — never surrendered"]
+
+    CS --> Pol["plan_optional_work(pending,<br/>remaining=remaining(gather),<br/>cost=per-call timeout x step count)"]
+    OC --> Pol
+    Pol --> Drop{"kept costs fit the window?"}
+    Drop -->|No| Pop["drop the earliest still-kept item in SKIP_ORDER:<br/>H3 → optional_context → counter_signal"]
+    Pop --> Drop
+    Drop -->|Yes| Trim["trim skipped steps out of the plan"]
+
+    Trim --> Any{"any step left?"}
+    Any -->|Yes| Hand["hand the narrower plan to the frozen Research Agent"]
+    Any -->|No| SkipBranch["do not start the research branch at all"]
+    Hand --> Disc["each skip: degradation note + settled-degraded stage in the log"]
+    SkipBranch --> Disc
+```
+
+**Invariants:**
+- The order is owned in one place (`deadline.SKIP_ORDER`); no caller may reorder it
+- Costs come from the caller (configured per-call timeout × planned calls) — the policy
+  invents no estimates
+- Baseline research is never surrendered. If every planned step was optional and none
+  fits, the branch is not started rather than run as bookkeeping
+- H3 is in the order's vocabulary but is never classified or scheduled, so it is never
+  reported as skipped — that would imply the run had a debate stage to give up
+- Enforcement uses the existing interface (a narrower `ResearchPlan`), so the frozen
+  `reasoning/research_agent.py` is untouched
+
+---
+
 ## Evidence Processing Workflow
 
 ```mermaid

@@ -93,7 +93,7 @@
 | `config.py` | ✅ | 環境變數解析一次 → typed `Settings`（155 行）；sanitized snapshot（optional key 只記布林值）；鎖定名稱 `BEDROCK_PRIMARY_MODEL_ID`/`BEDROCK_FALLBACK_MODEL_ID`/`CRYPTOPANIC_API_TOKEN` | `models.py`；被 `application.py`、adapter factory 讀 |
 | `clock.py` | ✅ | 可注入的 UTC 與 `time.monotonic()` 入口（41 行）；`SystemClock` + `build_run_context` | `ports.Clock`；被 `orchestration/deadline.py`、`application.py` 用 |
 | `ports.py` | ✅ | Protocol 邊界（137 行）：`Clock`、`LLMClient`、`SourceAdapter`、`MarketDataAdapter`、`ResearchSourceAdapter`、`ProgressSink`、`ArtifactStore`、`ToolRegistry`（`StaticToolRegistry`）、未來 persistence port | `models.py` 的型別；被 `adapters/*` 實作、被核心模組消費 |
-| `application.py` | ✅ | **組裝根**（324 行，S2 vertical slice）：驗證 request、凍結 `analysis_as_of`、造 `run_id`、建 run 目錄、寫首份 `run_config.json`、組裝具體相依、叫 pipeline、回 `RunSummary` | `config.Settings`、`clock`、`orchestration/pipeline.py`、`reporting/artifacts.py`、所有 `adapters/*`（唯一處） |
+| `application.py` | ✅ | **組裝根**：驗證 request、凍結 `analysis_as_of`、造 `run_id`、建 run 目錄、寫首份 `run_config.json`、組裝具體相依、叫 pipeline、回 `RunSummary`。**取消處理**：接到 `CancelledError` 後以現有狀態把四項 artifacts 標 `cancelled` 落盤，**再 re-raise**；該 finalize 路徑刻意全程無 await | `config.Settings`、`clock`、`orchestration/pipeline.py`、`reporting/artifacts.py`、所有 `adapters/*`（唯一處） |
 | `_provisional_seams.py` | ✅⚠️ | **臨時 runtime seams**（179 行）：`ExecutionEvent`、`RunConfigSnapshot`、`RunSummary`、`RunContext`、`Clock`、`ProgressSink`、`TerminalState`、`AnalysisPipeline`、`PipelineOutcome`。欄位名與 `evidence-contracts.md` §13/§14 一致。**Task 1b 的正式 seams 落地後由 swap 程序刪除** | 被 `application.py`、`reporting/artifacts.py` 消費；與 `ports.py`/`clock.py` 並存直到 swap |
 
 ### 4.2 `orchestration/` — 順序、時間、狀態
@@ -101,9 +101,9 @@
 | 檔案 | 狀態 | 職責 | 互動對象 |
 |---|---|---|---|
 | `orchestration/__init__.py` | ✅ | package marker | — |
-| `orchestration/pipeline.py` | ✅ | **`OrganizerCsvPipeline`**（322 行）：實作 `AnalysisPipeline` seam；CSV-only offline 路徑；`to_contract_ledger()` 橋接 `evidence/types.py` 至 `models.py`；Task 3 將擴充為 `DeadlineManager` + Market/Research fork-join | `data/market_worker.py`、`evidence/processor.py`、`reporting/*`、`models.*` |
-| `orchestration/deadline.py` | ○ (S4) | `DeadlineManager`：由 `time.monotonic()` 與 request deadline 推導所有 stage 的**絕對**里程碑（[Features.md §5.6](Features.md)）；剩餘時間計算；短 deadline 的比例縮放並保留末 20% 給 finalize；🚫 retry/repair 不得延長 | `clock.Clock`；被 `pipeline.py` 與所有 adapter 呼叫點消費 |
-| `orchestration/run_state.py` | ○ (S4) | in-memory stage state（`pending\|running\|completed\|degraded\|failed\|cancelled`）與 terminal run state；`WorkerResult.status` → lifecycle 映射；progress event 發布 | `ports.ProgressSink`、`models.ExecutionEvent`；被 `pipeline.py` 寫、被 `ui/presenter.py` 讀 |
+| `orchestration/pipeline.py` | ✅ | **`DeadlineAwarePipeline`**（stage 順序、`_fork_join()` 先取消再 await、`_apply_skip_order()` 依剩餘取證時間裁掉 `ResearchPlan` 的 optional 步驟、Arbiter 投影）＋ **`OrganizerCsvPipeline`**（CSV-only offline 路徑）；`to_contract_ledger()` 橋接 `evidence/types.py` 至 `models.py`。optional／反方訊號的 operation 清單由組裝端宣告，預設空集合 | `deadline.py`、`run_state.py`、`data/market_worker.py`、`evidence/processor.py`、`reporting/*`、`models.*` |
+| `orchestration/deadline.py` | ✅ | `DeadlineManager` / `DeadlineManager.for_run()`：`Stage` 預算里程碑（planner/gather/evidence/reason/artifact，[Features.md §5.6](Features.md)）以「參考 720 秒窗口的比例」保存並依 request deadline 縮放；`deadline_for()`／`remaining()`／`budget_for()`／`budget_seconds()`；finalize 保留 `max(20%, min(60s, 半個 run))`；**固定跳過順序**（`OptionalWork`、`SKIP_ORDER`、`plan_optional_work()`、`skip_note()`）——成本由呼叫端給，不編造估值；🚫 retry/repair 不得延長 | `clock.Clock`、`models.RunContext`；被 `pipeline.py` 消費 |
+| `orchestration/run_state.py` | ✅ | `RunStateMachine`：in-memory stage state（`pending\|running\|completed\|degraded\|failed\|cancelled`）、stage_start/stage_end 事件串流（含 `duration_ms`）、`stage_durations_ms()`；`stage_state_for(WorkerStatus)` 映射（`partial→degraded`）；`derive_terminal_state(states, run_cancelled=…)`——單一分支取消=degraded、run 取消=cancelled。**execution-log 的 stage 名稱由本檔持有，`deadline.Stage` 是另一組預算里程碑** | `models.ExecutionEvent/StageState/TerminalState/WorkerStatus`；被 `pipeline.py` 寫、經 `application.py` 的 `ProgressSink` 橋到 `ui/presenter.py` |
 
 ### 4.3 `data/` — deterministic 市場層（🚫 永不呼叫 LLM）
 

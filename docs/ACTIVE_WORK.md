@@ -12,7 +12,7 @@
 | S1 | ✅ | canonical contracts/runtime seams 完成 |
 | S2 | ✅ | fixture vertical slice 與四 artifacts 完成；provisional seam 已刪除 |
 | S3 | 🔴 | canonical Streamlit、lint、container 與 Bronze acceptance 未完成 |
-| S4 | 🟡 | deadline/fork-join 核心完成；fake-clock/cancellation 專項 gate 未完成 |
+| S4 | ✅ | per-stage 預算、finalize 保留、stage 狀態機、`WorkerStatus` 映射、cancel-then-await fork-join、取消落盤與固定跳過順序（含裁剪 `ResearchPlan` 的執行點）全部完成（2026-08-01 第二輪，75 tests）。⚠️ optional／反方訊號的**來源清單**由組裝端宣告，待 S6 填入才會在真實 run 觸發 |
 | S5 | ✅ | deterministic market evidence 完成 |
 | S6 | 🟡 | research adapters/processor 大部分完成；canonical baseline acceptance 未完成 |
 | S7 | ✅ | bounded reasoning 完成並凍結 |

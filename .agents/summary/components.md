@@ -83,6 +83,12 @@ graph TB
 - Writes `evidence.json` immediately when ledger is ready (traceability before reasoning)
 - Determines terminal state: `completed` → `degraded` if artifacts missing → `failed` if all 4 missing
 - Detects question/asset mismatch and logs warning
+- **Cancellation:** catches `asyncio.CancelledError` from the pipeline, finalizes all
+  four artifacts from what already exists (labelled `cancelled`, with the deterministic
+  insufficient-data report), then **re-raises**. The whole finalize path is
+  synchronous on purpose — a further `await` inside a cancelled task raises again
+  before the writes complete — so `progress_tasks` are cancelled rather than awaited.
+  Finalizing is not suppressing.
 
 **Injected dependencies:** `clock`, `pipeline`, `prompt_version`, `configured_sources`, `optional_keys_present`
 
@@ -321,12 +327,83 @@ graph TB
 
 ### Pipeline (`orchestration/pipeline.py`)
 
-**Responsibility:** Current increment — offline organizer-CSV-only pipeline. Bridges provisional `evidence/types.py` dataclasses to canonical `models.py` contracts.
+**Responsibility:** Stage order for the H2-Lite run. Hosts `DeadlineAwarePipeline`
+(plan → market/research fork-join → ledger → Arbiter) and `OrganizerCsvPipeline`
+(the offline organizer-CSV-only market branch). Bridges provisional
+`evidence/types.py` dataclasses to canonical `models.py` contracts.
 
 **Key behaviors:**
+- `DeadlineAwarePipeline.execute()`: builds `DeadlineManager.for_run()` and a
+  `RunStateMachine`, runs both branches under one acquisition window, then settles
+  each stage into the state machine and takes the terminal state from it
+- `_fork_join()`: `asyncio.wait(timeout=gather window)` → `task.cancel()` on the
+  unfinished branches → `gather(..., return_exceptions=True)`. Cancel first, then
+  await, so no pending task leaks into the Evidence stage. A cancelled branch is
+  *returned* as a `CancelledError` value rather than raised, because the sibling's
+  evidence must still reach the ledger. Outer cancellation tears children down and
+  re-raises — `CancelledError` is never suppressed.
+- The acquisition window has exactly one owner. Branches clamp only their own
+  per-call timeout (45 s); nesting a second clamp on the same milestone made
+  "which one cancelled this branch" a race.
+- `MIN_ARBITER_SECONDS` (5 s): below this the Arbiter is skipped so the
+  deterministic finalize keeps its window; the run falls back deterministically
+- `_apply_skip_order()`: consults `plan_optional_work()` before the fork-join and
+  enforces the decision by trimming skipped steps out of the `ResearchPlan`. Which
+  operations are optional is constructor configuration (`optional_operations`,
+  `counter_signal_operations`), not a pipeline guess. Baseline steps are never
+  trimmed; if nothing survives, the research branch is not started at all.
+- `_classify()`: counter-signal is checked before optional context, so an operation
+  declared as both is treated as the more valuable category
 - `OrganizerCsvPipeline.execute()`: iterates assets, loads bars, builds market evidence
 - `to_contract_ledger()`: maps frozen dataclasses to Pydantic models, preserves `metric_name`/`metric_value` in side index
-- Arbiter not yet wired — honestly reports `degraded` terminal state
+
+---
+
+### Deadline Manager (`orchestration/deadline.py`)
+
+**Responsibility:** Every stage budget for one run. Adapters and stages receive a
+budget; they never extend one. `time.monotonic()` drives all arithmetic — UTC is
+only persisted.
+
+**Key behaviors:**
+- `Stage` enum (`planner|gather|evidence_processor|reason|artifact`) holds the
+  Features §5.6 milestones (30/270/360/510/630 s) as fractions of a reference
+  720-second analysis window, so a shorter request deadline scales every stage
+  instead of keeping competition-sized budgets
+- Finalize reserve `max(20% of total, min(60 s, half the run))`. For 900 s that is
+  180 s, which is exactly why the analysis hard stop lands on 720
+- `deadline_for(stage)`, `remaining(stage)`, `budget_for(stage, timeout_seconds=)`,
+  `can_start(reserve_seconds=)`, `budget_seconds()` for reporting
+- `for_run(context, clock)` reads the frozen `RunContext` so run start is not re-sampled
+- `run(awaitable, stage=, timeout_seconds=)` clamps to the smaller of the two and
+  closes the coroutine without starting it when the budget is already gone
+- Owns the fixed optional-work skip order: `OptionalWork`, `SKIP_ORDER`
+  (`conditional_debate` → `optional_context` → `counter_signal_second_search`),
+  `plan_optional_work(pending, remaining_seconds=, default_cost_seconds=, cost_seconds=)`
+  and `skip_note(work)`. Costs are supplied by the caller; the policy invents none.
+  Unknown optional work raises `ValueError` rather than being ordered by guess.
+
+**Note:** `Stage` values are *budget milestones*, not execution-log stage names.
+Log stages are finer grained and owned by `run_state.py`.
+
+---
+
+### Run State (`orchestration/run_state.py`)
+
+**Responsibility:** In-memory stage lifecycle and terminal run state, so no other
+layer infers them — the UI reads a state orchestration already recorded.
+
+**Key behaviors:**
+- `RunStateMachine`: `pending → running → {completed|degraded|failed|cancelled}`.
+  Illegal transitions raise `ValueError`. A stage may settle without ever running
+  (optional work skipped under time pressure is recorded, not dropped).
+- Streams `stage_start`/`stage_end` `ExecutionEvent`s with `duration_ms`; exposes
+  `stage_durations_ms()` for the run-config snapshot
+- `stage_state_for(WorkerStatus)`: `completed → completed`, `partial → degraded`,
+  `failed → failed`. One-way and deterministic; a partial branch never passes as complete.
+- `derive_terminal_state(states, run_cancelled=)`: one cancelled or failed branch
+  beside a completed sibling is **degraded**; all-cancelled or `cancel_run()` is
+  **cancelled**; all-failed is **failed**
 
 ---
 

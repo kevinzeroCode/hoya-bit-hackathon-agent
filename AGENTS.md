@@ -48,9 +48,9 @@ src/hoya_agent/
 │   ├── renderer.py        # 11-section zh-Hant report (+ dual-only section 12)
 │   └── artifacts.py       # Atomic writes (tmp+fsync+replace) for 4 fixed files
 └── orchestration/
-    ├── pipeline.py        # Deadline-aware H2-Lite + CSV fallback + dual-asset projection
-    ├── deadline.py        # Monotonic stage budgets and cancellation
-    └── run_state.py       # Terminal-state derivation
+    ├── pipeline.py        # Deadline-aware H2-Lite + cancel-then-await fork-join + dual-asset projection
+    ├── deadline.py        # Stage budget milestones, proportional scaling, finalize reserve
+    └── run_state.py       # Stage lifecycle, WorkerStatus mapping, terminal-state derivation
 prompts/                   # planner-v1.md, research-extraction-v1.md, arbiter-v1.md
 tests/                     # unit/ contract/ integration/ acceptance/ live/ fixtures/
 ```
@@ -220,6 +220,7 @@ time against half a day of someone else's.
 
 - `_provisional_seams.py` is retired; application, artifacts, and orchestration use canonical models/ports.
 - `orchestration/deadline.py`, `orchestration/run_state.py`, and `DeadlineAwarePipeline` implement the 720-second analysis hard stop and Market/Research fork-join.
+- 2026-08-01 (second pass): `deadline.py` gained per-stage budget milestones (`Stage`, `deadline_for`, `budget_for`, `budget_seconds`, `for_run`) with proportional scaling and a `max(20%, min(60 s, half the run))` finalize reserve; `run_state.py` gained `RunStateMachine` plus `stage_state_for(WorkerStatus)`; the fork-join now cancels unfinished branches and then awaits them. A caller-cancelled run finalizes all four artifacts labelled `cancelled` and then re-raises `CancelledError` — that finalize path is deliberately await-free, because a further await inside a cancelled task raises before the writes finish. The fixed optional-work skip order (`OptionalWork`, `SKIP_ORDER`, `plan_optional_work` in `deadline.py`) is enforced by `_apply_skip_order`, which trims skipped steps out of the `ResearchPlan`; the composition root declares which operations are optional via `optional_operations` / `counter_signal_operations` (empty by default, so S6 supplies the list).
 - `evidence/trust.py` provides deterministic conclusion-only Trust Scorecards.
 - Dual-asset runs keep one run/cutoff/ledger and add report section 12; the frozen reasoning package remains unchanged.
 - Detailed implementation and verification: `docs/S8-S9-S9B-implementation.md` and `.agents/summary/s8-s9-s9b.md`.

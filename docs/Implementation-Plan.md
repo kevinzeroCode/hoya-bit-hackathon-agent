@@ -51,7 +51,7 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S1** 契約與接縫 | ✅ | canonical models/config/clock/ports/fakes 已落地；runtime provisional seam 已退場 |
 | **S2** 垂直切片 | ✅ | fixture application、四項 artifacts、繁中 deterministic renderer 已落地 |
 | **S3** Streamlit Bronze | ✅ | canonical `ui/`＋`streamlit_app.py`、`reporting/advice_lint.py`（已接進 renderer）、Dockerfile/compose 已落地；離線 Bronze Exit 通過、§3.2 人工清單以瀏覽器實測完成、593 tests 綠、ruff 乾淨 |
-| **S4** deadline 編排 | 🟡 | `DeadlineAwarePipeline`、deadline/run-state、fork-join 已落地；fake-clock/cancellation 完整驗收仍缺 |
+| **S4** deadline 編排 | ✅ | per-stage 預算、finalize 保留區、stage 狀態機、`WorkerStatus` 映射、cancel-then-await fork-join、取消落盤與固定跳過順序（H3 → optional context → 反方訊號二次搜尋）全部落地並驗收 |
 | **S5** 市場證據 | ✅ | Organizer CSV、Binance、deterministic indicators 與 market evidence 已整合 |
 | **S6** 研究與 Evidence | 🟡 | adapters/processor 大部分已整合；baseline research 的 canonical 完整驗收仍缺 |
 | **S7** bounded reasoning | ✅ | Planner、Research Agent、Arbiter 與 Bedrock boundary 已完成並凍結 |
@@ -61,15 +61,17 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S10** Gold local Exit | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 尚缺 |
 | **S11** 部署與彩排 | 🔴 | CI、ECR/EC2、live smoke、rollback 與 15 分鐘 judged-flow rehearsal 尚缺 |
 
-**目前完成分層：**嚴格完成 S1/S2/S3/S5/S7；離線功能完成 S9/S9B；
-部分完成 S0/S4/S6/S8；未完成 S10/S11。
+**目前完成分層：**嚴格完成 S1/S2/S3/S4/S5/S7；離線功能完成 S9/S9B；
+部分完成 S0/S6/S8；未完成 S10/S11。
 
-**尚未通過的 repository-wide gate：** GitHub Actions/status checks 尚未配置；
-完整 pytest/Ruff 未在 PR #18 環境重跑，且既有紀錄仍有 87 個 Ruff errors。
-因此不得把離線 smoke 說成 Silver、Gold 或部署完成。
+**尚未通過的 repository-wide gate：** GitHub Actions/status checks 尚未配置。
+非 live 測試套與 Ruff **已在 2026-08-01（S4 第二輪）實跑通過**：
+`python -m pytest tests/unit tests/contract tests/integration -q` → 1100 passed / 0 failed；
+`ruff check .` → All checks passed（先前紀錄的 87 個 Ruff errors 已不存在）。
+即使如此，仍不得把離線 smoke 說成 Silver、Gold 或部署完成——那三項要的是 live 與計時證據。
 
-**下一條關鍵路徑：** S3 Bronze ✅ → 補 S4/S6 驗收 → S8 live Silver →
-S10 Gold local Exit → S11 部署與計時彩排。
+**下一條關鍵路徑：** S3 Bronze ✅ → S4 ✅ → 補 S6 驗收（並在組裝時宣告 optional／反方訊號來源清單，
+讓 S4 的跳過順序在真實 run 中生效）→ S8 live Silver → S10 Gold local Exit → S11 部署與計時彩排。
 
 ---
 
@@ -223,8 +225,9 @@ S7 ──┘（已完成，早於 S1）          ├─▶ S5 ─┼─▶ S8 �
 ```
 
 - ~~**S0 與 S1 可並行**~~ — **兩者皆已完成（2026-08-01），不再是排程因素。**
-- **S4 / S5 / S6 可三路並行**（路徑互不重疊，見 §2.5）；**S5 已完成**。
-- **S2 已完成（PR #12）；S3 Bronze 已完成（2026-08-01)。關鍵路徑現在是 S4 → S8 ★Silver。**
+- **S4 / S5 / S6 可三路並行**（路徑互不重疊，見 §2.5）；**S4 與 S5 已完成**。
+- **S2 已完成（PR #12）；S3 Bronze 已完成（2026-08-01)；S4 已完成（2026-08-01 第二輪）。
+  關鍵路徑現在是 S6 → S8 ★Silver。**
 - **S7 已經完成**，且是在 S1 之前完成的——這是本專案最大的一個順序偏離，見 S7 的現況區塊。
 - **S9（創意層）與 S9B（雙幣比較）互不相依、可並行**，兩者都在 S8 之後、S10 之前的 additive 窗口。
   兩者都對 Bronze 與 Silver 非阻塞，但都必須在 S10 觸發 Feature Freeze 前完成，
@@ -484,19 +487,81 @@ Docker 支援不重新定義 Bronze 閘門——**Bronze 不要求 Docker 驗收
 
 ### S4 — Deadline-aware fork-join 編排
 
-> **現況：🟡 核心實作已在 PR #18 合併，完整退出 gate 尚未通過。**
-> `DeadlineAwarePipeline`、`deadline.py`、`run_state.py`、720 秒 analysis hard stop
-> 與 Market/Research fork-join 已落地；仍缺規劃中的 fake-clock、cancellation、fork-join 專項測試。
+> **現況：✅ 已完成（2026-08-01 第二輪）。原本 PR #18 的 🟡 低估了缺口——當時說「只缺測試」，實際實作缺四塊。**
+> ① **`deadline.py` 從單一 flat deadline 變成真正的 per-stage 預算。** 之前只有無參數
+> `remaining()`／`can_start()`／`run()`，`Features.md` §5.6 那張表**完全沒有實作**；
+> `run_market()` 甚至沒傳 timeout，市場分支合法可吃掉整個 720 秒窗口、餓死 finalize。
+> 現在 `Stage`（planner/gather/evidence/reason/artifact）里程碑以「參考 720 秒窗口的比例」保存，
+> 短 deadline 依比例縮放；finalize 保留區 = `max(20%, min(60s, 半個 run))`——900 秒剛好得到 180 秒，
+> 這正是分析硬停落在 720 的原因。新增 `deadline_for(stage)`、`remaining(stage)`、`budget_for()`、
+> `budget_seconds()`、`DeadlineManager.for_run(context, clock)`。
+> ② **`run_state.py` 從死碼變成真的狀態機。** 之前整個檔只有 `derive_terminal_state()`，
+> 而且**全 repo 沒有任何地方 import 它**（pipeline 自己用 `if notes or result is None` 就地算）。
+> 現在有 `RunStateMachine`（pending→running→settled、非法轉換丟 `ValueError`）、
+> `stage_state_for()`（`WorkerStatus.completed→completed`、`partial→degraded`、`failed→failed`）、
+> stage_start/stage_end 事件串流（含 `duration_ms`）與 `stage_durations_ms()`。
+> ③ **`TerminalState.cancelled` 從無法到達變成真的會出現在 artifacts 裡。** 之前它只出現在那個死碼裡。
+> 現在分三層：單一分支取消 + 手足完成 = **degraded**（手足證據照樣出貨）；
+> 取證窗口取消了市場分支**且 Ledger 為空** = **cancelled**（沒東西可報，原因是取消不是失敗）；
+> 呼叫端取消整個 run = **cancelled**，且 `application.py` 會先把四項 artifacts 誠實落盤
+> （標 `cancelled`、走 deterministic insufficient-data 報告）**再 re-raise** `CancelledError`。
+> ⚠️ 那段 finalize 必須全程**無 await**——在已被取消的 task 裡再 await 會立刻又拋 `CancelledError`，
+> 四項 artifacts 就寫不完。`progress_tasks` 因此在取消路徑改為 cancel 而非 await。
+> ⑤ **固定跳過順序已實作並且真的會生效。** `deadline.py` 持有 `OptionalWork`、`SKIP_ORDER`
+> （H3 → optional context → 反方訊號二次搜尋）與純函數 `plan_optional_work()`；
+> 成本由呼叫端給（每個 call 的 per-call timeout × 步數），**不在函數裡編造估值**。
+> 執行點是 `DeadlineAwarePipeline._apply_skip_order()`：在 fork-join 之前依剩餘取證時間決定，
+> 然後**把被略過的步驟從 `ResearchPlan` 裡裁掉**再交給 Research Agent——
+> 走既有介面，`reasoning/research_agent.py`（凍結）一行都不用改。
+> baseline 步驟永不被裁；若整個 plan 都是 optional 且一項都放不下，就**不啟動研究分支**
+> （啟動一個工作已全被放棄的分支只是做帳）。每次略過都寫進 degradation notes 與 execution log。
+> H3 **不參與分類**：它永久停用、從未被排程，把它記成「被略過」會讓人誤以為這次 run 有辯論階段可放棄。
+> ④ **fork-join 改為「先取消、再 await」**：`_fork_join()` 用 `asyncio.wait(timeout=gather 窗口)`，
+> 逾時後 `task.cancel()` 然後 `gather(..., return_exceptions=True)`，pending task 不再外洩到下一個 stage；
+> 外層被取消時也先拆子任務再 re-raise。
+>
+> **踩過的坑（會咬人，別重踩）：** 一開始讓分支內層 `deadline.run(stage=Stage.gather)` **和**外層
+> fork window 用同一個里程碑，兩個 clamp 數值相同 → 「是誰取消了這個分支」變成 race，
+> 測試在 `cancelled` 與 `DeadlineExceeded` 之間跳動。定案：**取證窗口只有一個擁有者（fork-join）**，
+> 分支內只 clamp 自己的 per-call timeout（45 秒）。連跑 5 次穩定通過。
+>
+> **實際跑過的驗證（2026-08-01）：**
+> `python -m pytest tests/unit/orchestration tests/integration/test_fork_join.py -q` → **66 passed**；
+> `python -m pytest tests/unit tests/contract tests/integration -q` → **1100 passed, 15 subtests passed, 0 failed**；
+> `ruff check .` → **All checks passed**（本文 §8 第 9 項記的 87 個 error 已不復存在，該列可關）；
+> `python scripts/verify_s8_s9_s9b.py` → PASS。
+> 新增 `tests/unit/orchestration/test_deadline.py`（17）、`test_run_state.py`（22）、
+> `test_skip_order.py`（13）、`tests/integration/test_fork_join.py`（3）、
+> `test_cancellation.py`（3）、`test_skip_order_enforcement.py`（6）。
+> 全部用注入的 fake clock，**沒有任何真實 45 秒 sleep**；
+> 唯一的真實 await 是為了證明 `asyncio.wait_for` 真的接在算出來的預算上，量級是毫秒。
+> 取消與 fork-join 相關測試連跑多次穩定通過（真實 event loop 取消，不是模擬）。
+>
+> **這裡的邊界要說清楚（不要誤讀為已在 live run 生效）：** 「哪些 operation 算 optional context／
+> 反方訊號二次搜尋」是**由組裝端宣告**的（`DeadlineAwarePipeline(optional_operations=…,
+> counter_signal_operations=…)`，預設空集合）。目前 `application.py` **還沒有組裝 live pipeline**
+> （那屬於 S6／S8），所以現階段沒有任何 operation 被標成 optional——
+> 跳過順序的政策與執行點都已完成且有測試，但要等 S6 宣告來源清單後才會在真實 run 中被觸發。
+> 一句話：**機制完成，來源清單待 S6 填。**
+>
+> **一個已知的小尾巴：** per-stage 預算本身還沒寫進 `run_config.json`，因為 `RunConfigSnapshot`
+> 是 `extra="forbid"` 且 `models.py` 是**凍結路徑**。`DeadlineManager.budget_seconds()`
+> 已備好資料，等該檔 owner 同意加欄位即可落盤。stage **實際耗時**已經有寫（`stage_durations_ms`）。
 
 **目標**：讓時間與狀態成為一個地方的決定。
 
 **元件與職責**（→ [檔案地圖 §4.2](Architecture-FileMap.md)）
-- `orchestration/deadline.py` — `DeadlineManager(clock, total_seconds)`：
-  `remaining(stage) -> float`、`deadline_for(stage) -> float`、短 deadline 的比例縮放
-  （保留末 20%、可能時至少 60 秒給 finalize）。
-- `orchestration/run_state.py` — stage state 機、`WorkerResult.status` → lifecycle 映射、progress 發布。
-- `orchestration/pipeline.py` — stage 順序、`asyncio.gather(..., return_exceptions=True)`、
-  逾時取消並 await、跳過順序。
+- `orchestration/deadline.py` — `DeadlineManager(clock, total_seconds)` 與
+  `DeadlineManager.for_run(context, clock)`；`Stage` 里程碑列舉、`deadline_for(stage)`、
+  `remaining(stage)`、`budget_for(stage, timeout_seconds=…)`、`budget_seconds()`；
+  短 deadline 的比例縮放（保留末 20%、可能時至少 60 秒給 finalize，且永不超過半個 run）。
+  另持有**固定跳過順序**：`OptionalWork`、`SKIP_ORDER`、`plan_optional_work()`、`skip_note()`。
+  ⚠️ `Stage` 是**預算里程碑**，不是 execution-log 的 stage 名稱。
+- `orchestration/run_state.py` — `RunStateMachine`（stage 生命週期 + stage_start/stage_end 串流 +
+  `stage_durations_ms()`）、`stage_state_for(WorkerStatus)` 映射、
+  `derive_terminal_state(states, run_cancelled=…)`。log stage 名稱由這裡持有。
+- `orchestration/pipeline.py` — stage 順序、`_fork_join()`（單一取證窗口 → 先取消、再 await）、
+  `_apply_skip_order()`（依剩餘取證時間裁掉 `ResearchPlan` 裡被略過的 optional 步驟）。
 
 **本階段處理的契約詞彙**：[Features.md §5.6](Features.md)（deadline 預算表——本階段是它的實作者）、
 [§5.2](Features.md)（stage state、terminal run state、`WorkerResult.status`）。
@@ -513,16 +578,25 @@ Docker 支援不重新定義 Bronze 閘門——**Bronze 不要求 Docker 驗收
 - 測試用 fake clock / fake sleeper，**🚫 不得真的 sleep 45 秒**。
 
 **測試**
-- 自動：
+- 自動（**已實跑，2026-08-01：66 passed**）：
   ```bash
   python -m pytest tests/unit/orchestration tests/integration/test_fork_join.py -q
   ```
-  必含：兩個分支在時間上**確實重疊**；一個分支逾時後另一個的結果仍進 Ledger；
-  stage deadline 取消 pending 呼叫；取消映射到 `cancelled`；terminal state 有寫進 log 與 config。
+  已含：兩個分支在時間上**確實重疊**（互相等對方的 `asyncio.Event`，序列執行會失敗）；
+  一個分支在取證 deadline 被取消後另一個的證據仍進 Ledger；pending task 不外洩到下一個 stage；
+  取消映射到 stage `cancelled`／run `cancelled`；per-stage 預算與 finalize 保留區的比例縮放；
+  預算耗盡時連呼叫都不啟動；固定跳過順序（含 H3 排第一、反方訊號最後放棄）。
+  另見 `tests/integration/test_cancellation.py`：Ledger 為空 + 市場分支被取消 → run `cancelled`；
+  呼叫端取消 run → 四項 artifacts 齊全且標 `cancelled`，`CancelledError` 仍照樣往外拋。
+  以及 `tests/integration/test_skip_order_enforcement.py`：optional context 先於反方訊號被裁掉、
+  baseline 步驟永不被裁、裁剪後的 plan 仍通得過 `ResearchPlan` 驗證、
+  全 optional 且無時間時不啟動研究分支、H3 不被記成「被略過」。
+  terminal state 寫進 log 與 config 由 `test_vertical_slice.py` 覆蓋。
 - 人工：無。
 
 **退出條件**：單一分支逾時後仍帶著手足的完成 Evidence 抵達 Renderer 且標為 degraded；
-terminal state 由編排層決定並輸出，**🚫 不由 UI 推斷**。
+terminal state 由編排層決定並輸出，**🚫 不由 UI 推斷**；跳過順序為單一擁有者且有測試。
+✅ 三項皆已達成。
 
 **明確不做**：cancellation UI、database、queue、持久化 job record、遠端編排服務。
 
@@ -1011,7 +1085,7 @@ H3 三處都標示未實作；secret scan 通過。
 | 3 | `evidence/types.py` 的退場時機 | **S6 完成之前**（S1 已完成） | 仍未排。現在 `main` 上同時有 `models.py`、`evidence/types.py`、`data/types.py` 三套型別——**拖越久越貴** |
 | ~~4~~ | ~~designated baseline **research** source 是哪一個~~ | ~~S8 Silver 驗收之前~~ | ✅ **已定案（S0 實測）**：第一手新聞 RSS + Google News 依幣種搜尋（免 key、五幣覆蓋）；CryptoPanic 取得 token 後可升為主 |
 | 8 | `p2-etl-mvp/` 的退場時機 | **S3 完成之前** | 新增項。PR #8 已把核心搬進 `src/`，但 `p2-etl-mvp/` 71 個檔仍留在 `main`，與原訂「這個目錄永不進 `main`」相反。S3 接手 `app.py`／`Dockerfile` 後應整個刪除，避免兩套並存 |
-| 9 | `ruff check .` 的 87 個錯誤 | **下一階段開工前** | 新增項。違反 §3.3 的 DoD。48 個可 `--fix`，其餘多為既有程式碼與新 lint 設定的落差 |
+| ~~9~~ | ~~`ruff check .` 的 87 個錯誤~~ | ~~下一階段開工前~~ | ✅ **已清空（2026-08-01 實測）**：`ruff check .` → All checks passed |
 | 10 | `_provisional_seams.py` swap procedure | **S3 或 S4 開工前** | 新增項。S2 落地時 Task 1b 尚未存在，所以 runtime types 暫住 `_provisional_seams.py`。現在 `models.py`（40 classes）與 `ports.py` 都已在 `main`，swap procedure 見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md §4`，觸及 `application.py`、`reporting/artifacts.py`、`tests/integration/test_vertical_slice.py`，最後刪除 stand-in 與 bridge test |
 | 8b | `reasoning/arbiter.py` 的 `select_evidence()` 需加 per-asset 配額，但它是**凍結路徑** | **S9B 動工之前** | 需原 P3（該檔 owner）同意；🚫 不得逕行修改。這是正確性修復，不是調參 |
 | 5 | 15 分鐘是否含題目輸入與評審檢視時間 | 主辦方確認前不阻塞 | 實作一律**從 run 開始**計時 |

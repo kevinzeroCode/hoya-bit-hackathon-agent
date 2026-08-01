@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict, deque
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -56,10 +56,15 @@ from hoya_agent.models import (
     TerminalState,
     TimeRange,
 )
-from hoya_agent.orchestration.deadline import DeadlineExceeded, DeadlineManager
+from hoya_agent.orchestration.deadline import (
+    DeadlineManager,
+    OptionalWork,
+    Stage,
+    plan_optional_work,
+    skip_note,
+)
+from hoya_agent.orchestration.run_state import EventEmitter, RunStateMachine, StageState
 from hoya_agent.ports import Clock
-
-EventEmitter = Callable[[ExecutionEvent], None]
 
 
 @dataclass
@@ -87,9 +92,15 @@ class AnalysisPipeline(Protocol):
 
 BarLoader = Callable[[str], Sequence[MarketBar]]
 
+STAGE_PLANNER = "planner"
 STAGE_MARKET = "market_worker"
+STAGE_RESEARCH = "research_agent"
 STAGE_EVIDENCE = "evidence_processor"
-ANALYSIS_HARD_STOP_SECONDS = 720.0
+STAGE_ARBITER = "arbiter"
+
+# Below this the single Arbiter call cannot finish, and skipping it protects the
+# deterministic finalize window rather than burning it on a call that will die.
+MIN_ARBITER_SECONDS = 5.0
 
 
 class DeadlineAwarePipeline:
@@ -108,6 +119,8 @@ class DeadlineAwarePipeline:
         research_agent: Any | None = None,
         arbiter: Any | None = None,
         per_stage_timeout_seconds: float = 45.0,
+        optional_operations: Sequence[str] = (),
+        counter_signal_operations: Sequence[str] = (),
     ) -> None:
         self._clock = clock
         self._market = market_pipeline
@@ -115,59 +128,80 @@ class DeadlineAwarePipeline:
         self._research = research_agent
         self._arbiter = arbiter
         self._stage_timeout = per_stage_timeout_seconds
+        # Which planned operations count as optional is configuration, not a guess
+        # the pipeline makes. Everything not listed here is baseline work and is
+        # never surrendered to the clock.
+        self._optional_operations = frozenset(optional_operations)
+        self._counter_signal_operations = frozenset(counter_signal_operations)
 
     async def execute(self, context: RunContext, emit: EventEmitter) -> PipelineOutcome:
-        analysis_deadline = min(
-            context.deadline_monotonic,
-            context.started_monotonic + ANALYSIS_HARD_STOP_SECONDS,
-        )
-        deadline = DeadlineManager(self._clock, analysis_deadline)
+        deadline = DeadlineManager.for_run(context, self._clock)
+        state = RunStateMachine(context=context, clock=self._clock, emit=emit)
         notes: list[str] = []
         durations: dict[str, int] = {}
         reasoning_request = _reasoning_request(context)
 
         plan = None
         if self._planner is not None:
-            started = self._clock.monotonic()
+            state.start(STAGE_PLANNER)
             try:
                 plan, plan_notes = await deadline.run(
                     self._planner.run(
                         request=reasoning_request,
-                        deadline=analysis_deadline,
+                        deadline=deadline.deadline_for(Stage.planner),
                     ),
+                    stage=Stage.planner,
                     timeout_seconds=self._stage_timeout,
                 )
                 notes.extend(plan_notes)
-                status = "degraded" if plan_notes else "ok"
-            except (DeadlineExceeded, Exception) as exc:  # noqa: BLE001
+                state.settle(
+                    STAGE_PLANNER,
+                    StageState.degraded if plan_notes else StageState.completed,
+                )
+            except Exception as exc:  # noqa: BLE001 - converted to a typed degradation
                 notes.append(f"Planner 失敗（{type(exc).__name__}），研究分支略過。")
-                status = "degraded"
-            durations["planner"] = _elapsed_ms(self._clock, started)
-            emit(_pipeline_event(context, "planner", status, self._clock.now_utc()))
+                state.settle(STAGE_PLANNER, StageState.degraded, message=notes[-1])
 
+        # Optional work is surrendered in the fixed order before the branches
+        # start, and enforced by trimming the plan the Research Agent receives.
+        research_plan = plan
+        if plan is not None:
+            research_plan = self._apply_skip_order(plan, deadline, state, notes)
+
+        # The fork-join below owns the acquisition window, so a branch clamps only
+        # its own per-call timeout. Two nested clamps on the same milestone would
+        # race and make which one cancelled the branch non-deterministic.
         async def run_market() -> PipelineOutcome:
-            return await deadline.run(self._market.execute(context, emit))
+            return await self._market.execute(context, emit)
 
         async def run_research() -> Any | None:
-            if self._research is None or plan is None:
+            if self._research is None or research_plan is None:
                 return None
             return await deadline.run(
                 self._research.run(
-                    plan=plan,
+                    plan=research_plan,
                     request=reasoning_request,
-                    deadline=analysis_deadline,
+                    deadline=deadline.deadline_for(Stage.gather),
                 ),
                 timeout_seconds=self._stage_timeout,
             )
 
+        state.start(STAGE_MARKET)
+        state.start(STAGE_RESEARCH)
         fork_started = self._clock.monotonic()
-        market_result, research_result = await asyncio.gather(
-            run_market(), run_research(), return_exceptions=True
+        market_result, research_result = await _fork_join(
+            (run_market(), run_research()),
+            timeout_seconds=deadline.remaining(Stage.gather),
         )
         durations["market_research_fork_join"] = _elapsed_ms(self._clock, fork_started)
 
         if isinstance(market_result, BaseException):
-            notes.append(f"市場分支失敗（{type(market_result).__name__}）。")
+            cancelled = isinstance(market_result, asyncio.CancelledError)
+            notes.append(
+                "市場分支於取證 deadline 到點時取消。"
+                if cancelled
+                else f"市場分支失敗（{type(market_result).__name__}）。"
+            )
             ledger = _empty_ledger(context, notes[-1], self._clock.now_utc())
             market_outcome = PipelineOutcome(
                 ledger=ledger,
@@ -175,91 +209,84 @@ class DeadlineAwarePipeline:
                 terminal_state=TerminalState.degraded,
                 degradation_notes=[notes[-1]],
             )
+            state.settle(
+                STAGE_MARKET,
+                StageState.cancelled if cancelled else StageState.failed,
+                message=notes[-1],
+            )
         else:
             market_outcome = market_result
             notes.extend(market_outcome.degradation_notes)
+            # TerminalState and StageState share member names by contract.
+            state.settle(STAGE_MARKET, StageState(market_outcome.terminal_state.value))
 
+        # A degraded sibling never discards the branch that did finish.
         if isinstance(research_result, BaseException):
-            notes.append(f"研究分支失敗（{type(research_result).__name__}），市場證據仍保留。")
-            research_result = None
-        if research_result is not None:
-            notes.extend(list(getattr(research_result, "degradation_events", ()) or ()))
-        emit(
-            _pipeline_event(
-                context,
-                "research_agent",
-                "ok" if research_result is not None else "degraded",
-                self._clock.now_utc(),
+            cancelled = isinstance(research_result, asyncio.CancelledError)
+            notes.append(
+                "研究分支於取證 deadline 到點時取消，市場證據仍保留。"
+                if cancelled
+                else f"研究分支失敗（{type(research_result).__name__}），市場證據仍保留。"
             )
-        )
+            state.settle(
+                STAGE_RESEARCH,
+                StageState.cancelled if cancelled else StageState.failed,
+                message=notes[-1],
+            )
+            research_result = None
+        elif research_result is None:
+            state.settle(STAGE_RESEARCH, StageState.degraded, message="研究分支未執行。")
+        else:
+            research_notes = list(getattr(research_result, "degradation_events", ()) or ())
+            notes.extend(research_notes)
+            state.settle(
+                STAGE_RESEARCH,
+                StageState.degraded if research_notes else StageState.completed,
+            )
 
         # Current research extraction schemas are owner-specific. Only admit a
         # draft when it already has the full evidence contract; malformed data
         # is disclosed and never smuggled into the Arbiter payload.
+        state.start(STAGE_EVIDENCE)
         ledger = market_outcome.ledger
         research_drafts = list(getattr(research_result, "drafts", ()) or ())
         if research_drafts:
             ledger, rejected = _merge_research_drafts(context, ledger, research_drafts)
             if rejected:
                 notes.append(f"{rejected} 筆研究 draft 未符合 Evidence 契約，已拒絕。")
-        emit(
-            _pipeline_event(
-                context,
-                STAGE_EVIDENCE,
-                "ok" if ledger.items else "degraded",
-                self._clock.now_utc(),
-                output_count=len(ledger.items),
-            )
+        state.settle(
+            STAGE_EVIDENCE,
+            StageState.completed if ledger.items else StageState.degraded,
+            output_count=len(ledger.items),
         )
 
         result = market_outcome.result
-        if self._arbiter is not None and ledger.items and deadline.can_start(reserve_seconds=1.0):
-            started = self._clock.monotonic()
-            try:
-                max_evidence = int(
-                    getattr(getattr(self._arbiter, "settings", None), "max_evidence", 30)
-                )
-                protected_ids = {
-                    evidence_id
-                    for indicator in ledger.conflict_indicators
-                    for evidence_id in (
-                        *indicator.supporting_evidence_ids,
-                        *indicator.opposing_evidence_ids,
-                    )
-                }
-                arbiter_items = select_balanced_evidence(
-                    ledger.items, max_evidence, protected_ids=protected_ids
-                )
-                arbiter_ledger = ledger.model_copy(update={"items": arbiter_items})
-                if len(arbiter_items) < len(ledger.items):
-                    notes.append(
-                        f"雙資產 Arbiter 輸入依資產/來源配額由 {len(ledger.items)} 筆縮為 "
-                        f"{len(arbiter_items)} 筆；完整 Ledger 仍保留。"
-                    )
-                result, arbiter_notes = await deadline.run(
-                    self._arbiter.run(
-                        request=reasoning_request,
-                        ledger=arbiter_ledger,
-                        indicators=ledger.conflict_indicators,
-                        deadline=analysis_deadline,
-                        degradation_notes=notes,
-                    ),
-                    timeout_seconds=self._stage_timeout,
+        if self._arbiter is not None and ledger.items:
+            if deadline.remaining(Stage.reason) > MIN_ARBITER_SECONDS:
+                result, arbiter_notes = await self._run_arbiter(
+                    deadline, state, reasoning_request, ledger, notes
                 )
                 notes.extend(arbiter_notes)
-                result = _attach_trust(result, ledger)
-                status = "ok"
-            except (DeadlineExceeded, Exception) as exc:  # noqa: BLE001
-                notes.append(f"Arbiter 失敗（{type(exc).__name__}），使用 deterministic fallback。")
-                status = "degraded"
-            durations["arbiter"] = _elapsed_ms(self._clock, started)
-            emit(_pipeline_event(context, "arbiter", status, self._clock.now_utc()))
-        elif self._arbiter is not None:
-            notes.append("剩餘時間不足，略過 Arbiter 並保留 artifacts finalize 預算。")
-            emit(_pipeline_event(context, "arbiter", "skipped", self._clock.now_utc()))
+                if result is not None:
+                    result = _attach_trust(result, ledger)
+                else:
+                    result = market_outcome.result
+            else:
+                notes.append("剩餘時間不足，略過 Arbiter 並保留 artifacts finalize 預算。")
+                state.settle(STAGE_ARBITER, StageState.degraded, message=notes[-1])
 
-        terminal = TerminalState.completed
-        if notes or result is None:
+        durations.update(state.stage_durations_ms())
+        # Nothing arrived and the acquisition window cut the market branch off: the
+        # run was cancelled, not merely degraded. Any evidence that did arrive keeps
+        # the run degraded instead, so that evidence still ships.
+        if not ledger.items and state.state_of(STAGE_MARKET) is StageState.cancelled:
+            state.cancel_run(
+                message="分析 deadline 到點，取證分支已取消且無證據可交付。"
+            )
+            notes.append("分析 deadline 到點，取證分支已取消且無證據可交付。")
+        terminal = state.terminal_state()
+        # Missing analysis or any recorded degradation keeps the run off `completed`.
+        if terminal is TerminalState.completed and (result is None or notes):
             terminal = TerminalState.degraded
         return PipelineOutcome(
             ledger=ledger,
@@ -268,6 +295,132 @@ class DeadlineAwarePipeline:
             degradation_notes=list(dict.fromkeys(notes)),
             stage_durations_ms=durations,
         )
+
+    def _classify(self, operation: str) -> OptionalWork | None:
+        """Map a planned operation onto optional work, or ``None`` for baseline.
+
+        Counter-signal is checked first: an operation declared as both is treated
+        as the more valuable category, because it is surrendered last.
+        """
+        if operation in self._counter_signal_operations:
+            return OptionalWork.counter_signal_second_search
+        if operation in self._optional_operations:
+            return OptionalWork.optional_context
+        return None
+
+    def _apply_skip_order(
+        self,
+        plan: Any,
+        deadline: DeadlineManager,
+        state: RunStateMachine,
+        notes: list[str],
+    ) -> Any | None:
+        """Surrender optional work in the fixed order and trim it out of the plan.
+
+        Enforcement goes through the existing interface — the Research Agent simply
+        receives a narrower plan — so the frozen reasoning package is untouched.
+        H3 is never classified here: it is permanently disabled, so it is never
+        scheduled and reporting it as *skipped* would imply the run had a debate
+        stage to give up.
+
+        Returns the plan the Research Agent should receive, or ``None`` when every
+        planned step was optional and none of it fits. Starting a branch whose work
+        has all been surrendered would be bookkeeping, not research.
+        """
+        steps = list(getattr(plan, "planned_steps", ()) or ())
+        if not steps:
+            return plan
+
+        by_work: dict[OptionalWork, list[Any]] = defaultdict(list)
+        for step in steps:
+            work = self._classify(str(getattr(step, "tool_operation", "")))
+            if work is not None:
+                by_work[work].append(step)
+        if not by_work:
+            return plan
+
+        decision = plan_optional_work(
+            by_work.keys(),
+            remaining_seconds=deadline.remaining(Stage.gather),
+            default_cost_seconds=self._stage_timeout,
+            # Worst case is one per-call timeout for each planned call, which is
+            # the configured cap rather than an invented estimate.
+            cost_seconds={
+                work: self._stage_timeout * len(work_steps)
+                for work, work_steps in by_work.items()
+            },
+        )
+        if not decision.skipped:
+            return plan
+
+        for work in decision.skipped:
+            note = skip_note(work)
+            notes.append(note)
+            state.settle(work.value, StageState.degraded, message=note)
+
+        kept = set(decision.keep)
+        kept_steps = [
+            step
+            for step in steps
+            if self._classify(str(getattr(step, "tool_operation", ""))) in (None, *kept)
+        ]
+        if not kept_steps:
+            return None
+        copier = getattr(plan, "model_copy", None)
+        if copier is None:
+            notes.append("Plan 型別不支援步驟裁剪，略過的 optional 工作僅以揭露方式記錄。")
+            return plan
+        return copier(update={"planned_steps": kept_steps})
+
+    async def _run_arbiter(
+        self,
+        deadline: DeadlineManager,
+        state: RunStateMachine,
+        reasoning_request: ReasoningRequest,
+        ledger: EvidenceLedger,
+        notes: list[str],
+    ) -> tuple[AnalysisResult | None, list[str]]:
+        """One bounded Arbiter call. Failure degrades the stage, never the run."""
+        state.start(STAGE_ARBITER)
+        extra_notes: list[str] = []
+        max_evidence = int(getattr(getattr(self._arbiter, "settings", None), "max_evidence", 30))
+        protected_ids = {
+            evidence_id
+            for indicator in ledger.conflict_indicators
+            for evidence_id in (
+                *indicator.supporting_evidence_ids,
+                *indicator.opposing_evidence_ids,
+            )
+        }
+        arbiter_items = select_balanced_evidence(
+            ledger.items, max_evidence, protected_ids=protected_ids
+        )
+        arbiter_ledger = ledger.model_copy(update={"items": arbiter_items})
+        if len(arbiter_items) < len(ledger.items):
+            extra_notes.append(
+                f"雙資產 Arbiter 輸入依資產/來源配額由 {len(ledger.items)} 筆縮為 "
+                f"{len(arbiter_items)} 筆；完整 Ledger 仍保留。"
+            )
+        try:
+            result, arbiter_notes = await deadline.run(
+                self._arbiter.run(
+                    request=reasoning_request,
+                    ledger=arbiter_ledger,
+                    indicators=ledger.conflict_indicators,
+                    deadline=deadline.deadline_for(Stage.reason),
+                    degradation_notes=notes + extra_notes,
+                ),
+                stage=Stage.reason,
+                timeout_seconds=self._stage_timeout,
+            )
+        except Exception as exc:  # noqa: BLE001 - converted to a typed degradation
+            extra_notes.append(
+                f"Arbiter 失敗（{type(exc).__name__}），使用 deterministic fallback。"
+            )
+            state.settle(STAGE_ARBITER, StageState.degraded, message=extra_notes[-1])
+            return None, extra_notes
+        state.settle(STAGE_ARBITER, StageState.completed)
+        return result, extra_notes + list(arbiter_notes)
 
 
 def select_balanced_evidence(
@@ -634,6 +787,43 @@ def _event(
     )
 
 
+async def _fork_join(
+    coroutines: Sequence[Awaitable[Any]],
+    *,
+    timeout_seconds: float,
+) -> list[Any]:
+    """Run branches concurrently under one acquisition deadline.
+
+    On timeout the unfinished branches are cancelled and then awaited, so no
+    pending task leaks into the Evidence stage. A cancelled branch is returned as
+    a `CancelledError` value rather than raised, because the sibling branch's
+    completed evidence must still reach the ledger.
+    """
+    tasks = [asyncio.ensure_future(coroutine) for coroutine in coroutines]
+    try:
+        _, pending = await asyncio.wait(tasks, timeout=max(0.0, timeout_seconds))
+    except asyncio.CancelledError:
+        # The run itself was cancelled: tear the children down, then re-raise.
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+    for task in pending:
+        task.cancel()
+    if pending:
+        # Cancel first, then await: never advance while a child task is unwound.
+        await asyncio.gather(*pending, return_exceptions=True)
+
+    results: list[Any] = []
+    for task in tasks:
+        if task.cancelled():
+            results.append(asyncio.CancelledError())
+            continue
+        error = task.exception()
+        results.append(error if error is not None else task.result())
+    return results
+
+
 def _elapsed_ms(clock: Clock, started: float) -> int:
     return max(0, round((clock.monotonic() - started) * 1000))
 
@@ -650,26 +840,6 @@ def _reasoning_request(context: RunContext) -> ReasoningRequest:
 def _enum_value(value: Any) -> str:
     raw = getattr(value, "value", value)
     return str(raw)
-
-
-def _pipeline_event(
-    context: RunContext,
-    stage: str,
-    status: str,
-    timestamp: datetime,
-    *,
-    output_count: int | None = None,
-) -> ExecutionEvent:
-    return ExecutionEvent(
-        timestamp=timestamp,
-        run_id=context.run_id,
-        run_mode=context.run_mode,
-        stage=stage,
-        event_type="stage_end",
-        status=status,
-        output_count=output_count,
-        message=f"{stage} {status}",
-    )
 
 
 def _empty_ledger(context: RunContext, message: str, now: datetime) -> EvidenceLedger:
