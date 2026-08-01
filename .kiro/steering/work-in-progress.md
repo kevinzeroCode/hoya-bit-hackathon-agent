@@ -46,6 +46,31 @@ at the package root and under `adapters/` and `evidence/`. Leave them as they ar
 
 Record every resolution here so the next session does not re-litigate it.
 
+- **Task 1a contract acceptance is COMPLETE.** The original Task 1a commit
+  (`b9f57db`) landed `models.py`; a subsequent Codex contract review returned
+  `BLOCKING-ISSUES-FOUND` with 14 findings. The corrective commit
+  `fix: align core models with evidence contracts` on branch
+  `task/1a-contracts-core` addressed the accepted findings. A second Codex
+  review on 2026-08-01 cleared the corrective pass (205 model tests passed,
+  362 unit+contract tests passed, ruff clean, zero invalid-payload probe
+  failures).
+
+  Deferrals recorded by the corrective commit's disposition table (still open):
+  - Clock-freeze of official `analysis_as_of` → Task 1b (RunContext + Clock).
+  - Configured clock tolerance for fetched-vs-published slack → Task 1b.
+  - Ledger `published_at <= analysis_as_of` cutoff → Task 5 (Evidence Processor).
+  - Cross-artifact evidence-ID resolution (Link/Scorecard/InvalidationCondition
+    against the ledger) → Task 5 / Task 8 (integration wiring).
+  - `InvalidationCondition.threshold` equality against ledger value → Task 6
+    (Arbiter/Renderer).
+  - Confidence caps requiring ledger/conflict inputs (material conflict,
+    independence-group count, stale-cache-only) → Task 5 / Task 6.
+  - Configured maximum `question` length → Task 1b (Settings).
+
+  Downstream stand-in contracts in `tests/unit/reasoning/_stubs.py` remain
+  frozen. Swapping `_stubs.py` for the real models is still a later task and
+  requires the owner's agreement.
+
 - **`invalidation_conditions` shape.** `evidence-contracts.md` §7 shows a string
   list on `Claim`; §16.4 defines a structured object. Resolution:
   `Claim.invalidation_conditions` is `list[str]`;
