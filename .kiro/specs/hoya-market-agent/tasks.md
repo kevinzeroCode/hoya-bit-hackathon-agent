@@ -63,7 +63,7 @@
   `models.py` is imported by all four owners. Do not tick this parent checkbox
   until both halves are done.
 
-- [ ] **1a. Freeze the normative data contracts**
+- [x] **1a. Freeze the normative data contracts**
   - **Owner:** P1, reviewed by P2/P3/P4
   - **Wave / dependency:** Wave 0 / Task 0 may run concurrently
   - **Spec:** 5, 7; `evidence-contracts.md` 1-12 and 16; Requirement 16
@@ -72,17 +72,17 @@
     - Create: `src/hoya_agent/models.py`
     - Create: `tests/unit/test_models.py`
     - (`src/hoya_agent/__init__.py` already exists as an empty package marker)
-  - [ ] Configure Python 3.12 and runtime dependencies `pydantic`, `httpx`, `pandas`, `boto3`, `streamlit`; configure dev dependencies `pytest`, `pytest-asyncio`, `pytest-cov`, `ruff` and pytest markers `integration`, `acceptance`, `live`; use a src layout that supports editable install.
-  - [ ] Define the enums `Asset`, `RunMode`, `SourceType`, `Reliability`, `Stance`, `ClaimType`, `TrustLevel`, `RegimeLabel` and `InvalidationOperator`, all `str`-backed.
-  - [ ] First write failing model tests for `AnalysisRequest`, `EvidenceItem`, `Claim`, `ClaimEvidenceLink`, `AnalysisResult` and timezone-aware UTC validation; every model uses `extra="forbid"` and rejects blank text fields.
-  - [ ] Test and implement the approved request fields, including unique `run_id`, one or two allowlisted assets, immutable `analysis_as_of`, `official|rehearsal|demo` and `enable_conditional_debate=false`.
-  - [ ] Test `EvidenceItem` fields including source identity, source/content reference, `fetched_at`, published/source time when available, `high|medium|low` reliability, independence group and cache/stale consistency; reject deprecated `fetched time`/`fetched_time` names and any stance field on `EvidenceItem`.
-  - [ ] Define `EvidenceDraft` as `EvidenceItem` minus the processor-assigned fields (`evidence_id`, `reliability`, `independence_group`, `content_hash`), retaining a reference back to its source record.
-  - [ ] Test `ClaimEvidenceLink` as the only stance owner and accept only `supports|opposes|neutral`; test the Evidence List projection fields `source`, `fetched_at`, `content_reference` and `related_claim`.
-  - [ ] Test `Claim` layering: `fact` has empty `based_on_claim_ids`; `inference` and `conclusion` do not. Test the `ev_001`/`cl_001` ID formats.
-  - [ ] Define `EvidenceLedger`, `ConflictIndicator`, `DegradationEvent`, `TimeRange` and `MarketContext`.
-  - [ ] Define the Requirement 16 types `InvalidationCondition`, `MarketRegime` and `TrustScorecard` with its five dimension sub-models; test the fixed ordinal mapping (`strong` independence requires at least three distinct groups) and the `MarketRegime` label enum with its persisted metrics and thresholds.
-  - [ ] Run `python -m pip install -e ".[dev]"`, `python -m pytest tests/unit/test_models.py -q`, `python -m pytest tests/unit tests/contract -q` and `ruff check .`.
+  - [x] Configure Python 3.12 and runtime dependencies `pydantic`, `httpx`, `pandas`, `boto3`, `streamlit`; configure dev dependencies `pytest`, `pytest-asyncio`, `pytest-cov`, `ruff` and pytest markers `integration`, `acceptance`, `live`; use a src layout that supports editable install.
+  - [x] Define the enums `Asset`, `RunMode`, `SourceType`, `Reliability`, `Stance`, `ClaimType`, `TrustLevel`, `RegimeLabel` and `InvalidationOperator`, all `str`-backed.
+  - [x] First write failing model tests for `AnalysisRequest`, `EvidenceItem`, `Claim`, `ClaimEvidenceLink`, `AnalysisResult` and timezone-aware UTC validation; every model uses `extra="forbid"` and rejects blank text fields. (順序偏離：實作先於測試)
+  - [x] Test and implement the approved request fields, including unique `run_id`, one or two allowlisted assets, immutable `analysis_as_of`, `official|rehearsal|demo` and `enable_conditional_debate=false`.
+  - [x] Test `EvidenceItem` fields including source identity, source/content reference, `fetched_at`, published/source time when available, `high|medium|low` reliability, independence group and cache/stale consistency; reject deprecated `fetched time`/`fetched_time` names and any stance field on `EvidenceItem`.
+  - [x] Define `EvidenceDraft` as `EvidenceItem` minus the processor-assigned fields (`evidence_id`, `reliability`, `independence_group`, `content_hash`), retaining a reference back to its source record.
+  - [x] Test `ClaimEvidenceLink` as the only stance owner and accept only `supports|opposes|neutral`; test the Evidence List projection fields `source`, `fetched_at`, `content_reference` and `related_claim`.
+  - [x] Test `Claim` layering: `fact` has empty `based_on_claim_ids`; `inference` and `conclusion` do not. Test the `ev_001`/`cl_001` ID formats.
+  - [x] Define `EvidenceLedger`, `ConflictIndicator`, `DegradationEvent`, `TimeRange` and `MarketContext`.
+  - [x] Define the Requirement 16 types `InvalidationCondition`, `MarketRegime` and `TrustScorecard` with its five dimension sub-models; test the fixed ordinal mapping (`strong` independence requires at least three distinct groups) and the `MarketRegime` label enum with its persisted metrics and thresholds.
+  - [x] Run `python -m pip install -e ".[dev]"`, `python -m pytest tests/unit/test_models.py -q`, `python -m pytest tests/unit tests/contract -q` and `ruff check .`.
   - **Acceptance:** Invalid assets, naive datetimes, malformed Evidence, deprecated freshness fields, Evidence-owned stance and unsupported Link stance fail validation. Inconsistent cache metadata and a `fact` with dependencies fail validation. The existing Task 6 suite still passes, proving the new contracts did not break the downstream consumer.
   - **Commit:** `feat: define core evidence and analysis contracts`
 
