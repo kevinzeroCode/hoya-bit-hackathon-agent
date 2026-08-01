@@ -144,10 +144,14 @@ def build_converse_request(
     max_tokens: int,
     tool_name: str = STRUCTURED_TOOL_NAME,
 ) -> dict[str, Any]:
-    """Build a Converse request that forces one structured tool call."""
-    return {
+    """Build a Converse request that forces one structured tool call.
+
+    An empty or whitespace-only ``system_prompt`` is omitted entirely: Bedrock
+    requires ``system[0].text`` to be at least one character, so sending a blank
+    block fails botocore's client-side validation before the request is sent.
+    """
+    request: dict[str, Any] = {
         "modelId": model_id,
-        "system": [{"text": system_prompt}],
         "messages": [dict(message) for message in messages],
         "inferenceConfig": {"maxTokens": max_tokens},
         "toolConfig": {
@@ -166,6 +170,9 @@ def build_converse_request(
             "toolChoice": {"tool": {"name": tool_name}},
         },
     }
+    if system_prompt.strip():
+        request["system"] = [{"text": system_prompt}]
+    return request
 
 
 def extract_tool_input(
