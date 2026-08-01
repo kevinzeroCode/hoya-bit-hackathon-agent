@@ -1,7 +1,7 @@
 # HOYA Market Agent System Design
 
-> Status: approved H2-Lite MVP target; runtime implementation has not started  
-> Last updated: 2026-07-17  
+> Status: approved H2-Lite MVP target；原始碼樹已落地（gate `fc517e7`），實作進行中  
+> Last updated: 2026-08-01（CoinGecko fallback 敘述更正為凍結契約版本；新增 Agent 架構圖連結）  
 > Detailed sources: [approved product spec](superpowers/specs/2026-07-17-hoya-bit-hackathon-agent-design.md), [Kiro requirements](../.kiro/specs/hoya-market-agent/requirements.md), [Kiro technical design](../.kiro/specs/hoya-market-agent/design.md)
 
 ## 1. Problem Statement
@@ -40,7 +40,7 @@ H3 Conditional Debate 只保留 disabled extension interface，不屬於 MVP 實
 | Run capacity | 每個 instance 同時間最多一個 active run |
 | Supported assets | BTC、ETH、SOL、BNB、XRP；每次一至兩個 |
 | Historical baseline | 主辦方 Daily OHLCV CSV，不推定其上游交易所 |
-| Live market source | Binance primary；CoinGecko fallback |
+| Live market source | Binance 為唯一 baseline；失敗時誠實 partial／degraded，MVP 無第二個 live provider |
 | Research sources | CryptoPanic、RSS、官方來源、Alternative.me Fear & Greed |
 | LLM | Amazon Bedrock Converse API，primary/fallback model ID 可配置 |
 | UI/API boundary | Streamlit 與 application service 同進程；MVP 不建立 FastAPI |
@@ -181,7 +181,7 @@ flowchart LR
     Planner --> Market["Market Worker<br/>Deterministic Python"]
     Planner --> Research["Research Agent<br/>Bounded LLM"]
     CSV["Organizer OHLCV CSV"] --> Market
-    Live["Binance / CoinGecko"] --> Market
+    Live["Binance"] --> Market
     News["CryptoPanic / RSS / Official / Fear & Greed"] --> Research
     Bedrock["Amazon Bedrock"] --> Planner
     Bedrock --> Research
@@ -194,6 +194,8 @@ flowchart LR
     Orch -. "progress and degradation events" .-> Artifacts
     Artifacts --> UI
 ```
+
+上圖是**元件視角**。若要看 Agent 視角——決策／工具／推理三層、四道信任邊界、LLM 與 deterministic 的分區——見 [Agent Architecture](agent-architecture.md)。
 
 ### Component responsibilities
 
@@ -285,7 +287,7 @@ sequenceDiagram
 |---|---|---|
 | Planner timeout/invalid schema | 一次 deadline-bound repair 後使用 deterministic default plan | Planner degraded event |
 | 單一 source timeout/rate limit | 至多一次 retry；取消後產生 typed gap | 來源失敗、時間與原因 |
-| Binance unavailable | 嘗試 CoinGecko snapshot；不偽裝成同一資料血緣 | `source_fallback` 與來源差異 |
+| Binance unavailable | 產生 honest partial／degraded market result；MVP 不切換到第二個 live provider，也不宣稱曾使用 | 市場來源缺口與降級事件 |
 | CryptoPanic key missing | 關閉該 adapter，RSS／官方來源照常執行 | Missing-source disclosure |
 | Market 或 Research branch failed | 另一 branch 繼續；用可用 Evidence 完成 ledger | `partial` branch status |
 | 少於三種來源／三個獨立群組 | 照常完成報告、限制 confidence；核心結論不足時標示 insufficient data | Diversity counts 與缺口 |
@@ -314,7 +316,7 @@ flowchart LR
     ECR -->|"Pull image"| Compose
     SG --> App
     App -->|"IAM instance role"| Bedrock["Amazon Bedrock"]
-    App -->|"Public HTTPS"| Sources["Binance / CoinGecko / News / Official APIs"]
+    App -->|"Public HTTPS"| Sources["Binance / News / Official APIs"]
     App -->|"Structured JSONL"| Stdout["Docker stdout"]
 ```
 
