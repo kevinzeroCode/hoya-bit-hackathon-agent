@@ -17,7 +17,6 @@ import asyncio
 import os
 import sys
 import time
-import traceback
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
@@ -36,35 +35,36 @@ async def main() -> None:
     print(f"AWS_ACCESS_KEY_ID set: {bool(os.getenv('AWS_ACCESS_KEY_ID'))}")
 
     llm = BedrockLLMClient(settings=BedrockSettings(region=region, primary_model_id=model_id))
-    try:
-        result = await llm.converse_structured(
-            operation="arbiter",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "text": (
-                                "Return an insufficient-data result as JSON with "
-                                "direct_answer set and insufficient_data true."
-                            )
-                        }
-                    ],
-                }
-            ],
-            schema=ArbiterGeneration,
-            max_tokens=2000,
-            deadline=time.monotonic() + 60,
-            system_prompt=load_prompt("arbiter").body,
+    # A realistic-sized arbiter payload, called 3x to catch intermittent throttling.
+    big_text = (
+        "You are the Arbiter. Analyse the following evidence and return a full "
+        "structured result with claims, links and rationale.\n"
+        + "\n".join(
+            f"ev_{i:03d}: BTC market metric value {i} as of 2026-07-31 (reliability high)"
+            for i in range(1, 7)
         )
-        print("\n[OK] Arbiter schema converse succeeded:")
-        print(result.model_dump())
-    except Exception as exc:  # noqa: BLE001 - we want the full chain
-        print(f"\n[FAILED] {type(exc).__name__}: {exc}")
-        cause = exc.__cause__
-        if cause is not None:
-            print("\n--- underlying cause ---")
-            traceback.print_exception(type(cause), cause, cause.__traceback__)
+    )
+    ok = 0
+    for attempt in range(1, 4):
+        started = time.monotonic()
+        try:
+            await llm.converse_structured(
+                operation="arbiter",
+                messages=[{"role": "user", "content": [{"text": big_text}]}],
+                schema=ArbiterGeneration,
+                max_tokens=3000,
+                deadline=time.monotonic() + 60,
+                system_prompt=load_prompt("arbiter").body,
+            )
+            ok += 1
+            print(f"[call {attempt}] OK ({time.monotonic() - started:.1f}s)")
+        except Exception as exc:  # noqa: BLE001 - we want the full chain
+            print(f"[call {attempt}] FAILED after {time.monotonic() - started:.1f}s: "
+                  f"{type(exc).__name__}: {exc}")
+            cause = exc.__cause__
+            if cause is not None:
+                print(f"    underlying: {type(cause).__name__}: {str(cause)[:300]}")
+    print(f"\nsummary: {ok}/3 succeeded")
 
 
 if __name__ == "__main__":

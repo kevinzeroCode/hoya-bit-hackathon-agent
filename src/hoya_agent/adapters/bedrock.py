@@ -319,7 +319,9 @@ class BedrockLLMClient:
                     model_id = fallback
                     used_fallback = True
                     continue
-                raise LLMUnavailableError(f"{operation} call failed") from exc
+                raise LLMUnavailableError(
+                    f"{operation} call failed: {error_code_of(exc) or type(exc).__name__}"
+                ) from exc
 
             try:
                 payload = extract_tool_input(response)
