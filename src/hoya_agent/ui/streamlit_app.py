@@ -31,6 +31,7 @@ if str(_SRC) not in sys.path:
 
 import streamlit as st  # noqa: E402
 
+from hoya_agent.adapters.live_sources import binance_bar_loader, fear_greed_drafts  # noqa: E402
 from hoya_agent.application import ApplicationService, build_request  # noqa: E402
 from hoya_agent.clock import SystemClock  # noqa: E402
 from hoya_agent.models import Asset, RunMode  # noqa: E402
@@ -80,6 +81,35 @@ def _run_offline(assets: list[Asset], question: str, run_mode: RunMode, progress
         clock=SystemClock(),
         pipeline=OrganizerCsvPipeline(analysis_date=BRONZE_CUTOFF.date()),
         configured_sources=["public_market_data"],
+    )
+    return asyncio.run(service.run(request, progress=progress))
+
+
+def _run_live(assets: list[Asset], question: str, progress=None) -> object:
+    """Real-time run: live Binance market + Fear & Greed sentiment, no Bedrock/key.
+
+    `official` mode freezes the cutoff to now, so the analysis is of live data
+    up to this moment. News extraction and Arbiter reasoning (credentialed
+    Bedrock) are the next layer; this already gives real-time, multi-source
+    evidence deterministically.
+    """
+    now = datetime.now(UTC)
+    request = build_request(
+        question=question or "即時市場狀況與資料整合",
+        assets=assets,
+        run_mode=RunMode.official,
+        now=now,
+        run_id_suffix="live",
+    )
+    service = ApplicationService(
+        artifact_root=Path(tempfile.mkdtemp(prefix="hoya-live-")),
+        clock=SystemClock(),
+        pipeline=OrganizerCsvPipeline(
+            load_bars=binance_bar_loader(now),
+            extra_drafts=fear_greed_drafts(now),
+            analysis_date=now.date(),
+        ),
+        configured_sources=["binance_spot", "fear_greed"],
     )
     return asyncio.run(service.run(request, progress=progress))
 
@@ -184,40 +214,50 @@ hr{border-color:var(--line);}
 """
 
 
+_MODE_OFFLINE_REHEARSAL = "離線 rehearsal(官方 CSV)"
+_MODE_OFFLINE_DEMO = "離線 demo(官方 CSV)"
+_MODE_LIVE = "即時 official(Binance + 情緒)"
+_MODES = [_MODE_LIVE, _MODE_OFFLINE_REHEARSAL, _MODE_OFFLINE_DEMO]
+
+
 def main() -> None:
-    st.set_page_config(page_title="HOYA Market Agent — Bronze", page_icon="🧾", layout="wide")
+    st.set_page_config(page_title="HOYA Market Agent", page_icon="🧾", layout="wide")
     st.markdown(_THEME_CSS, unsafe_allow_html=True)
     st.title("🧾 加密市場分析 Agent")
-    st.caption("多源資訊的信任提煉 · Bronze(離線、deterministic、無 Bedrock/AWS)· 研究導向,非投資建議")
+    st.caption("多源資訊的信任提煉 · 研究導向,非投資建議 · 即時(交易所+情緒)或離線(官方 CSV)")
 
     running = st.session_state.get("_run_in_flight", False)
     with st.form("req"):
-        c1, c2, c3, c4 = st.columns([1.8, 4, 1.2, 1.1])
-        # Five-asset allowlist, single-asset Bronze path. The second-asset opt-in
+        c1, c2, c3, c4 = st.columns([1.5, 3.4, 1.9, 1.1])
+        # Five-asset allowlist, single-asset path. The second-asset opt-in
         # (dual comparison) belongs to Task 12 and stays disabled until it lands.
         asset = c1.selectbox("幣種(單幣;雙幣比較待 Task 12)", [a.value for a in Asset], index=0)
-        assets = [asset]
         question = c2.text_input("題目 / 問題", placeholder="例:BTC 過去兩週表現?")
-        mode = c3.selectbox("Run mode", ["rehearsal", "demo"], index=0)
+        mode = c3.selectbox("模式", _MODES, index=0)
         # Disabled while a run is in flight so one submit == one ApplicationService call.
         submitted = c4.form_submit_button("執行分析", use_container_width=True, disabled=running)
 
     if not submitted:
-        st.info("選 1–2 個幣種、輸入題目,按「執行分析」。Bronze 為離線 rehearsal/demo,產出四個固定 artifact。")
+        st.info(
+            "選幣種、輸入研究型題目,按「執行分析」。**即時**打交易所現價 + 恐懼貪婪指數(免金鑰);"
+            "**離線**只用官方 CSV。兩者皆產出四個固定 artifact。"
+        )
         return
     if running:  # a submit queued while the previous run was still executing
         st.warning("上一個分析仍在進行,已忽略重複的執行請求。")
         return
-    if not assets:
-        st.warning("請至少選一個幣種。")
-        return
 
+    is_live = mode == _MODE_LIVE
+    label = "即時分析中(Binance 現價 + 情緒 → 證據 → 報告)…" if is_live else "離線分析中(官方 CSV)…"
     st.session_state["_run_in_flight"] = True
     try:
-        with st.status("離線分析中(官方 CSV → 證據 → 報告 → artifacts)…", expanded=True) as status:
-            summary = _run_offline(
-                [Asset(a) for a in assets], question, RunMode(mode), progress=_StreamlitProgress(status)
-            )
+        with st.status(label, expanded=True) as status:
+            sink = _StreamlitProgress(status)
+            if is_live:
+                summary = _run_live([Asset(asset)], question, progress=sink)
+            else:
+                run_mode = RunMode.demo if mode == _MODE_OFFLINE_DEMO else RunMode.rehearsal
+                summary = _run_offline([Asset(asset)], question, run_mode, progress=sink)
             status.update(label="分析完成", state="complete", expanded=False)
     finally:
         st.session_state["_run_in_flight"] = False

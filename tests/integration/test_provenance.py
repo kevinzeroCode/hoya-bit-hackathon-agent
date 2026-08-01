@@ -6,11 +6,11 @@ import json
 from datetime import UTC, date, datetime
 
 import pytest
+from tests.fakes import FixedClock
 
 from hoya_agent.application import ApplicationService, build_request
 from hoya_agent.models import AnalysisResult, Asset, ClaimType, EvidenceLedger, RunMode
 from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline
-from tests.fakes import FixedClock
 
 pytestmark = pytest.mark.integration
 

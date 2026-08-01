@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
+from tests.fakes import FixedClock
 
 from hoya_agent.adapters.port_adapters import (
     BinanceMarketAdapter,
@@ -16,7 +17,6 @@ from hoya_agent.adapters.port_adapters import (
 from hoya_agent.application import build_request
 from hoya_agent.clock import build_run_context
 from hoya_agent.models import Asset, RunMode, SourceStatus
-from tests.fakes import FixedClock
 
 pytestmark = pytest.mark.live
 

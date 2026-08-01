@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
+from tests.fakes import FixedClock
 
 from hoya_agent.application import ApplicationService, build_request
 from hoya_agent.models import (
@@ -18,7 +19,6 @@ from hoya_agent.models import (
     TerminalState,
 )
 from hoya_agent.orchestration.pipeline import PipelineOutcome
-from tests.fakes import FixedClock
 
 pytestmark = pytest.mark.integration
 

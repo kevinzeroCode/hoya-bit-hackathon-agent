@@ -600,10 +600,14 @@ class OrganizerCsvPipeline:
         data_dir: Path | None = None,
         load_bars: BarLoader | None = None,
         analysis_date: date | None = None,
+        extra_drafts: Callable[[], tuple[list[EvidenceDraft], list[str]]] | None = None,
     ) -> None:
         self._data_dir = data_dir
         self._load_bars = load_bars
         self._analysis_date = analysis_date
+        # Injected callable for additional deterministic sources (e.g. live Fear &
+        # Greed). It owns any HTTP so this module keeps its no-httpx boundary.
+        self._extra_drafts = extra_drafts
         self.last_metric_index: dict[str, MetricValue] = {}
 
     async def execute(self, context: RunContext, emit: EventEmitter) -> PipelineOutcome:
@@ -672,6 +676,25 @@ class OrganizerCsvPipeline:
                         message=message,
                     )
                 )
+
+        # Additional deterministic sources (e.g. live sentiment). The injected
+        # callable owns its HTTP; failures degrade, never raise.
+        if self._extra_drafts is not None:
+            try:
+                extra, extra_degradation = self._extra_drafts()
+            except Exception as exc:  # noqa: BLE001 - any source failure is a degradation, not a crash
+                extra, extra_degradation = [], [f"額外來源取得失敗（{type(exc).__name__}）"]
+            drafts.extend(extra)
+            degradation.extend(extra_degradation)
+            emit(
+                self._stage_event(
+                    context,
+                    stage=STAGE_RESEARCH,
+                    status="ok" if extra else "degraded",
+                    output_count=len(extra),
+                    message=f"extra deterministic evidence: {len(extra)}",
+                )
+            )
 
         # Fact-grounding disclosure: surface any LLM-extracted fact whose numbers
         # or dates are absent from its source (contract-safe — notes only).
