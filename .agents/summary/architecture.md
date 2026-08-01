@@ -247,3 +247,7 @@ These paths are completed and covered by tests. Changes require owner agreement:
 - `prompts/`
 - `tests/contract/`
 - `tests/unit/reasoning/`
+
+## 2026-08-01 architecture update
+
+The implementation remains a typed same-process H2-Lite system. Orchestration balances only the Arbiter projection while retaining the complete ledger artifact; frozen reasoning paths remain untouched. See `s8-s9-s9b.md`.

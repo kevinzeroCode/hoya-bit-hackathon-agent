@@ -3,8 +3,7 @@
 The renderer is a pure function of `AnalysisResult` plus the Evidence Ledger. It
 never calls an LLM, never reaches the network, and never states a fact that is
 absent from its two inputs. The 11 fixed sections come from `docs/Features.md`
-§3; the dual-asset 跨幣比較 section belongs to Requirement 17 / S9B and must not
-appear here.
+§3; Requirement 17 adds a twelfth section only for a two-asset run.
 """
 
 from __future__ import annotations
@@ -84,6 +83,8 @@ def render(
     lines += _section(9, _render_limitations(result, ledger))
     lines += _section(10, _render_invalidation(result))
     lines += _section(11, _render_watch_items(result))
+    if len(result.assets) == 2:
+        lines += ["", "## 12. 跨幣比較", "", *_render_comparison(result, ledger)]
 
     report = "\n".join(lines).rstrip() + "\n"
 
@@ -166,13 +167,23 @@ def _render_direct_answer(result: AnalysisResult) -> list[str]:
 def _render_market_context(result: AnalysisResult) -> list[str]:
     context = result.market_context
     if context is None:
-        return ["本次 run 未取得可驗證的市場範圍描述，因此不呈現市場狀況摘要。"]
-    return [
-        context.summary,
-        "",
-        f"- 分析時間範圍：{context.time_range.start} ~ {context.time_range.end}（UTC 日界）",
-        f"- 分析基準時間：{_iso(result.analysis_as_of)}",
-    ]
+        lines = ["本次 run 未取得可驗證的市場範圍描述，因此不呈現市場狀況摘要。"]
+    else:
+        lines = [
+            context.summary,
+            "",
+            f"- 分析時間範圍：{context.time_range.start} ~ {context.time_range.end}（UTC 日界）",
+            f"- 分析基準時間：{_iso(result.analysis_as_of)}",
+        ]
+    if result.market_regime is not None:
+        regime = result.market_regime
+        lines += [
+            "",
+            "**Market Regime（deterministic）**",
+            f"- {regime.asset.value}: `{regime.label.value}`（截至 {regime.as_of}，"
+            f"window={regime.window_days} 日，Evidence `{regime.evidence_id or _NONE}`）",
+        ]
+    return lines
 
 
 def _render_claim_layer(result: AnalysisResult, claim_type: ClaimType, label: str) -> list[str]:
@@ -286,6 +297,59 @@ def _render_confidence(result: AnalysisResult) -> list[str]:
             lines.append(
                 f"- `{claim.claim_id}`（{claim.claim_type.value}）：{claim.confidence.value}"
             )
+    if result.trust_scorecards:
+        lines += ["", "**Trust Scorecard（ordinal，不是機率）**", ""]
+        for card in result.trust_scorecards:
+            mix = card.reliability_mix
+            fresh_age = card.freshness.newest_evidence_age_hours
+            age = _NONE if fresh_age is None else f"{fresh_age:.1f}h"
+            lines.append(
+                f"- `{card.claim_id}`：獨立性 {card.source_independence.level.value} "
+                f"({card.source_independence.distinct_groups})｜來源多樣性 "
+                f"{card.source_diversity.level.value} ({card.source_diversity.distinct_source_types})｜"
+                f"一致性 {card.consistency.level.value}｜新鮮度 {card.freshness.level.value} ({age})"
+            )
+            lines.append(
+                f"  - reliability mix: high={mix.high}, medium={mix.medium}, low={mix.low}；"
+                f"{card.rationale}"
+            )
+    return lines
+
+
+def _render_comparison(result: AnalysisResult, ledger: EvidenceLedger) -> list[str]:
+    left, right = result.assets
+    comparison = [
+        item
+        for item in ledger.items
+        if left.value in item.normalized_fact
+        and right.value in item.normalized_fact
+        and "compare " in item.query_or_parameters
+    ]
+    claims = [claim for claim in result.claims if set(claim.assets) == {left, right}]
+    if not comparison:
+        return [
+            f"{left.value}/{right.value} 比較 unavailable：缺少同一 UTC 日期對齊的可驗證市場證據；"
+            "未使用 forward-fill，也未比較不同幣的 base volume。"
+        ]
+    lines = [
+        f"本段在單一 run、單一 cutoff、同一份 Ledger 中比較 {left.value} 與 {right.value}；"
+        "不比較跨幣 base volume。",
+        "",
+    ]
+    regimes = [
+        item
+        for item in ledger.items
+        if item.asset in {left, right} and item.content_reference.startswith("market regime")
+    ]
+    if regimes:
+        lines.append("**各資產 Market Regime（不合併為單一標籤）**")
+        for item in regimes:
+            lines.append(f"- {item.asset.value}: `{item.evidence_id}` {item.normalized_fact}")
+        lines.append("")
+    for item in comparison:
+        lines.append(f"- `{item.evidence_id}`：{item.normalized_fact}")
+    for claim in claims:
+        lines.append(f"- 比較型 Claim `{claim.claim_id}`：{claim.text}")
     return lines
 
 

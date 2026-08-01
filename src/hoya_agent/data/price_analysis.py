@@ -178,14 +178,17 @@ def analog_base_rates(
 
 # ── evidence builders (market / high reliability, stanceless) ────────────────
 
-def _draft(asset, fact, *, ref, params, metric, source_name, group, url, as_of) -> EvidenceDraft:
+def _draft(
+    asset, fact, *, ref, params, metric, source_name, group, url, as_of,
+    metric_value: float | None = None,
+) -> EvidenceDraft:
     return EvidenceDraft(
         asset=asset, source_type="market", source_name=source_name, source_url=url,
         published_at=datetime(as_of.year, as_of.month, as_of.day, tzinfo=UTC),
         fetched_at=datetime.now(UTC), query_or_parameters=params,
         content_reference=ref, normalized_fact=fact,
         reliability=reliability_for(SourceClass.DETERMINISTIC_CALC),
-        independence_group=group, metric_name=metric,
+        independence_group=group, metric_name=metric, metric_value=metric_value,
     )
 
 
@@ -254,8 +257,16 @@ def build_comparison_evidence(
     """Deterministic cross-asset comparison facts (return / relative strength / correlation /
     beta). Coin-agnostic, stanceless. Cross-coin uses ONLY returns/ratios/percentiles —
     never base-asset volume (units differ)."""
-    ca = closes(bars_asof(bars_a, analysis_as_of))
-    cb = closes(bars_asof(bars_b, analysis_as_of))
+    window_a = {bar.date: bar for bar in bars_asof(bars_a, analysis_as_of)}
+    window_b = {bar.date: bar for bar in bars_asof(bars_b, analysis_as_of)}
+    common_dates = sorted(window_a.keys() & window_b.keys())
+    if not common_dates:
+        return WorkerResult(
+            "failed", [],
+            [f"comparison unavailable for {asset_a} vs {asset_b}: no aligned UTC bars"],
+        )
+    ca = [window_a[day].close for day in common_dates]
+    cb = [window_b[day].close for day in common_dates]
     try:
         ret_a, ret_b = simple_return(ca, ret_window), simple_return(cb, ret_window)
         corr = rolling_correlation(ca, cb, corr_window)
@@ -264,7 +275,7 @@ def build_comparison_evidence(
     except (ValueError, statistics.StatisticsError) as exc:
         return WorkerResult("failed", [], [f"comparison unavailable for {asset_a} vs {asset_b}: {exc}"])
 
-    as_of = bars_asof(bars_a, analysis_as_of)[-1].date
+    as_of = common_dates[-1]
     stronger = asset_a if ret_a > ret_b else asset_b
     drafts = [
         _draft(
@@ -275,6 +286,7 @@ def build_comparison_evidence(
             params=f"compare {asset_a} vs {asset_b}; return_window={ret_window}",
             metric=f"relative_return_{ret_window}d", source_name=source_name,
             group=independence_group, url=source_url, as_of=as_of,
+            metric_value=ret_a - ret_b,
         ),
         _draft(
             asset_a,
@@ -284,6 +296,7 @@ def build_comparison_evidence(
             params=f"compare {asset_a} vs {asset_b}; corr_window={corr_window}; log returns",
             metric="pair_correlation", source_name=source_name,
             group=independence_group, url=source_url, as_of=as_of,
+            metric_value=corr,
         ),
         _draft(
             asset_a,
@@ -292,6 +305,7 @@ def build_comparison_evidence(
             params=f"compare {asset_a} vs {asset_b}; ratio percentile over {ratio_window}d",
             metric="relative_strength_pctile", source_name=source_name,
             group=independence_group, url=source_url, as_of=as_of,
+            metric_value=pct,
         ),
     ]
     return WorkerResult("completed", drafts, [])

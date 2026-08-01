@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
-from hoya_agent._provisional_seams import ExecutionEvent, TerminalState
+from hoya_agent.models import ExecutionEvent, TerminalState
 
 RUN_CONFIG = "run_config.json"
 EXECUTION_LOG = "execution_log.jsonl"

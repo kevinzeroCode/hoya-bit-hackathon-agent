@@ -144,12 +144,16 @@ class Settings(BaseModel):
         self.validate_request(request)
         return RunConfigSnapshot(
             run_id=request.run_id,
-            run_mode=request.run_mode,
+            prompt_version="unknown",
+            policy_version="unknown",
+            requested_run_mode=request.run_mode,
+            effective_run_mode=request.run_mode,
+            sanitized_request={
+                "question": request.question,
+                "assets": [asset.value for asset in request.assets],
+            },
             analysis_as_of=request.analysis_as_of,
-            aws_region=self.aws_region,
-            bedrock_primary_model_id=self.bedrock_primary_model_id,
-            artifact_root=str(self.artifact_root),
-            max_question_length=self.max_question_length,
-            clock_tolerance_seconds=self.clock_tolerance_seconds,
-            optional_key_presence=dict(self.optional_key_presence),
+            deadline_seconds=request.deadline_seconds,
+            configured_sources=["organizer_csv", "baseline_research", "bedrock"],
+            optional_keys_present=dict(self.optional_key_presence),
         )

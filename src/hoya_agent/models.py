@@ -346,6 +346,22 @@ class RunContext(BaseModel):
             raise ValueError("deadline_monotonic must equal start plus deadline_seconds")
         return self
 
+    @property
+    def run_mode(self) -> RunMode:
+        return self.request.run_mode
+
+    @property
+    def question(self) -> str:
+        return self.request.question
+
+    @property
+    def assets(self) -> tuple[Asset, ...]:
+        return tuple(self.request.assets)
+
+    @property
+    def deadline_seconds(self) -> int:
+        return self.request.deadline_seconds
+
 
 class ResearchStep(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -944,12 +960,21 @@ class WorkerResult(BaseModel):
 class ExecutionEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    run_id: str
-    stage: str
-    state: StageState
+    schema_version: str = "1.0"
     timestamp: datetime
-    message: str | None = None
-    details: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
+    run_id: str
+    run_mode: RunMode
+    stage: str
+    event_type: str
+    status: str
+    duration_ms: int | None = None
+    provider_or_model: str | None = None
+    parameters: dict[str, str] = Field(default_factory=dict)
+    attempt: int = 1
+    input_count: int | None = None
+    output_count: int | None = None
+    error_category: str | None = None
+    message: str = ""
 
     @field_validator("run_id")
     @classmethod
@@ -958,15 +983,10 @@ class ExecutionEvent(BaseModel):
             raise ValueError("run_id must match format run_YYYYMMDD_HHMMSS_<suffix>")
         return v
 
-    @field_validator("stage")
+    @field_validator("schema_version", "stage", "event_type", "status")
     @classmethod
     def _stage_nonblank(cls, v: str) -> str:
         return _strip_non_empty(v, "stage")
-
-    @field_validator("message")
-    @classmethod
-    def _message_nonblank(cls, v: str | None) -> str | None:
-        return _strip_optional_non_empty(v, "message")
 
     @field_validator("timestamp")
     @classmethod
@@ -979,15 +999,25 @@ class RunConfigSnapshot(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    schema_version: str = "1.0"
+    prompt_version: str
+    policy_version: str
     run_id: str
-    run_mode: RunMode
+    requested_run_mode: RunMode
+    effective_run_mode: RunMode
+    sanitized_request: dict[str, object]
     analysis_as_of: datetime
-    aws_region: str
-    bedrock_primary_model_id: str
-    artifact_root: str
-    max_question_length: int
-    clock_tolerance_seconds: float
-    optional_key_presence: dict[str, bool]
+    deadline_seconds: int
+    stage_durations_ms: dict[str, int] = Field(default_factory=dict)
+    configured_sources: list[str] = Field(default_factory=list)
+    optional_keys_present: dict[str, bool] = Field(default_factory=dict)
+    used_recorded_fallback: bool = False
+    used_cached_evidence: bool = False
+    has_stale_evidence: bool = False
+    terminal_status: str | None = None
+    artifact_checksums: dict[str, str] = Field(default_factory=dict)
+    missing_artifacts: list[str] = Field(default_factory=list)
+    artifact_write_failures: list[dict[str, str]] = Field(default_factory=list)
 
     @field_validator("run_id")
     @classmethod
@@ -1001,22 +1031,28 @@ class RunConfigSnapshot(BaseModel):
     def _analysis_as_of_utc(cls, v: datetime) -> datetime:
         return _validate_utc(v, "analysis_as_of")
 
-    @field_validator("aws_region", "bedrock_primary_model_id", "artifact_root")
-    @classmethod
-    def _required_text(cls, v: str) -> str:
-        return _strip_non_empty(v, "run config field")
+    @property
+    def run_mode(self) -> RunMode:
+        return self.effective_run_mode
 
+    @property
+    def optional_key_presence(self) -> dict[str, bool]:
+        return self.optional_keys_present
 
 class RunSummary(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     run_id: str
+    run_mode: RunMode
     terminal_state: TerminalState
-    effective_run_mode: RunMode
+    artifact_dir: str
     artifact_paths: dict[str, str] = Field(default_factory=dict)
-    stage_statuses: dict[str, StageState] = Field(default_factory=dict)
+    missing_artifacts: list[str] = Field(default_factory=list)
+    evidence_item_count: int = 0
+    confidence: Reliability
+    insufficient_data: bool
     degradation_notes: list[str] = Field(default_factory=list)
-    completed_at: datetime
+    report_markdown: str | None = None
 
     @field_validator("run_id")
     @classmethod
@@ -1033,20 +1069,14 @@ class RunSummary(BaseModel):
             for name, path in v.items()
         }
 
-    @field_validator("stage_statuses")
-    @classmethod
-    def _stage_names_nonblank(cls, v: dict[str, StageState]) -> dict[str, StageState]:
-        return {_strip_non_empty(name, "stage name"): state for name, state in v.items()}
-
     @field_validator("degradation_notes")
     @classmethod
     def _notes_nonblank(cls, v: list[str]) -> list[str]:
         return _validate_non_blank_list(v, "degradation_notes")
 
-    @field_validator("completed_at")
-    @classmethod
-    def _completed_at_utc(cls, v: datetime) -> datetime:
-        return _validate_utc(v, "completed_at")
+    @property
+    def effective_run_mode(self) -> RunMode:
+        return self.run_mode
 
 
 class EvidenceLedger(BaseModel):

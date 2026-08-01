@@ -173,3 +173,7 @@ expects the names listed in `docs/ai/P3_CONTRACT_EXPECTATIONS.md`.
 
 Treat that document as a consumer requirement to satisfy where possible. On any
 conflict, `.kiro/steering/evidence-contracts.md` wins and the consumer is fixed.
+
+## 2026-08-01 S8/S9/S9B integration
+
+Canonical S1↔S2 seam swap is complete on `agent/s8-s9-s9b`; provisional seam and bridge test are removed. Deadline-aware H2-Lite, deterministic Trust/Regime/invalidation, and one-run dual-asset comparison are implemented. Frozen reasoning/prompts remain unchanged; asset/source balancing occurs at the orchestration projection. Offline acceptance passed. Full pytest/Ruff and live Silver remain pending and must not be reported as passed.
