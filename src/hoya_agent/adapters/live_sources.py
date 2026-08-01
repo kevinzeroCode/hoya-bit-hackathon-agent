@@ -1,18 +1,26 @@
 """Live source composition — real-time market + sentiment, no LLM, no key.
 
-These factories build the plain callables the deterministic pipeline injects
+These factories build the plain sync callables the deterministic pipeline injects
 (`load_bars` and `extra_drafts`). All HTTP lives here in the adapter layer;
 `orchestration/` receives only callables, so its no-`httpx` boundary holds.
 
+The underlying fetchers are async (`httpx.AsyncClient`), but the pipeline calls
+`load_bars`/`extra_drafts` synchronously from inside its own event loop, so we
+bridge with a one-shot worker thread running its own loop (`asyncio.run` cannot
+nest in a running loop).
+
 Neither source needs credentials: Binance spot klines and the Alternative.me
-Fear & Greed index are public. Bedrock (news extraction, reasoning) is a
-separate, credentialed layer added on top.
+Fear & Greed index are public. Bedrock (reasoning) is a separate, credentialed
+layer added on top.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+import asyncio
+import concurrent.futures
+from collections.abc import Callable, Coroutine, Sequence
 from datetime import datetime
+from typing import Any, TypeVar
 
 import httpx
 
@@ -26,6 +34,19 @@ from hoya_agent.evidence.drafts import PendingEvidence
 # the exchange can serve) is a startTime-paginated follow-up.
 _DEFAULT_KLINE_LIMIT = 1000
 
+_T = TypeVar("_T")
+
+
+def _run_sync(coro: Coroutine[Any, Any, _T]) -> _T:
+    """Run a coroutine to completion from a synchronous caller.
+
+    The pipeline invokes these callables synchronously from within an already
+    running event loop, so a fresh loop in a worker thread is used instead of
+    `asyncio.run` (which refuses to nest).
+    """
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(lambda: asyncio.run(coro)).result()
+
 
 def binance_bar_loader(
     analysis_as_of: datetime, *, limit: int = _DEFAULT_KLINE_LIMIT, timeout: float = 45.0
@@ -38,10 +59,13 @@ def binance_bar_loader(
     """
 
     def _load(asset: str) -> Sequence[MarketBar]:
-        with httpx.Client() as client:
-            bars, degradation = fetch_binance_daily(
-                asset, analysis_as_of=analysis_as_of, client=client, limit=limit, timeout=timeout
-            )
+        async def _fetch() -> tuple[list[MarketBar], list[str]]:
+            async with httpx.AsyncClient() as client:
+                return await fetch_binance_daily(
+                    asset, analysis_as_of=analysis_as_of, client=client, limit=limit, timeout=timeout
+                )
+
+        bars, degradation = _run_sync(_fetch())
         if not bars:
             raise ValueError("; ".join(degradation) or f"Binance returned no bars for {asset}")
         return bars
@@ -60,8 +84,13 @@ def fear_greed_drafts(
     """
 
     def _fetch() -> tuple[list[PendingEvidence], list[str]]:
-        with httpx.Client() as client:
-            result = fetch_fear_greed(analysis_as_of=analysis_as_of, client=client, timeout=timeout)
+        async def _do() -> Any:
+            async with httpx.AsyncClient() as client:
+                return await fetch_fear_greed(
+                    analysis_as_of=analysis_as_of, client=client, timeout=timeout
+                )
+
+        result = _run_sync(_do())
         return list(result.drafts), list(result.degradation)
 
     return _fetch
