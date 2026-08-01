@@ -186,10 +186,35 @@ When making code changes that affect architecture, interfaces, data models, work
 | Task completed, ownership changed, or path frozen/unfrozen | `docs/ACTIVE_WORK.md` |
 | New dependency, tech decision, or deployment change | `docs/Tech-Stack-Plan.md` |
 | Requirement completed or acceptance criteria updated | `docs/Features.md` |
-| Stage delivery milestone reached | `docs/Implementation-Plan.md` |
+| **Any change to `src/`, `tests/`, or artifact behaviour** | **`docs/Implementation-Plan.md` — required before pushing, see below** |
 | Kiro task finished with commit evidence | `docs/evidence/kiro/README.md` |
 
 This keeps both AI assistants and human teammates from working with stale context.
+
+### Stage Status Rule (hard requirement)
+
+**Before pushing any change to `src/`, `tests/`, or artifact behaviour, update
+`docs/Implementation-Plan.md` in the same commit.** Two places, not one:
+
+1. the §1.1 snapshot row for your stage;
+2. your stage's own **現況** block.
+
+Status blocks record **what was actually run** — real test counts (`X passed, Y failed`),
+the `ruff` result, and the traps hit along the way. Not what is planned.
+
+The "traps hit" part earns its keep. S0 wrote down three Bedrock failures — the retired
+`claude-3-5-haiku-20241022` model id, the `us.` inference-profile prefix, and model output
+arriving wrapped in markdown fences — and nobody after had to rediscover them.
+
+**Why this is a hard rule rather than a nicety:** on 2026-08-01 this file went stale twice
+within half a day. Once it still called Bedrock unverified after it had been proven working;
+once it still called S2 the blocking critical path after S2 had merged. Either one sends
+someone to redo finished work or to wait on a blocker that no longer exists. With four
+people working in parallel, **a status table that is present but wrong is worse than none at
+all** — an absent one makes people go and check, a wrong one gets believed.
+
+If you are unsure whether your change warrants an update, update it. Three minutes of your
+time against half a day of someone else's.
 
 ## 2026-08-01 S8 / S9 / S9B integration
 
