@@ -78,11 +78,12 @@ secret-scan（gitleaks 掃追蹤內容 ＋ 追蹤檔名檢查）。三個 job �
 全歷史 206 commits → **no leaks found**。（工作樹全掃會有 125 筆，全部落在 `.venv/` 的
 botocore／numpy／pyarrow 測試 fixture，非 repo 內容——所以 CI 只掃 `git archive HEAD`。）
 
-**🔴 Bedrock 帳號阻塞：**AWS account `035741228337` @ `us-west-2` 的每一次 Bedrock 呼叫都回
-`ResourceNotFoundException: Model use case details have not been submitted for this account`。
-Haiku 4.5、Claude 3 Haiku、Sonnet 4.5，`us.` 與 `global.` profile 全試過，`scripts/diagnose_bedrock.py`
-各 0/3 成功。這是 Bedrock console 的帳號開通動作，不是程式缺陷——pipeline 照設計誠實降級並仍產出四項
-artifacts。S8 記錄的 Silver Exit 是在**另一個已開通的帳號**上執行的。
+**✅ Bedrock 已可用（帳號已換）：**競賽帳號改為主辦方的 AWS Workshop Studio 帳號
+`411451203311`；`scripts/diagnose_bedrock.py` → **3/3 成功，每次約 8 秒**。憑證短期、帳號臨時。
+
+**🔴 兩個在 live run 才會現形的缺陷（皆未修，見 S11 現況區塊）：**
+1. 證據一多，Arbiter 撞 45 秒單次上限 → 整個推理層掉光。BTC（20 筆證據）失敗、ETH（6 筆）成功。
+2. Planner 的資產比對因 `str(Asset.BTC) == 'Asset.BTC'` 永遠不相等 → LLM 計畫每次被丟棄。
 
 **下一條關鍵路徑：** S8 live Silver ✅ → S10 自動 acceptance ✅ →
 **S10 complete-Evidence run（等 Bedrock 開通）** → S11 ECR/EC2 → 15 分鐘計時彩排。
@@ -1280,15 +1281,16 @@ Silver 已過；兩個不同資產各自以獨立單幣 run 通過；必要的�
 > | image 無秘密 | ✅ | `/app` 內無 `.env`、無 `*.pem`／`*.key` |
 > | `docker compose config` | ✅ | VALID |
 > | secret scan | ✅ | gitleaks v8.28.0：追蹤內容 315 檔 no leaks；全歷史 206 commits no leaks |
-> | ECR repository | ✅ | `hoya-agent`，IMMUTABLE ＋ scanOnPush；tag `2cec732`、`c844a38` |
-> | EC2 部署 | ✅ | `i-0fa12c895827d6c4e`，t3.small AL2023 @ us-west-2a |
-> | 公開 healthcheck | ✅ | `http://44.248.255.72:8501/_stcore/health` → `ok` |
-> | tag 逐字相同 | ✅ | `docker inspect` → `…/hoya-agent:2cec732`，與推上 ECR 的完全一致 |
+> | ECR repository | ✅ | `hoya-agent`，IMMUTABLE ＋ scanOnPush；tag `2cd9b43`、`c844a38` |
+> | EC2 部署 | ✅ | `i-000a2cdc6d3c1afab`，t3.small AL2023 @ us-west-2a |
+> | 公開 healthcheck | ✅ | `http://35.91.36.186:8501/_stcore/health` → `ok` |
+> | tag 逐字相同 | ✅ | `docker inspect` → `…/hoya-agent:2cd9b43`，與推上 ECR 的完全一致 |
 > | EC2 上容器內 smoke | ✅ | 四項 artifacts、6 log events、5 evidence、run_id 一致 |
 > | 零金鑰 | ✅ | IAM instance role `hoya-agent-ec2`；SG 只開 8501 給單一來源 IP，**不開 22**，管理走 SSM；IMDSv2 強制 |
-> | rollback 演練 | ✅ | 回退 `c844a38`（20 秒健康）→ 前滾 `2cec732`（20 秒健康） |
+> | rollback 演練 | ✅ | 回退 `c844a38`（20 秒健康）→ 前滾 `2cd9b43`（20 秒健康） |
 > | CSV/Binance 重疊檢查 | ✅ | 五幣 31 天，close 差異 **0.0000%**；🚫 但不得因此宣稱 CSV 來自 Binance |
-> | recorded fallback（版控外） | ✅ | `hoya-demo-fallbackun_20260802_015425_demo1`，報告標示 demo ＋ 原始時間 |
+> | recorded fallback（版控外） | ✅ | `hoya-demo-fallback
+un_20260802_015425_demo1`，報告標示 demo ＋ 原始時間 |
 > | **15 分鐘計時彩排** | 🔴 | **未執行 —— 人工項目，腳本見 `docs/demo-runbook.md`** |
 >
 > **踩到的坑：**

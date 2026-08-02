@@ -5,8 +5,8 @@ calling Bedrock through an **IAM instance role**. Iron rule: **secrets never ent
 the repository, a log, a compose file or a screenshot.**
 
 > Status 2026-08-02: **deployed and verified.** Live at
-> `http://ec2-44-248-255-72.us-west-2.compute.amazonaws.com:8501`, running ECR tag
-> `2cec732`. Rollback has actually been executed. The one thing still missing is the
+> `http://ec2-35-91-36-186.us-west-2.compute.amazonaws.com:8501`, running ECR tag
+> `2cd9b43`. Rollback has actually been executed. The one thing still missing is the
 > 15-minute timed judged-flow rehearsal, which is a human task —
 > see [Verified / not verified](#verified--not-verified).
 
@@ -180,23 +180,45 @@ curl -f http://localhost:8501/_stcore/health
 
 ## Known operational conditions
 
-### 🔴 Bedrock is not enabled on account `035741228337`
+### ✅ Bedrock is enabled on account `411451203311`
 
-Every Converse call from this account in `us-west-2` returns:
+The competition account is an **AWS Workshop Studio** account provided by the organizer, and
+the Anthropic use case details form has already been submitted on it. Verified 2026-08-02
+with `scripts/diagnose_bedrock.py` against `us.anthropic.claude-haiku-4-5-20251001-v1:0`:
+**3/3 successful calls, ~8 s each.**
 
-```
-ResourceNotFoundException: Model use case details have not been submitted for this account.
-Fill out the Anthropic use case details form before using the model.
-```
+Two consequences of it being a Workshop Studio account:
 
-Reproduced 2026-08-02 with `scripts/diagnose_bedrock.py` against Haiku 4.5, Claude 3 Haiku and
-Sonnet 4.5, `us.` and `global.` profiles — 0/3 successful calls each. This is an **account
-enablement action in the Bedrock console**, not a defect.
+- **Credentials are short-lived.** They come from the event's "Get AWS CLI credentials" panel
+  and expire. Store them as a named profile with `aws_session_token`; refresh when the CLI
+  starts returning `ExpiredToken`.
+- **The account is temporary.** It is reclaimed when the event ends, so nothing here is
+  durable infrastructure. Rebuild from §4 and §5 if it is reset.
 
-Until it is submitted and propagated, a deployment still works and is still honest: the report
-carries deterministic market evidence, discloses that reasoning was unavailable, and ships four
-artifacts. It simply has no inference or conclusion Claims. Do not present such a run as a full
-Silver/Gold demonstration.
+### 🔴 A full evidence ledger can exhaust the Arbiter's 45-second call budget
+
+Observed 2026-08-02 on two live runs from the same commit:
+
+| Asset | Evidence items | Independence groups | Arbiter | Result |
+|---|---:|---:|---|---|
+| ETH | 6 | 2 | completed | conclusions, confidence `high` |
+| BTC | 20 | 4 | `DeadlineExceeded` | **no conclusions**, 目前無法可靠判定 |
+
+The inversion is the problem: **the better acquisition works, the larger the Arbiter prompt,
+and the more likely the whole reasoning layer is lost.** BTC met the run target of three
+source types and three independence groups and was then the one that failed.
+
+The 45-second per-call cap is fixed by `competition-rules.md` and by `config.py`
+(`LLM_CALL_TIMEOUT_SECONDS` hard max 45), so it cannot simply be raised. The levers that do
+not touch the frozen `reasoning/` package are both on `ArbiterSettings`, which
+`application.build_research_pipeline` and `composition.build_live_pipeline` construct:
+
+- `max_evidence` (default 30) — fewer items, shorter prompt
+- `max_tokens` (default 8000) — likely the larger factor, since generation time dominates
+
+**Not changed here.** Tuning the reasoning stage is the reasoning owner's call and needs their
+agreement under Feature Freeze. Until it is decided, expect a rich-evidence live run to be at
+risk of losing its conclusions.
 
 ### Image size
 
@@ -215,13 +237,13 @@ do not leave the first pull to the judged window.
 | Non-root, no `.env` in image | ✅ | `uid=10001(appuser)`; `/app/.env` absent |
 | Secret scan | ✅ | tracked 315 files and 206 commits, no leaks |
 | CI | ✅ | all three jobs green on first run |
-| ECR repository + push | ✅ | `hoya-agent`, IMMUTABLE, scanOnPush; tags `2cec732` and `c844a38` |
-| EC2 deployment | ✅ | `i-0fa12c895827d6c4e`, t3.small, us-west-2a |
-| Public healthcheck | ✅ | `http://44.248.255.72:8501/_stcore/health` → `ok` |
-| Deployed tag == pushed tag | ✅ | `docker inspect` → `…/hoya-agent:2cec732`, character for character |
+| ECR repository + push | ✅ | `hoya-agent`, IMMUTABLE, scanOnPush; tags `2cd9b43` and `c844a38` |
+| EC2 deployment | ✅ | `i-000a2cdc6d3c1afab`, t3.small, us-west-2a |
+| Public healthcheck | ✅ | `http://35.91.36.186:8501/_stcore/health` → `ok` |
+| Deployed tag == pushed tag | ✅ | `docker inspect` → `…/hoya-agent:2cd9b43`, character for character |
 | In-image smoke on EC2 | ✅ | four artifacts, 6 log events, 5 evidence, one `run_id` |
 | Non-root + no `.env` on EC2 | ✅ | `uid=10001(appuser)`; `/app/.env` absent |
-| Rollback rehearsal | ✅ | rolled back to `c844a38` (healthy 20 s), rolled forward to `2cec732` (healthy 20 s) |
+| Rollback rehearsal | ✅ | rolled back to `c844a38` (healthy 20 s), rolled forward to `2cd9b43` (healthy 20 s) |
 | No SSH exposure | ✅ | security group opens 8501 only, to one source IP; administration via SSM |
 | Recorded fallback saved outside VCS | ✅ | `C:\Users\USER\Documents\AWS\hoya-demo-fallback\run_20260802_015425_demo1` |
 | CSV / Binance overlap check | ✅ | five assets, 31 days, 0.0000% close difference — see [live-source-check.md](rehearsals/live-source-check.md) |
@@ -232,14 +254,14 @@ do not leave the first pull to the judged window.
 
 | | |
 |---|---|
-| Account / region | `035741228337` / `us-west-2` |
-| ECR | `035741228337.dkr.ecr.us-west-2.amazonaws.com/hoya-agent` — IMMUTABLE, scanOnPush |
-| Deployed tag | `2cec732` (digest `sha256:a2d4e9c9…`), 201 MB compressed |
+| Account / region | `411451203311` / `us-west-2` |
+| ECR | `411451203311.dkr.ecr.us-west-2.amazonaws.com/hoya-agent` — IMMUTABLE, scanOnPush |
+| Deployed tag | `2cd9b43` (digest `sha256:a2d4e9c9…`), 201 MB compressed |
 | Previous known-good tag | `c844a38` — kept in ECR as the rollback target |
-| Instance | `i-0fa12c895827d6c4e`, t3.small, AL2023 `ami-0b76d82b547c3c077`, 20 GB gp3 |
-| Public URL | `http://ec2-44-248-255-72.us-west-2.compute.amazonaws.com:8501` |
+| Instance | `i-000a2cdc6d3c1afab`, t3.small, AL2023 `ami-0b76d82b547c3c077`, 20 GB gp3 |
+| Public URL | `http://ec2-35-91-36-186.us-west-2.compute.amazonaws.com:8501` |
 | IAM instance role | `hoya-agent-ec2` — ECR read-only + SSM core + inline `bedrock:InvokeModel` |
-| Security group | `sg-04cd8a6f9fbf4da5f` — inbound tcp/8501 from `223.137.155.152/32` only. **No port 22.** |
+| Security group | `sg-09d81b95b733a1a5a` — inbound tcp/8501 from `223.137.155.152/32` only. **No port 22.** |
 | IMDS | `HttpTokens=required` (IMDSv2 enforced) |
 | Credentials on host | none — instance role through the standard chain |
 
@@ -248,14 +270,14 @@ again afterwards:
 
 ```bash
 aws ec2 authorize-security-group-ingress --region us-west-2 \
-  --group-id sg-04cd8a6f9fbf4da5f --protocol tcp --port 8501 --cidr <judge-ip>/32
+  --group-id sg-09d81b95b733a1a5a --protocol tcp --port 8501 --cidr <judge-ip>/32
 ```
 
 **Stop or terminate when the demo is over** — the instance bills while it runs:
 
 ```bash
-aws ec2 stop-instances     --region us-west-2 --instance-ids i-0fa12c895827d6c4e
-aws ec2 terminate-instances --region us-west-2 --instance-ids i-0fa12c895827d6c4e
+aws ec2 stop-instances     --region us-west-2 --instance-ids i-000a2cdc6d3c1afab
+aws ec2 terminate-instances --region us-west-2 --instance-ids i-000a2cdc6d3c1afab
 ```
 
 ## Pre-submission checklist

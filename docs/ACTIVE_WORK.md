@@ -23,7 +23,7 @@
 | S9 | ✅（離線） | Trust/Regime/Invalidation 完成 |
 | S9B | ✅（離線） | one-run dual-asset comparison 完成 |
 | S10 | 🟡 | `tests/acceptance/` 29 passed（兩資產獨立單幣 run、artifact 契約、fake-clock deadline）；`scripts/run_acceptance.py` ＋ `docs/rehearsals/run-log.md` 已落地。**complete-Evidence run 仍缺**——Bedrock 帳號未開通 |
-| S11 | 🟡 | CI（3 job）、smoke test、本地 Docker、**ECR/EC2 已上線**（`http://44.248.255.72:8501`，tag `2cec732`）、**rollback 已實跑**、secret scan、CSV/Binance 重疊檢查、recorded fallback 全過；**只剩 15 分鐘計時彩排（人工）** |
+| S11 | 🟡 | CI（3 job）、smoke test、本地 Docker、**ECR/EC2 已上線**（`http://35.91.36.186:8501`，tag `2cd9b43`）、**rollback 已實跑**、secret scan、CSV/Binance 重疊檢查、recorded fallback 全過；**只剩 15 分鐘計時彩排（人工）** |
 
 ## Current main
 
@@ -39,11 +39,20 @@
 - **Silver live gate**：`tests/live/test_live_silver_pipeline.py` → 1 passed in 50.15s；S8 關閉。
 - **GitHub Actions 已配置**：`.github/workflows/ci.yml` — verify／container／secret-scan，皆免 AWS 憑證。
 - `tests/acceptance/` **已建立**（3 檔、29 tests）；`tests/live/` 有 opt-in source/Bedrock/silver-pipeline gate。
-- **🔴 Bedrock 帳號阻塞**：account `035741228337` @ `us-west-2` 每次呼叫都回
-  `ResourceNotFoundException: Model use case details have not been submitted for this account`。
-  Haiku 4.5／Claude 3 Haiku／Sonnet 4.5、`us.` 與 `global.` profile 全試過皆 0/3。
-  這是 Bedrock console 的帳號開通動作。S8 的 Silver Exit 是在**另一個已開通帳號**上過的。
-  未開通前，任何 live run 都只有 deterministic 市場證據、無推論與結論（誠實降級，四項 artifacts 仍齊全）。
+- **✅ Bedrock 可用**：競賽帳號改為主辦方提供的 **AWS Workshop Studio** 帳號
+  `411451203311`（原本的 `035741228337` 不能用）。主辦已完成 Anthropic use case 開通，
+  `scripts/diagnose_bedrock.py` → **3/3 成功，每次約 8 秒**。憑證是**短期的**，過期就重新
+  從活動頁面取得；帳號本身也是臨時的，活動結束會回收。
+- **🔴 證據一多，Arbiter 會撞 45 秒單次呼叫上限**：2026-08-02 同一 commit 兩次 live run，
+  ETH（6 筆證據／2 個獨立上游）Arbiter 完成、信心 `high`；**BTC（20 筆證據／4 個獨立上游）
+  `DeadlineExceeded`，整個推理層掉光，報告首頁變成「目前無法可靠判定」**。
+  取證做得越好越容易失敗。45 秒上限是競賽規則與 `config.py` 寫死的，不能調高；
+  可動的是 `ArbiterSettings` 的 `max_evidence`（預設 30）與 `max_tokens`（預設 8000），
+  兩者都能從非凍結的組裝端注入。**尚未變更——屬推理層 owner 的決定。**
+- **🔴 Planner 的資產比對永遠不相等**：`orchestration/pipeline.py:_reasoning_request` 傳
+  `asset.value`（字串），`reasoning/planner.py:56` 卻拿 `str()` 去比 plan 端的 `Asset` enum，
+  Python 3.11 起 `str(Asset.BTC)` 是 `'Asset.BTC'` 不是 `'BTC'`，所以**每次 live run 的
+  LLM 計畫都被判違規丟棄**，改用決定論預設計畫。修點在凍結的 `reasoning/`，需 owner 同意。
 
 ## Completed and frozen
 
@@ -69,10 +78,10 @@ S9B 的 per-asset/source 配額位於 orchestration projection；完整 Ledger a
 
 | 優先 | 工作 | Owner | 完成條件 |
 |---:|---|---|---|
-| 1 | **開通 Bedrock 帳號** | 帳號持有者 | 在 `035741228337` 的 Bedrock console 送出 Anthropic use case details 表單；`scripts/diagnose_bedrock.py` 3/3 成功 |
+| 1 | **開通 Bedrock 帳號** | 帳號持有者 | 在 `411451203311` 的 Bedrock console 送出 Anthropic use case details 表單；`scripts/diagnose_bedrock.py` 3/3 成功 |
 | 2 | S10 complete-Evidence run | 全員 | 開通後 `python scripts/run_acceptance.py --live`，兩資產都出推論／結論 Claim |
 | 3 | **S11 15 分鐘計時彩排** | 全員 | 用 `docs/demo-runbook.md` 走一次完整流程，§3.2 的 S11 人工清單逐項簽核 |
-| 4 | 彩排後關機 | P1/P4 | `aws ec2 stop-instances --instance-ids i-0fa12c895827d6c4e`（跑著就計費） |
+| 4 | 彩排後關機 | P1/P4 | `aws ec2 stop-instances --instance-ids i-000a2cdc6d3c1afab`（跑著就計費） |
 | 5 | repository hygiene | 各 owner | full pytest 綠、Ruff 零錯誤、狀態文件同步 |
 
 ## Commands

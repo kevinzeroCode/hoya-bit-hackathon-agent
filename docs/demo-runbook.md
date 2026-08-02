@@ -9,9 +9,9 @@ Deployment procedure: [deployment.md](deployment.md). Architecture: [architectur
 
 | # | Check | Command / action |
 |---|---|---|
-| 1 | The host is up and healthy | `curl -f http://44.248.255.72:8501/_stcore/health` → `ok` |
-| 2 | The running tag is the intended tag | `docker inspect --format '{{.Config.Image}}' hoya-agent` → must end `:2cec732` |
-| 2b | The demo IP is in the security group | 8501 is open to named sources only — add it to `sg-04cd8a6f9fbf4da5f` beforehand |
+| 1 | The host is up and healthy | `curl -f http://35.91.36.186:8501/_stcore/health` → `ok` |
+| 2 | The running tag is the intended tag | `docker inspect --format '{{.Config.Image}}' hoya-agent` → must end `:2cd9b43` |
+| 2b | The demo IP is in the security group | 8501 is open to named sources only — add it to `sg-09d81b95b733a1a5a` beforehand |
 | 3 | The image is already pulled | it is 860 MB — never pull during the judged window |
 | 4 | Bedrock answers | `python scripts/diagnose_bedrock.py` → 3/3 |
 | 5 | Browser tab open on the app, zoom set, no `.env` or terminal with secrets visible on screen | |

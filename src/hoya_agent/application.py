@@ -372,8 +372,19 @@ def build_research_pipeline(
     # The sink travels with the registry, so a caller-supplied registry keeps its
     # own channel rather than losing every retry disclosure.
     source_notes = getattr(registry, "note_sink", source_notes)
+    # An Arbiter runs whenever one is supplied, or whenever an `llm` is available to
+    # build one below. The market branch's "no Arbiter" disclosure is false in that
+    # case, and a report that both states a conclusion and denies having produced one
+    # is worse than either alone — so suppress it here rather than at render time.
+    # An Arbiter runs whenever one is supplied, or whenever an `llm` is available to
+    # build one below. The market branch's "no Arbiter" disclosure is false in that
+    # case, and a report that both states a conclusion and denies having produced one
+    # is worse than either alone — so suppress it here rather than at render time.
+    will_reason = arbiter is not None or llm is not None
     market = market_pipeline or OrganizerCsvPipeline(
-        data_dir=data_dir, analysis_date=analysis_date  # type: ignore[arg-type]
+        data_dir=data_dir,
+        analysis_date=analysis_date,  # type: ignore[arg-type]
+        emit_no_arbiter_note=not will_reason,
     )
     planner: object = (
         Planner(llm=llm, plan_schema=ResearchPlan, tool_registry=registry)

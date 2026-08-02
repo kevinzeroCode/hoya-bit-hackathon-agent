@@ -102,3 +102,47 @@ inference or conclusion Claims, so:
 **Explicitly excluded from this local gate:** Docker build/runtime acceptance, ECR
 deployment, EC2 deployment, the timed judged-flow rehearsal and submission verification.
 Those belong to S11.
+
+---
+
+## 2026-08-02 (第二次) — 帳號改為主辦方 Workshop Studio `411451203311`，Bedrock 可用
+
+主辦規定必須使用 `411451203311`（Workshop Studio 臨時帳號），原本的 `035741228337` 作廢。
+該帳號的 Anthropic use case 已由主辦開通：`scripts/diagnose_bedrock.py` → **3/3 成功，約 8 秒/次**。
+
+```powershell
+$env:AWS_PROFILE = "hoya"; $env:AWS_REGION = "us-west-2"
+$env:BEDROCK_PRIMARY_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+python scripts/run_acceptance.py --live --artifact-root artifacts
+```
+
+| 資產 | run ID | terminal state | 時長 (s) | evidence | source types | 獨立上游 | Arbiter | 結論 |
+|---|---|---|---:|---:|---|---|---|---|
+| BTC | `run_20260802_023614_g1bt` | degraded | 67.6 | 20 | market, news, social | alternative.me, coindesk.com, decrypt.co, organizer-public-market-data | 🔴 `DeadlineExceeded` | **無** |
+| ETH | `run_20260802_023723_g2et` | degraded | 35.3 | 6 | market, social | alternative.me, organizer-public-market-data | ✅ completed | 有，信心 `high` |
+
+### 這一輪學到的兩件事
+
+**1. 取證越成功，推理越可能失敗。** BTC 達成了 run 目標（≥3 種 source type、≥3 個
+independence group），正因為證據多，Arbiter 的單次呼叫超過 45 秒硬上限而整個掉掉，
+報告首頁變成「目前無法可靠判定」。ETH 證據少反而順利完成並拿到 `high`。
+45 秒是競賽規則與 `config.py` 寫死的，可動的是 `ArbiterSettings.max_evidence`（預設 30）
+與 `max_tokens`（預設 8000），兩者都能從非凍結組裝端注入。**尚未變更——推理層 owner 決定。**
+
+**2. Planner 的 LLM 計畫每次都被丟棄。** `orchestration/pipeline.py:_reasoning_request`
+傳的是 `asset.value`（字串 `"BTC"`），`reasoning/planner.py:56` 卻用 `str()` 比對 plan 端
+pydantic 轉出來的 `Asset` enum。Python 3.11 起 `str(Asset.BTC)` 回 `'Asset.BTC'`，
+兩邊永遠不相等，於是每次都判「plan changed the requested assets」並退回決定論預設計畫。
+修點在凍結的 `reasoning/`，需 owner 同意。
+
+### 已修（本分支）
+
+`application.build_research_pipeline` 先前沒有對自建的 market branch 關掉
+`emit_no_arbiter_note`，導致**有結論的 run 同時在報告裡寫「未產出經驗證的推論或結論」**——
+報告自己打自己臉。已修，並補上兩條回歸測試
+（`tests/integration/test_composed_research_pipeline.py`），其中一條在修復前確實會紅。
+
+### Gold local Exit 狀態更新
+
+complete-Evidence run **部分達成**：ETH 已有完整證據＋推論＋結論（信心 `high`）；
+BTC 因上述 Arbiter 逾時尚未取得。兩資產都要成功才算 S10 收尾。

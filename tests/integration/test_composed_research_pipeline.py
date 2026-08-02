@@ -395,3 +395,56 @@ async def test_research_runs_without_an_llm_and_discloses_the_substitution() -> 
 
     assert outcome.ledger.items, "market evidence must still ship"
     assert any("決定論預設計畫" in note for note in outcome.degradation_notes)
+
+
+NO_ARBITER_NOTE = "Arbiter 尚未接線"
+
+
+async def _run_with_default_market_branch(*, with_llm: bool) -> PipelineOutcome:
+    """Let the composition root build its own market branch.
+
+    Every other test here supplies `market_pipeline=` explicitly, which is exactly
+    why the disclosure bug below survived: the caller's instance carried its own
+    setting and the composed default was never exercised.
+    """
+    client = _routing_client()
+    registry = _registry(client)
+    llm = (
+        ScriptedLLM(extraction=await _extraction(), operations=tuple(registry.operations()))
+        if with_llm
+        else None
+    )
+    pipeline = build_research_pipeline(
+        clock=Clock(),
+        llm=llm,
+        tool_registry=registry,
+        analysis_date=CSV_AS_OF,
+    )
+    return await pipeline.execute(_context(), lambda event: None)
+
+
+async def test_a_reasoning_run_never_claims_it_produced_no_conclusion() -> None:
+    """A report that states a conclusion and denies having one is worse than either.
+
+    `OrganizerCsvPipeline` emits the "no Arbiter" disclosure by default, which is
+    true when it is the whole pipeline and false when it is the market branch of a
+    pipeline that reasons. The composition root owns that distinction.
+    """
+    outcome = await _run_with_default_market_branch(with_llm=True)
+
+    assert outcome.result is not None, "the scripted Arbiter must have produced a result"
+    assert outcome.result.claims, "and that result must carry claims"
+    assert not any(NO_ARBITER_NOTE in note for note in outcome.degradation_notes), (
+        "the run produced conclusions, so it must not also disclose that it did not"
+    )
+    assert not any(NO_ARBITER_NOTE in event.note for event in outcome.ledger.degradation_events)
+
+
+async def test_a_run_without_reasoning_still_discloses_the_missing_arbiter() -> None:
+    """The converse: with no model there is genuinely no conclusion, and it is said."""
+    outcome = await _run_with_default_market_branch(with_llm=False)
+
+    assert outcome.result is None
+    assert any(NO_ARBITER_NOTE in note for note in outcome.degradation_notes), (
+        "an honestly reasoning-free run must keep the disclosure"
+    )

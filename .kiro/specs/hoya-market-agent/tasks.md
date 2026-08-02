@@ -50,13 +50,13 @@
   A complete-Evidence run with reasoning is blocked on Bedrock account enablement.
 - **Task 10 (deploy + rehearsal): deployed and verified; one item left.** CI, smoke test,
   Docker build, in-image smoke, non-root check and secret scan all pass. ECR repository and
-  EC2 host are live: `http://44.248.255.72:8501` running the immutable tag `2cec732`, which
+  EC2 host are live: `http://35.91.36.186:8501` running the immutable tag `2cd9b43`, which
   matches the pushed ECR tag character for character. Rollback was actually executed
   (`c844a38` and back). CSV/Binance overlap check and the out-of-VCS recorded fallback are
   done. **The 15-minute timed judged-flow rehearsal has not been executed** — it is a human
   task; script in `docs/demo-runbook.md`.
 - Not complete: Tasks 0, 7.
-- **Blocker:** AWS account `035741228337` has not submitted the Anthropic use case details
+- **Blocker:** AWS account `411451203311` has not submitted the Anthropic use case details
   form, so every Bedrock call in `us-west-2` returns `ResourceNotFoundException`. Live runs
   degrade honestly to deterministic market evidence only.
 - Gold local Exit and deployment/rehearsal must still not be claimed as complete.
@@ -373,9 +373,10 @@ five-coin matrix, Platinum capabilities or H3 implementation are rejected.
   - [x] Begin Feature Freeze immediately when Gold local Exit occurs or Day 2 midday arrives, whichever occurs first. After that point, permit only bug fixes, reliability fixes, deployment, rehearsal, documentation, rollback preparation and submission verification. — in effect 2026-08-02
   - [ ] Reject post-freeze additions of features, providers, artifact formats, PDF/HTML requirements, additional visualizations, the five-coin matrix, Platinum capabilities or H3 implementation.
   - [x] Run the full non-live verification command from `.kiro/steering/testing.md`; fixes required by failures remain allowed under Feature Freeze. — 1266 passed, Ruff clean
-  - [x] After Gold local Exit, build the Docker image, verify local runtime, push a commit-SHA tag to ECR and deploy that immutable tag to one EC2 host with `docker compose`; document environment names, healthcheck and rollback command without secrets. — tag `2cec732` on `i-0fa12c895827d6c4e`; `docs/deployment.md`
+  - [x] After Gold local Exit, build the Docker image, verify local runtime, push a commit-SHA tag to ECR and deploy that immutable tag to one EC2 host with `docker compose`; document environment names, healthcheck and rollback command without secrets. — tag `2cd9b43` on `i-000a2cdc6d3c1afab`; `docs/deployment.md`
   - [x] Smoke-test the public URL, healthcheck and all artifact downloads using `scripts/smoke_test.py` without counting this as an additional required rehearsal. — public health `ok`; in-image smoke passed on EC2. UI download buttons remain a manual check (Streamlit websocket, not headless-verifiable)
-  - [x] Save one complete recorded fallback run outside source control and document how `demo` exposes its original timestamp and recorded status. — `hoya-demo-fallbackun_20260802_015425_demo1`; `docs/demo-runbook.md`
+  - [x] Save one complete recorded fallback run outside source control and document how `demo` exposes its original timestamp and recorded status. — `hoya-demo-fallback
+un_20260802_015425_demo1`; `docs/demo-runbook.md`
   - [x] Update README with local run, test, Docker, configuration and artifact instructions; add CI for non-live tests and Ruff. — `.github/workflows/ci.yml`, three jobs green
   - [ ] Complete one full 15-minute timed judged-flow rehearsal from question entry through artifact inspection and record run ID, mode, duration, source gaps and artifact paths. Additional rehearsals are optional and must not delay deployment or submission.
   - [x] Run a repository secret scan and inspect `git status` and `git ls-files` for `.env`, keys and credentials; verify rollback and submission evidence. — gitleaks: 315 tracked files and 206 commits, no leaks; rollback executed once
