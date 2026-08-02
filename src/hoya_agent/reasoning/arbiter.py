@@ -24,6 +24,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from hoya_agent.adapters.bedrock import LLMError
+from hoya_agent.reasoning.claim_graph import salvage_claim_graph
 from hoya_agent.reasoning.prompt_library import load_prompt
 
 #: Hard maximum from design.md 9; configuration may lower it, never raise it.
@@ -237,6 +238,38 @@ def structural_violations(
     return violations
 
 
+def _repair_generation(generated: Any, ledger_ids: set[str]) -> Any | None:
+    """Deterministically drop the un-supportable claims/links, keeping the rest.
+
+    Returns a repaired copy of the generation, or ``None`` if nothing usable
+    survives (in which case the caller falls back). Also drops invalidation
+    conditions whose quantified basis cites evidence not in the ledger.
+    """
+    claims, links = salvage_claim_graph(
+        list(_attr(generated, "claims") or ()),
+        list(_attr(generated, "claim_evidence_links") or ()),
+        insufficient_data=bool(_attr(generated, "insufficient_data", False)),
+        valid_evidence_ids=set(ledger_ids),
+    )
+    if not claims:
+        return None
+    invalidations = [
+        inv
+        for inv in (_attr(generated, "invalidation_conditions") or ())
+        if not (
+            (basis := _attr(inv, "basis_evidence_id"))
+            and str(basis) not in ledger_ids
+        )
+    ]
+    return generated.model_copy(
+        update={
+            "claims": claims,
+            "claim_evidence_links": links,
+            "invalidation_conditions": invalidations,
+        }
+    )
+
+
 def apply_confidence_caps(
     payload: dict[str, Any],
     indicators: Iterable[Any] = (),
@@ -367,11 +400,29 @@ class Arbiter:
 
         violations = structural_violations(generated, ledger_ids, indicators)
         if violations:
-            notes.append(
-                "Arbiter 輸出未通過結構驗證，改用決定論後備結果："
-                + "；".join(violations[:3])
-            )
-            return self._fallback(request, selected, notes, violations[0]), notes
+            # Repair before discarding: drop only the claims that cannot be
+            # supported (e.g. a conclusion whose only link is neutral) plus their
+            # dependents and dangling links, and keep the rest. A single bad
+            # claim must not sink every inference and conclusion into the
+            # fact-only fallback. Deterministic — no extra model call.
+            repaired = _repair_generation(generated, ledger_ids)
+            if repaired is not None and not structural_violations(
+                repaired, ledger_ids, indicators
+            ):
+                dropped = len(_attr(generated, "claims") or ()) - len(
+                    _attr(repaired, "claims") or ()
+                )
+                notes.append(
+                    f"Arbiter 輸出部分不合規，已移除 {dropped} 個無法佐證的 claim"
+                    "（缺少支持證據或依賴已失效），保留其餘可驗證的推論與結論"
+                )
+                generated = repaired
+            else:
+                notes.append(
+                    "Arbiter 輸出未通過結構驗證，改用決定論後備結果："
+                    + "；".join(violations[:3])
+                )
+                return self._fallback(request, selected, notes, violations[0]), notes
 
         payload = generated.model_dump()
         evidence_by_id = {str(_attr(item, "evidence_id")): item for item in items}

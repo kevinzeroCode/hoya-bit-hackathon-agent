@@ -326,6 +326,43 @@ class ArbiterRunTests(unittest.TestCase):
         self.assertTrue(result.insufficient_data)
         self.assertTrue(any("結構驗證" in note for note in notes))
 
+    def test_one_bad_conclusion_is_repaired_not_fully_discarded(self):
+        # Facts + inference + a good conclusion + a conclusion whose only link is
+        # neutral. The bad conclusion must be dropped while the valid reasoning
+        # layers survive — not collapsed into the fact-only fallback.
+        gen = Result(
+            direct_answer="帶量整理。",
+            claims=[
+                Claim(claim_id="cl_001", claim_type="fact", text="報酬 -3%"),
+                Claim(
+                    claim_id="cl_002", claim_type="inference",
+                    text="回落有承接", based_on_claim_ids=["cl_001"],
+                ),
+                Claim(
+                    claim_id="cl_003", claim_type="conclusion",
+                    text="屬整理非崩跌", based_on_claim_ids=["cl_002"],
+                ),
+                Claim(
+                    claim_id="cl_004", claim_type="conclusion",
+                    text="無支持的結論", based_on_claim_ids=["cl_002"],
+                ),
+            ],
+            claim_evidence_links=[
+                Link(claim_id="cl_001", evidence_id="ev_001", stance="supports"),
+                Link(claim_id="cl_002", evidence_id="ev_001", stance="supports"),
+                Link(claim_id="cl_003", evidence_id="ev_002", stance="supports"),
+                Link(claim_id="cl_004", evidence_id="ev_002", stance="neutral"),
+            ],
+            confidence="medium",
+        )
+        ledger = Ledger(items=[ev("ev_001", "high", "a.com"), ev("ev_002", "high", "b.com")])
+        result, notes = run_arbiter(FakeLLM([gen]), ledger)
+        self.assertFalse(result.insufficient_data)
+        kept = {c.claim_id for c in result.claims}
+        self.assertEqual(kept, {"cl_001", "cl_002", "cl_003"})
+        self.assertTrue(any(c.claim_type == "conclusion" for c in result.claims))
+        self.assertTrue(any("部分不合規" in note for note in notes))
+
     def test_empty_ledger_short_circuits_without_calling_the_model(self):
         llm = FakeLLM([])
         result, notes = run_arbiter(llm, Ledger(items=[]))
