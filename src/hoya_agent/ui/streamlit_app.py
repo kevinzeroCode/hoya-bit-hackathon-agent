@@ -166,6 +166,32 @@ def _artifact_text(view: dict, name: str) -> str | None:
     return None
 
 
+def _source_links_markdown(items: list[dict]) -> str:
+    """A prominent, clickable list of every source with a URL.
+
+    The report table already links sources, but those cells sit inside a wide,
+    horizontally-scrolling table and are easy to miss. This surfaces the same
+    URLs as big, obvious markdown links — Streamlit opens external links in a new
+    tab, so following a source never navigates away from the run.
+    """
+    lines: list[str] = []
+    for it in items:
+        url = it.get("source_url")
+        if not url:
+            continue
+        eid = it.get("evidence_id", "")
+        name = it.get("source_name", "來源")
+        fact = it.get("normalized_fact") or it.get("content_reference") or ""
+        # For news the headline is the meaningful anchor; for market/social the
+        # source name is, with the fact as trailing context.
+        if it.get("source_type") == "news" and fact:
+            label = f"{fact} — {name}"
+        else:
+            label = f"{name}{f' — {fact}' if fact else ''}"
+        lines.append(f"- `{eid}` · [{label}]({url})")
+    return "\n".join(lines)
+
+
 def _render_result(view: dict) -> None:
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Run mode", f"{view['run_mode_icon']} {view['run_mode_label']}")
@@ -206,7 +232,13 @@ def _render_result(view: dict) -> None:
     with tab_evidence:
         raw = _artifact_text(view, "evidence.json")
         if raw:
-            st.json(json.loads(raw))
+            ledger = json.loads(raw)
+            links_md = _source_links_markdown(ledger.get("items", []))
+            if links_md:
+                st.markdown("**🔗 來源連結(點擊開新分頁,可追溯每筆證據)**")
+                st.markdown(links_md)
+            with st.expander("原始 evidence.json"):
+                st.json(ledger)
         else:
             st.write("_(無 evidence.json)_")
     with tab_log:
