@@ -30,7 +30,7 @@ from hoya_agent.models import (
     TerminalState,
 )
 from hoya_agent.orchestration.pipeline import DeadlineAwarePipeline
-from hoya_agent.reporting.artifacts import ARTIFACT_NAMES, RUN_CONFIG
+from hoya_agent.reporting.artifacts import DELIVERABLE_NAMES, RUN_CONFIG
 
 pytestmark = pytest.mark.integration
 
@@ -123,7 +123,7 @@ async def test_an_externally_cancelled_run_still_delivers_four_artifacts(tmp_pat
         await task
 
     run_dir = Path(tmp_path / "artifacts" / request.run_id)
-    assert sorted(path.name for path in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
+    assert sorted(path.name for path in run_dir.iterdir()) == sorted(DELIVERABLE_NAMES)
 
     config = json.loads((run_dir / RUN_CONFIG).read_text(encoding="utf-8"))
     assert config["terminal_status"] == TerminalState.cancelled.value
