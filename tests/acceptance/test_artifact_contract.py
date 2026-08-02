@@ -12,7 +12,14 @@ import pytest
 from hoya_agent.application import ApplicationService, build_request
 from hoya_agent.models import Asset, EvidenceLedger, RunMode, TerminalState
 from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline
-from hoya_agent.reporting.artifacts import ARTIFACT_NAMES, EVIDENCE_LEDGER, EVIDENCE_LIST, EXECUTION_LOG, FINAL_REPORT
+from hoya_agent.reporting.artifacts import (
+    ARTIFACT_NAMES,
+    EVIDENCE_LEDGER,
+    EVIDENCE_LIST,
+    EXECUTION_LOG,
+    FINAL_REPORT,
+    HTML_REPORT,
+)
 
 pytestmark = pytest.mark.acceptance
 
@@ -49,15 +56,16 @@ async def test_every_fixed_artifact_is_parseable_and_checksumed(tmp_path: Path) 
     run_dir = Path(summary.artifact_dir)
     config = json.loads((run_dir / "run_config.json").read_text(encoding="utf-8"))
 
-    assert sorted(path.name for path in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
+    assert {path.name for path in run_dir.iterdir()} == {*ARTIFACT_NAMES, HTML_REPORT}
     assert config["run_id"] == summary.run_id
     assert config["missing_artifacts"] == []
-    assert set(config["artifact_checksums"]) == set(ARTIFACT_NAMES) - {"run_config.json"}
+    assert set(config["artifact_checksums"]) == {*ARTIFACT_NAMES, HTML_REPORT} - {"run_config.json"}
     assert all(len(value) == 64 for value in config["artifact_checksums"].values())
     EvidenceLedger.model_validate_json((run_dir / EVIDENCE_LEDGER).read_text(encoding="utf-8"))
     assert isinstance(json.loads((run_dir / EVIDENCE_LIST).read_text(encoding="utf-8")), list)
     assert (run_dir / EXECUTION_LOG).read_text(encoding="utf-8").strip()
     assert (run_dir / FINAL_REPORT).read_text(encoding="utf-8").count("\n## ") == 11
+    assert (run_dir / HTML_REPORT).read_text(encoding="utf-8").startswith("<!doctype html>")
 
 
 async def test_missing_baseline_market_data_is_an_explicit_degraded_run(tmp_path: Path) -> None:
@@ -75,9 +83,8 @@ async def test_missing_baseline_market_data_is_an_explicit_degraded_run(tmp_path
     run_dir = Path(summary.artifact_dir)
     ledger = EvidenceLedger.model_validate_json((run_dir / EVIDENCE_LEDGER).read_text(encoding="utf-8"))
 
-    assert sorted(path.name for path in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
+    assert {path.name for path in run_dir.iterdir()} == {*ARTIFACT_NAMES, HTML_REPORT}
     assert summary.terminal_state in {TerminalState.degraded, TerminalState.failed}
     assert ledger.items == []
     assert ledger.degradation_events
     assert "insufficient" in (run_dir / FINAL_REPORT).read_text(encoding="utf-8").lower()
-

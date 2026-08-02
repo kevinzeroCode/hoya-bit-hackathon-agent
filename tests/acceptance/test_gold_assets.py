@@ -12,7 +12,7 @@ import pytest
 from hoya_agent.application import ApplicationService, build_request
 from hoya_agent.models import Asset, EvidenceLedger, RunMode, SourceType, TerminalState
 from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline
-from hoya_agent.reporting.artifacts import ARTIFACT_NAMES, EVIDENCE_LEDGER, FINAL_REPORT, RUN_CONFIG
+from hoya_agent.reporting.artifacts import ARTIFACT_NAMES, EVIDENCE_LEDGER, FINAL_REPORT, HTML_REPORT, RUN_CONFIG
 
 pytestmark = pytest.mark.acceptance
 
@@ -51,7 +51,7 @@ async def test_gold_asset_run_has_complete_traceable_artifacts(tmp_path: Path, a
 
     summary = await service.run(request)
     run_dir = Path(summary.artifact_dir)
-    assert sorted(path.name for path in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
+    assert {path.name for path in run_dir.iterdir()} == {*ARTIFACT_NAMES, HTML_REPORT}
     assert summary.missing_artifacts == []
     assert summary.terminal_state is TerminalState.degraded
     assert summary.evidence_item_count > 0
@@ -59,6 +59,7 @@ async def test_gold_asset_run_has_complete_traceable_artifacts(tmp_path: Path, a
     config = json.loads((run_dir / RUN_CONFIG).read_text(encoding="utf-8"))
     ledger = EvidenceLedger.model_validate_json((run_dir / EVIDENCE_LEDGER).read_text(encoding="utf-8"))
     report = (run_dir / FINAL_REPORT).read_text(encoding="utf-8")
+    html_report = (run_dir / HTML_REPORT).read_text(encoding="utf-8")
 
     assert config["run_id"] == summary.run_id == ledger.run_id
     assert config["terminal_status"] == "degraded"
@@ -69,8 +70,9 @@ async def test_gold_asset_run_has_complete_traceable_artifacts(tmp_path: Path, a
     assert all(item.source_name == "public_market_data" for item in ledger.items)
     assert all(item.content_reference for item in ledger.items)
     assert all(item.evidence_id in report for item in ledger.items)
+    assert html_report.startswith("<!doctype html>")
+    assert summary.run_id in html_report
 
 
 def test_supported_gold_assets_are_explicitly_allowlisted() -> None:
     assert {asset.value for asset in Asset} == {"BTC", "ETH", "SOL", "BNB", "XRP"}
-

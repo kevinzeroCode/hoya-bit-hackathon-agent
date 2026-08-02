@@ -1197,7 +1197,7 @@ UI 停用第二幣加選、只接受單幣請求，並在文件與簡報揭露�
 
 ### S10 — Gold local Exit：兩個資產各跑一次獨立單幣 run
 
-> **現況：✅ 已完成（2026-08-02）。** `tests/acceptance/` 新增兩個獨立 BTC/ETH 單幣 run、固定 artifacts/provenance/degradation 驗收與 fake-clock deadline gate；`scripts/run_acceptance.py` 可重現離線 Gold 路徑，實際 run-log 見 `docs/rehearsals/run-log.md`。驗證：acceptance `6 passed`；repository-wide `1266 passed in 30.75s`（unit/contract/integration/acceptance, not live）；`ruff check .` → `All checks passed!`。此環境使用 Python 3.11 執行，未另行宣稱 3.12。
+> **現況：✅ 已完成（2026-08-02）。** `tests/acceptance/` 新增兩個獨立 BTC/ETH 單幣 run、固定 artifacts/provenance/degradation 驗收與 fake-clock deadline gate；`scripts/run_acceptance.py` 可重現離線 Gold 路徑，實際 run-log 見 `docs/rehearsals/run-log.md`。同學的 P4 self-contained `final_report.html` 已整合，Markdown 與 HTML 交付都受 artifact contract 驗證。驗證：acceptance/UI/HTML 相關測試 `25 passed`；repository-wide `1272 passed in 24.36s`（unit/contract/integration/acceptance, not live）；`ruff check .` → `All checks passed!`。此環境使用 Python 3.11 執行，未另行宣稱 3.12。
 > **指派：** 全員；任務 A 擁有這個閘門。
 
 **目標**：用兩個**不同**資產各自的獨立單幣 run，證明 pipeline 真的是 coin-agnostic。

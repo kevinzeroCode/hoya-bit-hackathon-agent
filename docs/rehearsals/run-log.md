@@ -11,7 +11,7 @@ Path: deterministic Organizer CSV market evidence; no network, AWS credentials, 
 
 Both runs were independent single-asset requests. Each produced the complete tracked
 artifact set (`run_config.json`, `execution_log.jsonl`, `evidence.json`,
-`evidence_list.json`, and `final_report.md`), with one run ID shared across its
+`evidence_list.json`, `final_report.md`, and the self-contained `final_report.html`), with one run ID shared across its
 configuration, ledger, log, and report. The degraded state is intentional: this local
 Gold path validates deterministic market evidence and artifact honesty; schema-valid
 live Bedrock remains covered by the separate Silver gate.

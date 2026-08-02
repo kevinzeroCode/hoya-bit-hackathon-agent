@@ -24,8 +24,10 @@
 
 2026-08-02 follow-up: the live Arbiter boundary now performs deterministic evidence-link
 repair for mismatched numeric claims and conclusion support before the frozen validation
-gate. Full non-live verification: `1267 passed`; Ruff clean. Live Bedrock rerun remains
-pending because this environment has no live credentials.
+gate. P4's self-contained `final_report.html` is also integrated without removing the
+Markdown/Evidence/Log/Run Config downloads. Full non-live verification: `1272 passed`;
+Ruff clean. Live Bedrock rerun remains pending because this environment has no live
+credentials.
 
 ## Current main
 
