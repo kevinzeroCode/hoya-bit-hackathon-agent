@@ -33,6 +33,10 @@
 | 真實 Kiro 使用證據 | [Kiro Evidence Ledger](docs/evidence/kiro/README.md) |
 | 主辦方五幣 Daily OHLCV fixtures | [Dataset Guide](HOYA_BIT_crypto_market_dataset/README.md) |
 
+## AWS 雲端架構圖
+
+完整的 GitHub Actions → OIDC → ECR → EC2 → SSM → Bedrock 部署圖請見 [AWS Architecture](docs/aws-architecture.md)。
+
 ## System at a Glance
 
 ```mermaid
