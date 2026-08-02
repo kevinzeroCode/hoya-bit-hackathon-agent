@@ -581,10 +581,13 @@ class ApplicationService:
                 )
             )
 
+        # Derive the honest delivery state after every required artifact has
+        # been attempted; the optional HTML projection must display that state.
+        terminal_state = _terminal_state(outcome.terminal_state, store)
         html_report = render_html(
             result,
             ledger,
-            terminal_state=outcome.terminal_state.value,
+            terminal_state=terminal_state.value,
             prompt_version=self._prompt_version,
             policy_version=self._policy_version,
             lint=advice_violations,
@@ -600,7 +603,6 @@ class ApplicationService:
                 )
             )
 
-        terminal_state = _terminal_state(outcome.terminal_state, store)
         # run_config.json cannot carry a checksum of itself: the digest would be
         # taken before this final rewrite and would never match the file on disk.
         checksums = {
