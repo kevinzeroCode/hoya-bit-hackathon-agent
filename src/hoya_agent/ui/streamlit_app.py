@@ -287,36 +287,40 @@ def main() -> None:
         # Disabled while a run is in flight so one submit == one ApplicationService call.
         submitted = c4.form_submit_button("執行分析", use_container_width=True, disabled=running)
 
-    if not submitted:
+    if submitted and running:  # a submit queued while the previous run was still executing
+        st.warning("上一個分析仍在進行,已忽略重複的執行請求。")
+    elif submitted and not chosen:
+        st.warning("請至少選一個幣種。")
+    elif submitted:
+        assets = [Asset(a) for a in chosen]
+        is_live = mode == _MODE_LIVE
+        label = "即時分析中(Binance 現價 + 情緒 → 證據 → 報告)…" if is_live else "離線分析中(官方 CSV)…"
+        st.session_state["_run_in_flight"] = True
+        try:
+            with st.status(label, expanded=True) as status:
+                sink = _StreamlitProgress(status)
+                if is_live:
+                    summary = _run_live(assets, question, progress=sink)
+                else:
+                    run_mode = RunMode.demo if mode == _MODE_OFFLINE_DEMO else RunMode.rehearsal
+                    summary = _run_offline(assets, question, run_mode, progress=sink)
+                status.update(label="分析完成", state="complete", expanded=False)
+        finally:
+            st.session_state["_run_in_flight"] = False
+        # Persist the rendered view. st.download_button reruns the whole script on
+        # click; without this, the rerun sees submitted=False and the report would
+        # vanish back to the initial screen. Rendering from session_state keeps the
+        # same page (and its four download buttons) alive across download clicks.
+        st.session_state["_last_view"] = summary_view(summary)
+
+    last_view = st.session_state.get("_last_view")
+    if last_view is not None:
+        _render_result(last_view)
+    elif not submitted:
         st.info(
             "選幣種、輸入研究型題目,按「執行分析」。**即時**打交易所現價 + 恐懼貪婪指數(免金鑰);"
             "**離線**只用官方 CSV。兩者皆產出四個固定 artifact。"
         )
-        return
-    if running:  # a submit queued while the previous run was still executing
-        st.warning("上一個分析仍在進行,已忽略重複的執行請求。")
-        return
-    if not chosen:
-        st.warning("請至少選一個幣種。")
-        return
-
-    assets = [Asset(a) for a in chosen]
-    is_live = mode == _MODE_LIVE
-    label = "即時分析中(Binance 現價 + 情緒 → 證據 → 報告)…" if is_live else "離線分析中(官方 CSV)…"
-    st.session_state["_run_in_flight"] = True
-    try:
-        with st.status(label, expanded=True) as status:
-            sink = _StreamlitProgress(status)
-            if is_live:
-                summary = _run_live(assets, question, progress=sink)
-            else:
-                run_mode = RunMode.demo if mode == _MODE_OFFLINE_DEMO else RunMode.rehearsal
-                summary = _run_offline(assets, question, run_mode, progress=sink)
-            status.update(label="分析完成", state="complete", expanded=False)
-    finally:
-        st.session_state["_run_in_flight"] = False
-
-    _render_result(summary_view(summary))
 
 
 if __name__ == "__main__":
