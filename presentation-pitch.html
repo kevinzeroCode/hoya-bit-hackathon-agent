@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HOYA Market Agent — 評審簡報</title>
+<style>
+:root{
+  --paper:#fcfbf9; --panel:#ffffff; --ink:#111726; --ink2:#454f63; --muted:#8590a3;
+  --line:#e6e6e1; --line2:#f0f0ec;
+  --brand:#0a6d88; --brand-soft:#e3f1f5;
+  --llm:#b06806; --llm-soft:#fdf2e2;
+  --det:#1a4fbd; --det-soft:#ebf0fc;
+  --src:#5c33bf; --src-soft:#f0eafc;
+  --out:#0d7a51; --out-soft:#e4f4ec;
+  --stop:#a82b2b; --stop-soft:#fbeceb;
+  --mono:'SF Mono','JetBrains Mono','Cascadia Mono','Consolas',monospace;
+  --sans:'Inter','Segoe UI Variable','Segoe UI','PingFang TC','Noto Sans TC','Microsoft JhengHei',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;scroll-snap-type:y mandatory;-webkit-text-size-adjust:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.5;
+  overflow-y:scroll;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased;
+  letter-spacing:-.004em}
+body::-webkit-scrollbar{width:0}
+
+/* ── slide shell ─────────────────────────────── */
+.slide{min-height:100vh;display:flex;flex-direction:column;justify-content:center;
+  padding:96px clamp(30px,8vw,140px) 110px;scroll-snap-align:start;scroll-snap-stop:always;
+  position:relative}
+.slide.mid{align-items:center;text-align:center}
+.slide > *{max-width:1120px;width:100%;margin-left:auto;margin-right:auto}
+.slide.appx{background:#f6f5f2;padding-top:80px;padding-bottom:96px;justify-content:flex-start}
+
+/* ── chrome ──────────────────────────────────── */
+.pbar{position:fixed;top:0;left:0;height:2px;background:var(--brand);z-index:70;width:0;
+  transition:width .12s linear}
+.brand{position:fixed;top:26px;left:clamp(22px,3.4vw,42px);font-size:12px;font-weight:700;
+  z-index:60;color:var(--muted);letter-spacing:.01em}
+.brand b{color:var(--brand)}
+.counter{position:fixed;top:26px;right:clamp(22px,3.4vw,42px);font-family:var(--mono);
+  font-size:12px;color:var(--muted);z-index:60;letter-spacing:.04em}
+.dots{position:fixed;right:clamp(13px,1.5vw,20px);top:50%;transform:translateY(-50%);z-index:60;
+  display:flex;flex-direction:column;gap:8px;align-items:center}
+.dots a{width:6px;height:6px;border-radius:50%;background:#d3d3cc;display:block;
+  transition:transform .18s,background .18s}
+.dots a:hover{background:#a3a39a}
+.dots a.on{background:var(--brand);transform:scale(1.8)}
+.dots .gap{width:1px;height:14px;background:var(--line);margin:3px 0}
+.hint{position:fixed;bottom:22px;right:clamp(22px,3.4vw,42px);z-index:60;
+  display:flex;flex-direction:column;align-items:flex-end;gap:7px;
+  font-size:11px;color:var(--muted);font-family:var(--mono);letter-spacing:.03em}
+.hint span{display:flex;align-items:center;gap:8px}
+.hint i{font-style:normal;font-weight:700;font-size:10px;color:var(--ink2);
+  background:var(--panel);border:1px solid var(--line);border-radius:5px;
+  padding:3px 7px;line-height:1;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+.hint .key{color:var(--brand);border-color:#bcdde6;background:var(--brand-soft)}
+body.notes-on .hint{display:none}
+
+/* ── speaker notes drawer ────────────────────── */
+.drawer{position:fixed;left:0;right:0;bottom:0;z-index:65;background:rgba(255,255,255,.97);
+  backdrop-filter:blur(10px);border-top:2px solid var(--brand);
+  padding:16px clamp(24px,5vw,60px) 18px;max-height:34vh;overflow-y:auto;
+  transform:translateY(101%);transition:transform .22s ease;box-shadow:0 -8px 28px rgba(0,0,0,.07)}
+body.notes-on .drawer{transform:translateY(0)}
+.drawer .lbl{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--brand);font-weight:700;margin-bottom:8px}
+.drawer .body{font-size:13.5px;line-height:1.68;color:var(--ink2);max-width:1000px}
+.drawer .body b{color:var(--ink)}
+.drawer .body p{margin-bottom:7px}
+.drawer .body p:last-child{margin-bottom:0}
+.notes{display:none}
+
+/* ── type ────────────────────────────────────── */
+.eyebrow{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--brand);
+  font-weight:700;margin-bottom:22px}
+h1{font-size:clamp(44px,6.6vw,82px);line-height:1.02;font-weight:800;letter-spacing:-.038em;margin-bottom:22px}
+h2{font-size:clamp(34px,4.7vw,60px);line-height:1.08;font-weight:800;letter-spacing:-.032em;margin-bottom:0}
+h2 .q{color:var(--brand)}
+h2 .dim{color:var(--muted);font-weight:700}
+.deck{font-size:clamp(16px,1.6vw,20px);line-height:1.55;color:var(--ink2);max-width:720px;margin-top:20px}
+.mid .deck{margin-left:auto;margin-right:auto}
+.k{font-weight:750;color:var(--ink)}
+.en{font-family:var(--mono);font-size:.86em;letter-spacing:-.015em}
+.rule{height:1px;background:var(--line);margin:34px 0 0;max-width:120px}
+.mid .rule{margin-left:auto;margin-right:auto}
+
+/* ── point list (the core density unit) ──────── */
+.pts{display:flex;flex-direction:column;gap:15px;margin-top:38px;max-width:840px}
+.mid .pts{margin-left:auto;margin-right:auto;text-align:left}
+.pts li{list-style:none;display:flex;gap:16px;align-items:baseline;
+  font-size:clamp(17px,1.75vw,23px);line-height:1.35;color:var(--ink);font-weight:600;
+  letter-spacing:-.015em}
+.pts li i{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--brand);
+  flex:0 0 22px;font-style:normal;letter-spacing:0;position:relative;top:-2px}
+.pts li s{text-decoration:none;font-size:.72em;font-weight:500;color:var(--muted);
+  margin-left:2px;letter-spacing:0}
+.pts.tight li{font-size:clamp(15.5px,1.5vw,19px);font-weight:550}
+.pts.no li i{color:var(--stop)}
+.pts.yes li i{color:var(--out)}
+
+/* ── big numbers ─────────────────────────────── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:44px;
+  border-top:1px solid var(--line)}
+.stat{padding:26px 10px 0;text-align:center;border-right:1px solid var(--line2)}
+.stat:last-child{border-right:none}
+.stat .v{font-family:var(--mono);font-size:clamp(32px,4.4vw,58px);font-weight:700;
+  letter-spacing:-.045em;color:var(--ink);line-height:.95}
+.stat .v.br{color:var(--brand)}
+.stat .l{font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.45;font-weight:500}
+
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:40px;
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.trio > div{padding:30px 22px;border-right:1px solid var(--line2)}
+.trio > div:last-child{border-right:none}
+.trio .v{font-family:var(--mono);font-size:clamp(38px,5.2vw,66px);font-weight:700;
+  letter-spacing:-.05em;line-height:.92;color:var(--stop)}
+.trio .v.q{color:var(--ink)}
+.trio .l{font-size:14.5px;font-weight:650;margin-top:14px;color:var(--ink)}
+.trio .s{font-size:12.5px;color:var(--muted);margin-top:5px;line-height:1.5}
+
+/* ── cards ───────────────────────────────────── */
+.grid{display:grid;gap:14px;margin-top:38px}
+.g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px 22px}
+.card .n{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.12em;
+  color:var(--brand);margin-bottom:12px}
+.card .n.no{color:var(--stop)} .card .n.ok{color:var(--out)}
+.card h3{font-size:clamp(17px,1.6vw,21px);font-weight:750;letter-spacing:-.02em;margin-bottom:8px;line-height:1.25}
+.card p{font-size:13.5px;color:var(--ink2);line-height:1.55}
+
+/* ── split panel ─────────────────────────────── */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:38px;
+  border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.split > div{padding:28px 30px}
+.split .a{background:var(--llm-soft);border-right:1px solid var(--line)}
+.split .b{background:var(--det-soft)}
+.split h3{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:18px;font-weight:700}
+.split .a h3{color:#8a5205} .split .b h3{color:#173f96}
+.split ul{list-style:none;display:flex;flex-direction:column;gap:12px}
+.split li{font-size:clamp(15px,1.5vw,19px);line-height:1.3;font-weight:600;padding-left:20px;
+  position:relative;color:var(--ink);letter-spacing:-.015em}
+.split li::before{content:'';position:absolute;left:0;top:.55em;width:7px;height:2px}
+.split .a li::before{background:var(--llm)} .split .b li::before{background:var(--det)}
+
+/* ── flow diagram ────────────────────────────── */
+.flow{display:flex;align-items:stretch;flex-wrap:nowrap;margin-top:40px}
+.node{border:1.5px solid var(--line);border-radius:13px;padding:18px 12px;text-align:center;
+  background:var(--panel);min-width:0;flex:1;display:flex;flex-direction:column;justify-content:center}
+.node .t{font-weight:750;font-size:clamp(14px,1.35vw,17px);letter-spacing:-.02em;line-height:1.25}
+.node .s{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.35;font-weight:500}
+.node.det{border-color:#bccef4;background:var(--det-soft)} .node.det .t{color:#173f96}
+.node.llm{border-color:#eecb96;background:var(--llm-soft)} .node.llm .t{color:#8a5205}
+.node.src{border-color:#cec0f2;background:var(--src-soft)} .node.src .t{color:#4a26a0}
+.node.out{border-color:#a8dcc3;background:var(--out-soft)} .node.out .t{color:#0b6544}
+.node.stop{border-color:#e9b8b6;background:var(--stop-soft)} .node.stop .t{color:#8c1f22}
+.arw{display:flex;align-items:center;justify-content:center;color:#c9c9c2;font-size:17px;
+  padding:0 7px;flex:0 0 auto;font-weight:300}
+.branch{display:flex;flex-direction:column;gap:9px;flex:1.15}
+.legend{display:flex;gap:20px;flex-wrap:wrap;margin-top:24px;font-size:12.5px;color:var(--muted);font-weight:500}
+.mid .legend{justify-content:center}
+.legend span{display:flex;align-items:center;gap:8px}
+.sw{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+.sw.llm{background:var(--llm)} .sw.det{background:var(--det)} .sw.out{background:var(--out)}
+
+/* ── artifacts ───────────────────────────────── */
+.arts{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:40px}
+.art{border:1.5px solid var(--line);border-radius:14px;padding:26px 14px;background:var(--panel);text-align:center}
+.art .f{font-family:var(--mono);font-size:12.5px;font-weight:700;color:var(--out);word-break:break-all}
+.art .z{font-size:clamp(16px,1.5vw,19px);font-weight:750;margin:12px 0 6px;letter-spacing:-.02em}
+.art .d{font-size:12px;color:var(--muted);line-height:1.5}
+
+/* ── chips ───────────────────────────────────── */
+.chips{display:flex;gap:9px;flex-wrap:wrap;margin-top:34px}
+.mid .chips{justify-content:center}
+.chip{border:1px solid var(--line);border-radius:999px;padding:8px 17px;font-size:13.5px;
+  background:var(--panel);color:var(--ink2);display:flex;align-items:center;gap:8px;font-weight:550}
+.chip.m{font-family:var(--mono);font-weight:650;font-size:12.5px;color:var(--ink);letter-spacing:-.01em}
+.tag{display:inline-block;font-family:var(--mono);font-size:10.5px;font-weight:700;
+  padding:2.5px 7px;border-radius:4px;white-space:nowrap}
+.tag.h{background:var(--out-soft);color:#0b6544} .tag.m{background:var(--llm-soft);color:#8a5205}
+.tag.l{background:#eeeeea;color:#6b7385} .tag.b{background:var(--brand-soft);color:var(--brand)}
+.tag.no{background:var(--stop-soft);color:#8c1f22}
+
+/* ── appendix bits ───────────────────────────── */
+.appx h2{font-size:clamp(24px,2.8vw,36px);margin-bottom:6px}
+.appx .eyebrow{margin-bottom:14px}
+.appx .sub{font-size:13.5px;color:var(--muted);margin-bottom:22px;line-height:1.6}
+table{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;overflow:hidden}
+th{text-align:left;font-weight:700;font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);padding:13px 14px;border-bottom:1.5px solid var(--line);background:#faf9f6}
+td{padding:11px 14px;border-bottom:1px solid var(--line2);color:var(--ink2);vertical-align:top;line-height:1.5}
+tr:last-child td{border-bottom:none}
+td.a{color:var(--ink);font-weight:650}
+td.n{font-family:var(--mono);text-align:right;white-space:nowrap;color:var(--ink);font-weight:650}
+tr.hi td{background:var(--stop-soft)}
+tr.hi td.a,tr.hi td.n{color:#8c1f22;font-weight:750}
+.appx .cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+.appx .h4{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--brand);margin-bottom:11px}
+
+@media (max-width:940px){
+  .flow{flex-wrap:wrap;gap:9px} .arw{display:none} .node{flex:1 1 45%}
+  .g3,.g4,.arts,.stats,.trio,.appx .cols{grid-template-columns:repeat(2,1fr)}
+  .split{grid-template-columns:1fr}
+  .split .a{border-right:none;border-bottom:1px solid var(--line)}
+  .dots{display:none}
+}
+@media print{
+  html{scroll-snap-type:none}
+  .slide{min-height:auto;page-break-after:always;padding:40px}
+  .pbar,.dots,.hint,.counter,.drawer{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="pbar" id="pbar"></div>
+<div class="brand"><b>HOYA</b> Market Agent</div>
+<div class="counter" id="counter">01 / 15</div>
+<nav class="dots" id="dots"></nav>
+<div class="hint">
+  <span>換頁<i>↓ / Space</i></span>
+  <span>講稿視窗<i class="key">P</i></span>
+  <span>附錄<i>A</i></span>
+</div>
+<aside class="drawer" id="drawer"><div class="lbl">講稿</div><div class="body" id="drawerBody"></div></aside>
+
+<!-- ══ 01 ═══════════════════════════════════════ -->
+<section class="slide mid">
+  <div class="eyebrow">2026 雲湧智生 · 臺灣生成式 AI 應用黑客松</div>
+  <h1>HOYA Market Agent</h1>
+  <div class="deck" style="font-size:clamp(18px,1.9vw,24px)">有界推理的加密市場分析 Agent</div>
+  <div class="chips">
+    <span class="chip m">Python 3.12</span>
+    <span class="chip m">Pydantic v2</span>
+    <span class="chip m">Amazon Bedrock</span>
+    <span class="chip m">Streamlit</span>
+    <span class="chip m">EC2</span>
+  </div>
+  <div class="notes">
+    <p><b>開場（30 秒）：</b>現場才公布題目與幣種，15 分鐘，原則上只有一次執行機會。我們做的不是一個更會講話的 Agent，是一個把自己每一步都攤開來讓人查的 Agent。</p>
+    <p>支援 BTC / ETH / SOL / BNB / XRP，一次一至兩幣。900 秒硬上限，四項固定 artifacts。</p>
+    <p><b>操作提示：</b>N 開關講稿、A 跳到附錄、方向鍵或 Space 換頁、Ctrl+P 匯出 PDF。</p>
+  </div>
+</section>
+
+<!-- ══ 02 ═══════════════════════════════════════ -->
+<section class="slide">
+  <div class="eyebrow">題目的真正難點</div>
+  <h2>難的不是「答得出來」<br><span class="q">是「答了憑什麼信」</span></h2>
+  <ul class="pts no">
+    <li><i>01</i>數字是編的　<s>模型算的還是想的，查不出來</s></li>
+    <li><i>02</i>矛盾被抹平　<s>敘事順暢的代價是吃掉反方證據</s></li>
+    <li><i>03</i>失敗變成幻覺　<s>API 掛掉時安靜補一段合理的假話</s></li>
+  </ul>
+  <div class="rule"></div>
+  <div class="deck">所以目標從「產出一份分析」換成 <span class="k">產出一份能被逐條驗證的分析</span>。</div>
+  <div class="notes">
+    <p><b>核心轉折（60 秒）：</b>任何 LLM 都能生出一份看起來很專業的市場分析。問題是評審沒辦法驗證它——這才是這個題目真正的難點。</p>
+    <p>三種失敗模式都不是「模型不夠聰明」，而是「系統沒有結構去擋」。所以我們的答案不在 prompt，在架構。</p>
+    <p>要能被驗證的四件事：<b>資料從哪來、怎麼推論、哪些證據互相衝突、哪些限制會影響結論</b>。後面每一頁都在回答其中一項。</p>
+  </div>
+</section>
+
+<!-- ══ 03 ═══════════════════════════════════════ -->
+<section class="slide mid">
+  <div class="eyebrow">一句話</div>
+  <h2>把多個來源變成一份可回溯的<span class="q">證據帳本</span><br>再從帳本推論</h2>
+  <div class="stats">
+    <div class="stat"><div class="v br">100%</div><div class="l">結論可回溯至 Evidence<br>否則標 insufficient data</div></div>
+    <div class="stat"><div class="v">0</div><div class="l">由 LLM 產生的<br>市場數值</div></div>
+    <div class="stat"><div class="v">3</div><div class="l">受限 LLM 呼叫<br>全系統上限</div></div>
+    <div class="stat"><div class="v">4</div><div class="l">固定檔名 artifacts<br>失敗時照樣交</div></div>
+  </div>
+  <div class="notes">
+    <p><b>價值主張（45 秒）：</b>產品定位不是預測價格，而是「在時限內交出一份知道自己哪裡不知道的分析」。</p>
+    <p><b>四個數字逐一講：</b>100% 是可回溯率——每個結論都指得到 Evidence ID，指不到就明確標 <code>insufficient_data=true</code>，不含糊帶過。</p>
+    <p>0 是最關鍵的一個：所有報酬、波動、回撤、量能 z-score 全部由 deterministic Python 算，LLM 連補值都不行。缺 bar 就標 unavailable，不 forward-fill 硬湊。</p>
+    <p>3 次 LLM 呼叫是<b>上限不是平均</b>——Planner、Research 抽取、Arbiter 各一次，沒有 agent loop。</p>
+  </div>
+</section>
+
+<!-- ══ 04 ═══════════════════════════════════════ -->
+<section class="slide">
+  <div class="eyebrow">核心設計</div>
+  <h2>有裁量權<span class="dim">，</span>但沒有權限</h2>
+  <div class="split">
+    <div class="a">
+      <h3>LLM 會做</h3>
+      <ul>
+        <li>從靜態允許清單挑操作</li>
+        <li>引用工具算出的數值</li>
+        <li>引用 Evidence ID 組主張</li>
+        <li>固定六階段各跑一次</li>
+      </ul>
+    </div>
+    <div class="b">
+      <h3>Deterministic 擋掉</h3>
+      <ul>
+        <li>自造 provider 或 API 網址</li>
+        <li>自由 agent loop</li>
+        <li>補值、猜值、自造數字</li>
+        <li>把自己輸出當證據</li>
+        <li>延長 deadline</li>
+      </ul>
+    </div>
+  </div>
+  <div class="notes">
+    <p><b>這是全場最重要的一頁（60 秒）：</b>一般 Agent 的賣點是「它能自己決定做什麼」。這裡的賣點相反——它能自己決定做什麼，但能做的事情是一個<b>事先固定、有限的集合</b>。</p>
+    <p>關鍵在最後一句：<b>劃定這個範圍的那段程式，不接受 LLM 或外部內容修改。</b> allowlist 是靜態設定檔，沒有 runtime plugin discovery、沒有遠端 registry、沒有動態註冊。</p>
+    <p>如果評審只記得一句話，希望是這句：<b>LLM 在這個系統裡有裁量權，但沒有權限。</b></p>
+  </div>
+</section>
+
+<!-- ══ 05 ═══════════════════════════════════════ -->
+<section class="slide">
+  <div class="eyebrow">工作流程 · H2-Lite</div>
+  <h2>六階段<span class="dim">，</span>單次<span class="dim">，</span>不循環</h2>
+  <div class="flow">
+    <div class="node llm"><div class="t">① Plan</div><div class="s">1 次 LLM</div></div>
+    <div class="arw">→</div>
+    <div class="branch">
+      <div class="node det"><div class="t">② Market</div><div class="s">deterministic</div></div>
+      <div class="node llm"><div class="t">② Research</div><div class="s">1 次 LLM</div></div>
+    </div>
+    <div class="arw">→</div>
+    <div class="node det"><div class="t">③ Process</div><div class="s">去重 · 衝突</div></div>
+    <div class="arw">→</div>
+    <div class="node llm"><div class="t">④ Reason</div><div class="s">1 次 LLM</div></div>
+    <div class="arw">→</div>
+    <div class="node det"><div class="t">⑤ Render</div><div class="s">報告 · lint</div></div>
+    <div class="arw">→</div>
+    <div class="node out"><div class="t">⑥ Finalize</div><div class="s">4 檔案</div></div>
+  </div>
+  <div class="legend">
+    <span><i class="sw llm"></i>受限 LLM</span>
+    <span><i class="sw det"></i>deterministic Python</span>
+    <span><i class="sw out"></i>可交付產出</span>
+  </div>
+  <ul class="pts tight" style="margin-top:30px">
+    <li><i>01</i>兩條取證分支並行　<s>任一失敗不取消另一條</s></li>
+    <li><i>02</i>證據先落盤　<s>不等 Arbiter，它掛了也留得住可追溯性</s></li>
+    <li><i>03</i>元件只交換固定 schema　<s>沒宣告的欄位是被拒絕，不是被忽略</s></li>
+  </ul>
+  <div class="notes">
+    <p><b>架構主線（60 秒）：</b>六個固定階段、單次通過、沒有回圈。Market Worker 完全不碰 LLM，是純 Python 工具鏈；Research Agent 只做一次語意抽取。</p>
+    <p><b>並行的意義：</b><code>asyncio</code> fork-join，兩條分支各自有獨立 timeout。新聞源掛掉不會拖垮市場證據，反之亦然——這是 partial result 的基礎。</p>
+    <p><b>證據先落盤很重要：</b><code>evidence.json</code> 在 Ledger 完成當下就寫，不等 Arbiter。所以就算推理階段整個失敗，可追溯性還在。</p>
+    <p>Pydantic v2 全面 <code>extra="forbid"</code>——這不是預設值，是刻意選的。</p>
+  </div>
+</section>
+
+<!-- ══ 06 ═══════════════════════════════════════ -->
+<section class="slide">
+  <div class="eyebrow">LLM 出現的位置</div>
+  <h2>三次呼叫<span class="dim">，</span>全部結構化輸出</h2>
+  <div class="grid g3">
+    <div class="card">
+      <div class="n">① PLANNER</div><h3>決定查什麼</h3>
+      <p>只收題目與可用能力，產出 <span class="en">ResearchPlan</span>。<br><br>
+      <span class="tag no">禁止</span> 下市場判斷、指定清單外的工具或網域。</p>
+    </div>
+    <div class="card">
+      <div class="n">② RESEARCH</div><h3>資料變事實</h3>
+      <p>只收有界的 source records，產出引用 record ID 的 <span class="en">EvidenceDraft[]</span>。<br><br>
+      <span class="tag no">禁止</span> 瀏覽網頁、自創 URL、捏造內容。</p>
+    </div>
+    <div class="card">
+      <div class="n">③ ARBITER</div><h3>證據變結論</h3>
+      <p>只收排序後最多 30 筆 Evidence，產出 <span class="en">AnalysisResult</span>。<br><br>
+      <span class="tag no">禁止</span> 自造數值、繞過 Evidence ID、改寫可信度。</p>
+    </div>
+  </div>
+  <div class="rule"></div>
+  <div class="deck">輸出先過 Pydantic 驗證才准進入系統核心。<span class="k">修 1 次仍不過，走 deterministic fallback。</span></div>
+  <div class="notes">
+    <p><b>邊界的具體化（50 秒）：</b>三次呼叫都走 Bedrock Converse 的 structured output，都有明文的「不能做」清單寫在 prompt 與程式兩邊。</p>
+    <p><b>驗證關卡：</b>schema 正確、所有 evidence/claim 引用可解析、claim graph 無環（DAG）、confidence 沒超過 deterministic 上限——四項全過才算數。</p>
+    <p><b>未通過驗證的原始 LLM 輸出，永遠不會進入 Renderer 或 artifacts。</b>schema repair 花的是同一個 stage 的剩餘預算，不是額外預算——這點在附錄 A2 有完整時間表。</p>
+    <p>Arbiter 只餵 normalized fact 與 Evidence ID，不餵無界原始網頁——這同時是成本控制與 prompt injection 防線。</p>
+  </div>
+</section>
+
+<!-- ══ 07 ═══════════════════════════════════════ -->
+<section class="slide">
+  <div class="eyebrow">憑什麼可信</div>
+  <h2>四道硬邊界</h2>
+  <div class="grid g4">
+    <div class="card"><div class="n no">邊界 ①</div><h3>輸入信任</h3>
+      <p>題目與外部回傳一律當<span class="k">資料</span>，不當指令。「忽略上述規則」只會被當字面內容。</p></div>
+    <div class="card"><div class="n no">邊界 ②</div><h3>工具</h3>
+      <p><span class="en">ToolRegistry</span> 是靜態映射。無動態註冊，LLM 不能新增 provider 或網域。</p></div>
+    <div class="card"><div class="n no">邊界 ③</div><h3>證據</h3>
+      <p>LLM 產物<span class="k">永遠不是</span>證據。可信度由靜態表指派，producer 自己都不能宣告。</p></div>
+    <div class="card"><div class="n no">邊界 ④</div><h3>時間</h3>
+      <p>預算由<span class="k">單調時鐘</span>推導。Planner 完全不碰時間，跳過順序寫死。</p></div>
+  </div>
+  <div class="rule"></div>
+  <div class="deck">把預算交給 LLM 分配，正是這個設計<span class="k">刻意避免</span>的事。</div>
+  <div class="notes">
+    <p><b>信任邊界（60 秒）：</b>這四道就是「憑什麼可信」的實體。</p>
+    <p><b>① 輸入信任：</b>外部 payload 在通過 schema 驗證前只是 bytes；驗不過就記成 typed degradation，永遠不會變成事實進入 Claim 或報告。這是 prompt injection 的結構性防線，不靠「請不要聽從指令」這種句子。</p>
+    <p><b>③ 證據邊界的細節：</b><code>EvidenceDraft</code> 上根本沒有 reliability 欄位——不是不填，是欄位不存在。producer 只提供 source_class 與發布者資訊，Evidence Processor 是唯一指派可信度的地方。這種「讓錯誤無法表達」的設計比執行期檢查強。</p>
+    <p><b>④ 時間邊界：</b>常見誤解是「Planner 分配 900 秒」。不是——所有 stage deadline 由 DeadlineManager deterministic 推導，Planner 只輸出回看窗、證據類型與步驟清單。</p>
+  </div>
+</section>
+
+<!-- ══ 08 ═══════════════════════════════════════ -->
+<section class="slide">
+  <div class="eyebrow">證據契約</div>
+  <h2>Evidence 沒有立場<br><span class="q">立場只存在於連結</span></h2>
+  <div class="flow">
+    <div class="node src"><div class="t">來源</div><div class="s">市場 · 新聞 · 官方 · 情緒</div></div>
+    <div class="arw">→</div>
+    <div class="node det"><div class="t">Evidence</div><div class="s">ev_001… 無立場</div></div>
+    <div class="arw">→</div>
+    <div class="node det"><div class="t">fact</div><div class="s">事實</div></div>
+    <div class="arw">→</div>
+    <div class="node det"><div class="t">inference</div><div class="s">推論</div></div>
+    <div class="arw">→</div>
+    <div class="node out"><div class="t">conclusion</div><div class="s">＋ 信心與理由</div></div>
+  </div>
+  <ul class="pts tight" style="margin-top:34px">
+    <li><i>01</i>SHA-256 精確去重　<s>純轉載自動塌陷成一筆</s></li>
+    <li><i>02</i>獨立性看原始發布者　<s>同一原文的轉載不計為兩個來源</s></li>
+    <li><i>03</i>可信度查靜態三級表　<span class="tag h">high</span> <span class="tag m">medium</span> <span class="tag l">low</span></li>
+    <li><i>04</i>同一筆證據可支持 A、同時反對 B</li>
+  </ul>
+  <div class="notes">
+    <p><b>證據模型（60 秒）：</b>最反直覺、也最重要的設計：<code>EvidenceItem</code> 本身沒有立場。supports / opposes / neutral 只存在於 Claim-Evidence Link。</p>
+    <p><b>為什麼這樣設計：</b>「這則新聞是利多」不是新聞的屬性，是它與某個主張之間的關係。同一則升級消息可以支持「技術面改善」、同時反對「短期拋壓解除」。把立場綁在證據上，就再也拆不開了。</p>
+    <p><b>可信度不是主觀判斷也不是 LLM 評分：</b>交易所 API 與官方公告 = high、具名原始報導頁 = medium、聚合轉載與情緒指標 = low。轉載沒取到原頁一律 low，即使它指名了上游發布者。完整表在附錄 A3。</p>
+    <p><b>去重刻意只做精確比對：</b>不做語意近似分群——兩天內驗不完的東西不放進 MVP。</p>
+  </div>
+</section>
+
+<!-- ══ 09 ═══════════════════════════════════════ -->
+<section class="slide">
+  <div class="eyebrow">取證廣度</div>
+  <h2>多來源不是堆數量<br><span class="q">是堆獨立性</span></h2>
+  <ul class="pts">
+    <li><i>01</i>入選標準只有一條　<s>「用幣種符號就能查五幣」</s></li>
+    <li><i>02</i>要為每條鏈各寫一套的　<s>一律跳過並揭露</s></li>
+    <li><i>03</i>目標 ≥3 種來源類型、≥3 個獨立群、≥1 個第一手</li>
+    <li><i>04</i>未達標仍完成報告　<s>壓低 confidence 並揭露缺口</s></li>
+  </ul>
+  <div class="stats" style="margin-top:40px">
+    <div class="stat"><div class="v br">~15</div><div class="l">來源</div></div>
+    <div class="stat"><div class="v br">5</div><div class="l">維度<br>市場 / 衍生品 / 新聞 / 社群 / 情緒</div></div>
+    <div class="stat"><div class="v br">~13</div><div class="l">獨立群</div></div>
+    <div class="stat"><div class="v br">~60</div><div class="l">證據卡 / run</div></div>
+  </div>
+  <div class="deck" style="margin-top:24px;font-size:13px;color:var(--muted)">
+    上列數字為資料側原型 <span class="en">p2-etl-mvp/</span> 的實測結果 <span class="tag b">prototype</span>，與主管線分開計算。主管線來源清單見附錄 A4。
+  </div>
+  <div class="notes">
+    <p><b>來源策略（50 秒）：</b>幣種現場才抽，所以來源政策必須幣種無關。入選標準只有一條：用幣種符號就能統一查五幣。</p>
+    <p><b>被我們刻意排除的：</b>各鏈區塊瀏覽器（Etherscan=ETH、Solscan=SOL、XRPL 各不同）、各專案官方 Blog——這些要為每個幣各寫一套。與其冒著現場抽到沒涵蓋的幣開天窗，不如誠實揭露缺口。</p>
+    <p><b>原型的成績：</b>市場層有兩個獨立交易所（Binance + OKX）可交叉驗證，另外加了永續資金費率這個衍生品維度來看槓桿情緒。一次真 live 跑約 60 張證據卡。</p>
+    <p><b>要誠實區分：</b>這是 <code>p2-etl-mvp/</code> 的實測數字，不是主管線目前接線的來源。如果評審追問，主管線接的是主辦 CSV + Binance + CoinDesk RSS + Google News + Fear&Greed（附錄 A4）。</p>
+    <p><b>噪音處理哲學：</b>不主觀刪源，而是分級加隔離——低訊號社群鎖在 low，結構上無法驅動高信心結論。這比直接刪除更可回溯。</p>
+  </div>
+</section>
+
+<!-- ══ 10 ═══════════════════════════════════════ -->
+<section class="slide mid">
+  <div class="eyebrow">矛盾處理</div>
+  <h2>Material Conflict<br><span class="q">雙方都保留</span></h2>
+  <div class="flow" style="max-width:900px">
+    <div class="node out"><div class="t">支持證據</div><div class="s">可信度 ≥ medium</div></div>
+    <div class="arw">→</div>
+    <div class="node stop"><div class="t">同一個 Claim</div><div class="s">不同獨立群</div></div>
+    <div class="arw">←</div>
+    <div class="node stop" style="border-color:#e9b8b6"><div class="t">反對證據</div><div class="s">可信度 ≥ medium</div></div>
+  </div>
+  <ul class="pts" style="margin-top:34px;max-width:640px">
+    <li><i>01</i>雙方 Evidence 都寫進報告　<s>反方是固定段落</s></li>
+    <li><i>02</i>該結論信心鎖 <span class="en">low</span>　<s>整體不得為 high</s></li>
+  </ul>
+  <div class="rule"></div>
+  <div class="deck">這是 deterministic 規則<span class="k">先判定並鎖定</span>——Arbiter 沒有把矛盾抹平的權限。</div>
+  <div class="notes">
+    <p><b>回應第 2 頁的風險 02（50 秒）：</b>判定條件是三個 AND，全部 deterministic：同一個 Claim 同時有 supports 與 opposes、雙方 reliability 都至少 medium、且來自不同 independence group。</p>
+    <p><b>順序很關鍵：</b>衝突是在 Arbiter 拿到證據<b>之前</b>就判定並鎖好的。模型收到的 payload 裡，那個結論的 confidence 上限已經被壓成 low 了。它不是「被說服要保留反方」，是<b>沒有相反的選項可選</b>。</p>
+    <p><b>反過來的誠實：</b>找不到可信反方訊號時，系統會列出已查詢的來源，並把「未找到反方」明確列為限制——不假造一個反方來湊平衡。</p>
+    <p>報告第 5 段「主要反方或矛盾證據」是固定段落，不是有才寫。</p>
+  </div>
+</section>
+
+<!-- ══ 11 ═══════════════════════════════════════ -->
+<section class="slide">
+  <div class="eyebrow">誠實降級</div>
+  <h2>每一種失敗<br><span class="q">都有 deterministic 出口</span></h2>
+  <ul class="pts">
+    <li><i>01</i>Planner 失敗　<s>→ 改用 deterministic 預設 plan</s></li>
+    <li><i>02</i>來源逾時　<s>→ 一次 retry，然後產生 typed gap</s></li>
+    <li><i>03</i>抽取無效　<s>→ 不產生自創事實，只留市場證據</s></li>
+    <li><i>04</i>Arbiter 兩次都無效　<s>→ 由 Ledger 產生低信心報告</s></li>
+    <li><i>05</i>720 秒硬停　<s>→ 取消全部剩餘呼叫，直接落盤</s></li>
+  </ul>
+  <div class="rule"></div>
+  <div class="deck"><span class="k">沒有任何一條路徑會讓系統交不出東西。</span>內容可能是「我沒做到，以下是原因」，但四個檔案一定齊全。</div>
+  <div class="notes">
+    <p><b>回應第 2 頁的風險 03（60 秒）：</b>完整失敗矩陣在附錄 A1，這裡挑五個代表。</p>
+    <p><b>特別強調一條：</b>baseline 市場源失敗時，我們產生誠實的 partial／degraded，<b>不宣稱切換到第二個 live provider</b>——因為 MVP 根本沒有第二個。宣稱有備援但其實沒有，比沒有備援更糟。</p>
+    <p><b>降級不是靜默的：</b>每一種降級都在三個地方留下痕跡——UI 的來源狀態、<code>execution_log.jsonl</code> 的 typed degradation event、報告的「限制與資料缺口」段落。評審看得到系統知道自己缺了什麼。</p>
+    <p><b>三種 run mode 不可混淆：</b>official 禁 fixture 與預存答案；rehearsal 可用 fixtures 但必須標示；demo 必須顯示 recorded fallback 橫幅與原始取得時間。三者在 UI、log 與 <code>run_config.json</code> 都清楚可辨。</p>
+  </div>
+</section>
+
+<!-- ══ 12 ═══════════════════════════════════════ -->
+<section class="slide mid">
+  <div class="eyebrow">時間治理</div>
+  <h2>900 秒不是估的<span class="dim">，</span><span class="q">是切好的</span></h2>
+  <div class="trio">
+    <div><div class="v">720</div><div class="l">分析硬停</div><div class="s">取消每一個剩餘的外部與 LLM 呼叫</div></div>
+    <div><div class="v">780</div><div class="l">Artifact 硬停</div><div class="s">四個固定檔名全部完成，原子寫入</div></div>
+    <div><div class="v q">900</div><div class="l">競賽上限</div><div class="s">保留給 UI 與評審操作</div></div>
+  </div>
+  <ul class="pts tight" style="margin-top:36px;max-width:760px">
+    <li><i>01</i>預算由<span class="k">單調時鐘</span>推導　<s>不受系統時間調整影響，也不是誰分配的</s></li>
+    <li><i>02</i>retry 與 repair 共用原 stage 預算　<s>不延長總時限</s></li>
+    <li><i>03</i>時間不夠時先砍誰是寫死的　<s>多輪辯論 → 選配脈絡來源 → 反方二次搜尋</s></li>
+  </ul>
+  <div class="notes">
+    <p><b>時間工程（45 秒）：</b>完整八個里程碑在附錄 A2。這裡只要記三個數字。</p>
+    <p><b>720：</b>第 12 分鐘停止分析，取消所有還在跑的外部與 LLM 呼叫。<b>780：</b>第 13 分鐘前四個檔案落盤。<b>900：</b>剩下兩分鐘全部留給現場抖動與評審操作。</p>
+    <p><b>為什麼 retry 不能加預算：</b>如果 retry 可以延長時限，那 deadline 就不是 deadline 了。單次外部呼叫上限 45 秒、最多 retry 一次、schema repair 最多一次——全部共用原 stage 預算。</p>
+    <p><b>deadline 較短時：</b>各 stage 按比例縮放，並保留最後 20%（可能時至少 60 秒）給 deterministic finalize。這條保證了任何時間預算下都交得出 artifacts。</p>
+  </div>
+</section>
+
+<!-- ══ 13 ═══════════════════════════════════════ -->
+<section class="slide">
+  <div class="eyebrow">交付物</div>
+  <h2>四個檔案<span class="dim">，</span>檔名固定</h2>
+  <div class="arts">
+    <div class="art"><div class="f">final_report.md</div><div class="z">分析報告</div><div class="d">繁中 11 段模板<br>雙幣加第 12 段</div></div>
+    <div class="art"><div class="f">evidence.json</div><div class="z">證據帳本</div><div class="d">完整 Ledger<br>衝突 · 降級</div></div>
+    <div class="art"><div class="f">execution_log.jsonl</div><div class="z">執行記錄</div><div class="d">每個 call 的<br>起訖 · 狀態</div></div>
+    <div class="art"><div class="f">run_config.json</div><div class="z">配置與版本</div><div class="d">模型 ID<br>prompt 版本</div></div>
+  </div>
+  <ul class="pts tight" style="margin-top:36px">
+    <li><i>01</i>檔名不由 prompt 決定　<s>原子寫入，崩潰不留半個 JSON</s></li>
+    <li><i>02</i>報告由 deterministic 模板產生　<s>LLM 不寫全文、不事後改寫</s></li>
+    <li><i>03</i>最後一道禁語 lint　<s>買賣、加減倉、資產配置一律擋下</s></li>
+  </ul>
+  <div class="notes">
+    <p><b>可稽核的交付（50 秒）：</b>四個檔案共用同一個 <code>run_id</code>，與 UI 顯示的一致。全部以「同目錄暫存檔 → flush → <code>os.replace</code>」原子寫入。</p>
+    <p><b>報告 11 個固定段落：</b>直接回答／市場狀況與時間範圍／已確認事實／主要支持證據／<b>主要反方或矛盾證據</b>／推論／結論／信心與原因／<b>限制與資料缺口</b>／失效條件／後續觀察重點。</p>
+    <p><b>禁語 lint 是最後執行的：</b>不管前面發生什麼，報告出去前一定跑一次字串檢查。這是產品定位的硬性保證——研究導向分析，不提供投資建議。</p>
+    <p><b>安全：</b>prompt 只記版本 ID 不記全文；<code>.env</code>、API key、AWS 憑證不進 UI、log、artifact 或 repo；<code>run_config.json</code> 只記 optional key 的存在布林值，不記值。</p>
+  </div>
+</section>
+
+<!-- ══ 14 ═══════════════════════════════════════ -->
+<section class="slide">
+  <div class="eyebrow">加值層</div>
+  <h2>讓「這次有多可信」<span class="q">本身也可見</span></h2>
+  <div class="grid g3">
+    <div class="card"><div class="n ok">01</div><h3>Trust Scorecard</h3>
+      <p>每個結論一張，五個面向：獨立性、多樣性、可信度組成、一致性、時效性。<br><br>每個面向給等級<span class="k">＋支撐該等級的原始計數</span>。</p></div>
+    <div class="card"><div class="n ok">02</div><h3>Market Regime</h3>
+      <p>純 OHLCV deterministic 判定，包成 <span class="tag h">high</span> 可信度的 Evidence。<br><br>連報告標題都<span class="k">回溯得到 Evidence ID</span>。</p></div>
+    <div class="card"><div class="n ok">03</div><h3>量化失效條件</h3>
+      <p>「什麼情況下這個結論不成立」帶上指標、運算子、門檻與依據。<br><br>數值只能引用<span class="k">既有 Evidence</span>。</p></div>
+  </div>
+  <ul class="pts tight" style="margin-top:32px">
+    <li><i>01</i>全部 deterministic　<s>不呼叫 LLM、不新增來源、不阻塞核心</s></li>
+    <li><i>02</i>雙幣比較以<span class="k">單一 run</span> 完成　<s>一個 run_id、一份 Ledger、四項 artifacts</s></li>
+  </ul>
+  <div class="notes">
+    <p><b>加分層（50 秒）：</b>這一層只是把既有的嚴謹度「顯影」出來，不會變成第二個真相來源。全部 deterministic、幣種無關、可誠實降級。</p>
+    <p><b>Trust Scorecard 的自我約束：</b>必須與 confidence 一致——少於 2 個獨立群不得標 strong；有 material conflict 時一致性不得高於 weak。而且不輸出未校準的百分比，只給等級加原始計數（例如「3 個獨立群」）。只為 conclusion 產生，fact 與 inference 不產。</p>
+    <p><b>Market Regime 的幣種無關性：</b>門檻一律拿該資產自己的 rolling 歷史比（百分位／z-score），不用跨幣絕對值。缺 bar 就標 unavailable。</p>
+    <p><b>雙幣比較的關鍵理由：</b>比較只有在兩個資產的證據進入<b>同一個 Arbiter payload</b> 時才存在。而且跨幣永遠不比 base-asset volume（單位不同），只用報酬差、各自百分位、相對強弱比值。</p>
+  </div>
+</section>
+
+<!-- ══ 15 ═══════════════════════════════════════ -->
+<section class="slide mid">
+  <div class="eyebrow">總結</div>
+  <h1>能驗證<span class="dim">，</span>所以可信</h1>
+  <div class="deck">我們沒有做一個更會講話的 Agent<br>而是做了一個<span class="k">把每一步都攤開來讓人查</span>的 Agent</div>
+  <div class="chips">
+    <span class="chip"><i class="sw llm"></i>3 次受限 LLM</span>
+    <span class="chip"><i class="sw det"></i>其餘全部 deterministic</span>
+    <span class="chip"><i class="sw out"></i>4 項 artifacts 一定齊全</span>
+  </div>
+  <div class="deck" style="margin-top:38px;font-size:13px;color:var(--muted)">
+    H3 多輪辯論為預設關閉、<span class="k">未實作</span>的 extension interface，本次不宣稱使用。<br>
+    本系統產出研究導向分析，<span class="k">不提供投資建議</span>。
+  </div>
+  <div class="notes">
+    <p><b>收尾（30 秒）：</b>回到第 2 頁的四個問題——資料從哪來（Evidence Ledger）、怎麼推論（fact → inference → conclusion）、哪些證據衝突（material conflict 雙方保留）、哪些限制影響結論（限制段落與 Trust Scorecard）。四個都在 artifacts 裡，評審可以自己查。</p>
+    <p><b>三個補充賣點（有時間才講）：</b>幣種無關——pipeline 以 <code>{asset}</code> 為參數，沒有 <code>if asset == "BTC"</code> 這種分支。可離線驗證——外部世界全關在 port/adapter 之後，預設測試套件完全不碰外網。單機可交付——單一 non-root Docker image → ECR → 單台 EC2，Bedrock 走 instance role，不把長效 key 烘進 image。</p>
+    <p><b>H3 一定要主動說：</b>Bull／Bear／Judge 多輪辯論只有預設關閉的 stub，我們不宣稱 live 啟用過。主動揭露比被問出來好。</p>
+    <p><b>接下來按 A 進附錄</b>，Q&A 時可直接跳到對應的表。</p>
+  </div>
+</section>
+
+<!-- ══ A1 ═══════════════════════════════════════ -->
+<section class="slide appx">
+  <div class="eyebrow">附錄 A1</div>
+  <h2>完整失敗降級矩陣</h2>
+  <div class="sub">每一列都有對應的 typed degradation event，寫進 <span class="en">execution_log.jsonl</span> 與報告的「限制與資料缺口」段落。</div>
+  <table>
+    <thead><tr><th style="width:28%">失敗</th><th style="width:40%">系統的反應</th><th>評審看得到什麼</th></tr></thead>
+    <tbody>
+      <tr><td class="a">Planner 逾時或 schema 錯</td><td>一次 deadline-bound repair 後，改用依 assets 與預設回看窗產生的 deterministic plan</td><td>Planner degraded event</td></tr>
+      <tr><td class="a">單一來源逾時 / 429 / 5xx</td><td>至多一次 bounded retry，然後產生 typed gap</td><td>來源名稱、錯誤類別、fallback 紀錄</td></tr>
+      <tr><td class="a">baseline 市場源失敗</td><td>誠實 partial／degraded；MVP 無第二個 live provider，<b>不宣稱曾切換</b></td><td>市場來源缺口與降級事件</td></tr>
+      <tr><td class="a">CryptoPanic token 缺失</td><td>關閉該 adapter，RSS 與官方來源照常執行</td><td>Missing-source disclosure</td></tr>
+      <tr><td class="a">任一取證分支失敗</td><td>另一分支繼續；用可用 Evidence 完成 Ledger</td><td><span class="en">partial</span> branch status</td></tr>
+      <tr><td class="a">Research 抽取無效</td><td>不產生 LLM 自創事實，只保留 deterministic 市場證據</td><td>Extraction failure event</td></tr>
+      <tr><td class="a">Arbiter 兩次都無效</td><td>由 Ledger facts 產生 low-confidence、列出所有缺失能力的結果</td><td>Fallback 報告與原因</td></tr>
+      <tr><td class="a">少於三種來源 / 三個獨立群</td><td>照常完成報告但壓低 confidence；核心結論撐不住就標 insufficient data</td><td>多樣性計數與缺口</td></tr>
+      <tr><td class="a">Material conflict</td><td>雙方 Evidence 都保留，該結論 confidence 鎖 low，整體不得 high</td><td>Conflict indicator 與反方段落</td></tr>
+      <tr><td class="a">禁語 lint 擋下</td><td>移除投資指令語句；無法安全修正則改用 fallback</td><td>Lint failure event</td></tr>
+      <tr><td class="a">Artifact 寫入失敗</td><td>對原子寫入做 bounded retry；仍失敗則指名確切缺檔檔名</td><td>Missing-artifact 清單</td></tr>
+      <tr class="hi"><td class="a">720 秒硬停</td><td>取消所有剩餘外部／LLM 呼叫，停止 optional stages，進入 finalization</td><td>Deadline event</td></tr>
+    </tbody>
+  </table>
+  <div class="notes"><p>Q&A 用。若被問「某某來源掛了會怎樣」，直接指這張表對應的列。重點句：<b>沒有任何一條路徑會讓系統交不出東西。</b></p></div>
+</section>
+
+<!-- ══ A2 ═══════════════════════════════════════ -->
+<section class="slide appx">
+  <div class="eyebrow">附錄 A2</div>
+  <h2>完整時間預算</h2>
+  <div class="sub">全部由 <span class="en">time.monotonic()</span> 推導；UTC 只用於落盤時間戳。deadline 較短時各 stage 按比例縮放，保留最後 20%（可能時至少 60 秒）給 deterministic finalize。</div>
+  <div class="cols">
+    <table>
+      <thead><tr><th>里程碑</th><th style="width:20%">秒數</th><th style="width:40%">到點時的行為</th></tr></thead>
+      <tbody>
+        <tr><td class="a">Planner 完成</td><td class="n">30</td><td>改用 deterministic default plan</td></tr>
+        <tr><td class="a">並行取證完成</td><td class="n">270</td><td>取消未完成的 adapter，保留部分結果</td></tr>
+        <tr><td class="a">Evidence 落盤</td><td class="n">360</td><td>驗證並寫出所有可用證據</td></tr>
+        <tr><td class="a">Arbiter ＋ 渲染</td><td class="n">510</td><td>需要時改用 deterministic fallback</td></tr>
+        <tr><td class="a">Artifact 驗證目標</td><td class="n">630</td><td>進入保留區，不再加 optional 工作</td></tr>
+        <tr class="hi"><td class="a">分析硬停</td><td class="n">720</td><td>取消每一個剩餘的外部／LLM 呼叫</td></tr>
+        <tr class="hi"><td class="a">Artifact 硬停</td><td class="n">780</td><td>四個固定檔名全部完成</td></tr>
+        <tr><td class="a">競賽上限</td><td class="n">900</td><td>保留給 UI 與評審操作</td></tr>
+      </tbody>
+    </table>
+    <div>
+      <div class="h4">呼叫層級的上限</div>
+      <table style="margin-bottom:20px">
+        <tbody>
+          <tr><td class="a">單次外部呼叫</td><td class="n">≤ 45 s</td></tr>
+          <tr><td class="a">每個 operation 的 retry</td><td class="n">最多 1 次</td></tr>
+          <tr><td class="a">LLM schema repair</td><td class="n">最多 1 次</td></tr>
+          <tr><td class="a">送進 Arbiter 的 Evidence</td><td class="n">最多 30 筆</td></tr>
+        </tbody>
+      </table>
+      <div class="h4">時間不足時的固定跳過順序</div>
+      <table>
+        <tbody>
+          <tr><td class="n" style="width:34px">1</td><td class="a">多輪辯論 <span class="tag no">未實作</span><br><span style="font-weight:400;color:var(--muted)">H3 conditional debate，見附錄 A5</span></td></tr>
+          <tr><td class="n">2</td><td class="a">選配脈絡來源<br><span style="font-weight:400;color:var(--muted)">optional context adapters</span></td></tr>
+          <tr><td class="n">3</td><td class="a">反方訊號二次搜尋</td></tr>
+        </tbody>
+      </table>
+      <div class="sub" style="margin-top:16px">retry、backoff 與 schema repair <b>全部共用原 stage deadline</b>，不延長 request 總時限。任何非核心工作都不得延遲四項 artifacts。</div>
+    </div>
+  </div>
+  <div class="notes"><p>Q&A 用。若被問「時間不夠怎麼辦」，重點是<b>跳過順序是寫死的，不是模型當下決定的</b>——所以行為可預測、可測試。</p></div>
+</section>
+
+<!-- ══ A3 ═══════════════════════════════════════ -->
+<section class="slide appx">
+  <div class="eyebrow">附錄 A3</div>
+  <h2>證據與信心的契約</h2>
+  <div class="cols">
+    <div>
+      <div class="h4">靜態可信度表 · LLM 不得調整</div>
+      <table style="margin-bottom:22px">
+        <tbody>
+          <tr><td class="a"><span class="tag h">high</span></td><td>主辦 OHLCV 基準、交易所原生 API 市場數據、已驗證的專案官方公告、由 high 輸入算出的 deterministic 計算</td></tr>
+          <tr><td class="a"><span class="tag m">medium</span></td><td>具名新聞媒體的原始報導頁（有 URL 與時間戳）</td></tr>
+          <tr><td class="a"><span class="tag l">low</span></td><td>聚合／轉載未取原頁、Fear &amp; Greed、社群主張、缺作者或時間的摘要</td></tr>
+        </tbody>
+      </table>
+      <div class="h4">每筆 EvidenceItem 保存的欄位</div>
+      <table>
+        <tbody>
+          <tr><td class="a">來源</td><td><span class="en">source_name · source_url</span></td></tr>
+          <tr><td class="a">時間</td><td><span class="en">published_at · fetched_at</span>（缺則留白並揭露，不捏造）</td></tr>
+          <tr><td class="a">可重現性</td><td><span class="en">query_or_parameters</span>（不含金鑰）</td></tr>
+          <tr><td class="a">內容</td><td><span class="en">content_reference · normalized_fact</span></td></tr>
+          <tr><td class="a">處理結果</td><td><span class="en">reliability · independence_group · content_hash</span></td></tr>
+          <tr><td class="a">狀態</td><td><span class="en">is_cached · cache_time · is_stale</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <div class="h4">Confidence rubric · 只有三級</div>
+      <table style="margin-bottom:22px">
+        <tbody>
+          <tr><td class="a">high</td><td>≥2 個獨立群的 high／medium 支持、無 material conflict、無關鍵缺源，且關鍵數值全由 deterministic 工具產生</td></tr>
+          <tr><td class="a">medium</td><td>僅單一強獨立群支持、部分支持為 low reliability、樣本有限，或缺非關鍵來源</td></tr>
+          <tr><td class="a">low</td><td>證據不足、存在 material conflict、關鍵資料 stale 或不可得</td></tr>
+        </tbody>
+      </table>
+      <div class="h4">Deterministic 硬上限 · 後於 LLM 執行</div>
+      <table style="margin-bottom:22px">
+        <tbody>
+          <tr><td><span class="en">insufficient_data=true</span> → 整體 low</td></tr>
+          <tr><td>結論有 material conflict → 該結論 low，整體不得 high</td></tr>
+          <tr><td>支持的獨立群 &lt;2 → 該 claim 不得 high</td></tr>
+          <tr><td>只有 low 證據 → 該 claim low</td></tr>
+          <tr><td>唯一當期證據是 stale cache → 當期狀態主張 low</td></tr>
+        </tbody>
+      </table>
+      <div class="sub">模型自評的 confidence 只會被政策<b>調低</b>，永遠不會被放寬。禁止把三級信心描述成未校準的精確機率。</div>
+    </div>
+  </div>
+  <div class="notes"><p>Q&A 用。最有力的一句：<b>confidence 上限是 deterministic 且後於 LLM 執行的</b>——模型講得再有信心，也會被規則壓下來。</p></div>
+</section>
+
+<!-- ══ A4 ═══════════════════════════════════════ -->
+<section class="slide appx">
+  <div class="eyebrow">附錄 A4</div>
+  <h2>來源清單</h2>
+  <div class="sub">兩份分開列：主管線是目前接線跑 live 的，資料側原型是廣度驗證。<b>不合併計算</b>。</div>
+  <div class="cols">
+    <div>
+      <div class="h4">主管線 · 已接線</div>
+      <table>
+        <thead><tr><th>來源</th><th style="width:22%">類型</th><th style="width:22%">可信度</th></tr></thead>
+        <tbody>
+          <tr><td class="a">主辦 Daily OHLCV CSV</td><td>market</td><td><span class="tag h">high</span></td></tr>
+          <tr><td class="a">Binance 公開 REST</td><td>market</td><td><span class="tag h">high</span></td></tr>
+          <tr><td class="a">CoinDesk RSS</td><td>news</td><td><span class="tag m">medium</span></td></tr>
+          <tr><td class="a">Google News（依幣種）</td><td>news</td><td><span class="tag l">low</span></td></tr>
+          <tr><td class="a">Alternative.me 恐懼貪婪</td><td>social</td><td><span class="tag l">low</span></td></tr>
+        </tbody>
+      </table>
+      <div class="sub" style="margin-top:14px">
+        新聞用兩個獨立來源：固定第一手媒體 ＋ 依幣種搜尋。一般 RSS 偏 BTC／ETH，Google News 補上小幣覆蓋率。
+        CryptoPanic 與官方公告 adapter 已實作並測過，視 token 與時間預算納入。
+      </div>
+    </div>
+    <div>
+      <div class="h4">資料側原型 <span class="tag b">p2-etl-mvp</span></div>
+      <table>
+        <thead><tr><th style="width:22%">維度</th><th>來源</th></tr></thead>
+        <tbody>
+          <tr><td class="a">市場</td><td>主辦 CSV · Binance · <b>OKX</b> · CoinGecko</td></tr>
+          <tr><td class="a">衍生品</td><td>Binance 永續<b>資金費率</b>（槓桿情緒）</td></tr>
+          <tr><td class="a">新聞</td><td>9 家 RSS（CoinDesk、The Block、Decrypt、Cointelegraph…）· Google News · CryptoPanic</td></tr>
+          <tr><td class="a">社群</td><td>Reddit r/CryptoCurrency（Atom）</td></tr>
+          <tr><td class="a">情緒</td><td>Alternative.me 恐懼貪婪</td></tr>
+        </tbody>
+      </table>
+      <div class="sub" style="margin-top:14px">
+        實測 ~15 來源、5 維度、~13 獨立群、一次 live 約 60 張證據卡。
+        市場層有兩個獨立交易所可交叉驗證。<b>全部幣種無關</b>——用符號就能查五幣。
+      </div>
+    </div>
+  </div>
+  <div class="notes"><p>Q&A 用。如果評審問「你們到底接了幾個來源」，先答主管線那份，再說原型驗過更廣的廣度。<b>不要把兩份加起來講</b>。</p></div>
+</section>
+
+<!-- ══ A5 ═══════════════════════════════════════ -->
+<section class="slide appx">
+  <div class="eyebrow">附錄 A5</div>
+  <h2>我們刻意不做的事</h2>
+  <div class="sub">把邊界講清楚，比宣稱做了更多來得可信。以下都是已核准的範圍決定，不是還沒做完。</div>
+  <div class="cols">
+    <div>
+      <div class="h4">產品非目標</div>
+      <table style="margin-bottom:20px">
+        <tbody>
+          <tr><td>自動交易、下單、個人化投資顧問</td></tr>
+          <tr><td>宣稱可準確預測短期價格</td></tr>
+          <tr><td>自由循環的 Agent swarm 或多輪辯論</td></tr>
+          <tr><td>LLM 自行產生市場數值</td></tr>
+          <tr><td>訓練或微調大型模型</td></tr>
+        </tbody>
+      </table>
+      <div class="h4">H3 Conditional Debate</div>
+      <table>
+        <tbody>
+          <tr><td>flag <b>預設 false</b>，即使傳 true 也記為 disabled 並直接 route 到 Arbiter</td></tr>
+          <tr><td>MVP 唯一實作是 <span class="en">DisabledConflictExtension</span>：不做網路呼叫、不做 LLM 呼叫</td></tr>
+          <tr><td><b>簡報與 UI 必須標示為未實作</b>，不得宣稱 live 啟用過 Bull／Bear／Judge</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <div class="h4">刻意排除的技術做法</div>
+      <table style="margin-bottom:20px">
+        <tbody>
+          <tr><td class="a">近似／語意去重</td><td>兩天內驗不完，只做 SHA-256 精確比對</td></tr>
+          <tr><td class="a">動態 reliability 模型</td><td>不可解釋、不可測試，只用靜態表</td></tr>
+          <tr><td class="a">自由 agent loop</td><td>與 deadline 保證衝突</td></tr>
+          <tr><td class="a">per-coin 分支邏輯</td><td>現場抽哪個幣都跑同一條路徑</td></tr>
+          <tr><td class="a">跨幣直接比 base volume</td><td>單位不同，比了沒有意義</td></tr>
+        </tbody>
+      </table>
+      <div class="h4">非 MVP 基礎設施</div>
+      <table>
+        <tbody>
+          <tr><td>database · queue · broker · 向量 DB · scheduler</td></tr>
+          <tr><td>S3 · CloudWatch · ECS · 水平擴展 · HA</td></tr>
+          <tr><td>LangGraph · Strands · FastAPI · Celery · Redis</td></tr>
+        </tbody>
+      </table>
+      <div class="sub" style="margin-top:14px">單台 EC2 同時間只接受一個 active run；MVP 不承諾 production auth、HA 或高並行。</div>
+    </div>
+  </div>
+  <div class="notes"><p>Q&A 用，也是誠實度的展示。若被問「為什麼不用 LangGraph／不做 debate」，答案是：<b>固定拓撲的 deadline 與取消語意更直接，junior 也除錯得動</b>；能力換的是可預測性與可交付性。</p></div>
+</section>
+
+<script>
+(function(){
+  const slides=[...document.querySelectorAll('.slide')];
+  const main=slides.filter(s=>!s.classList.contains('appx'));
+  const dots=document.getElementById('dots');
+  const pbar=document.getElementById('pbar');
+  const counter=document.getElementById('counter');
+  const drawer=document.getElementById('drawer');
+  const drawerBody=document.getElementById('drawerBody');
+  const pad=n=>String(n).padStart(2,'0');
+  const firstAppx=main.length;
+
+  slides.forEach((s,i)=>{
+    s.id='s'+(i+1);
+    if(i===firstAppx && firstAppx<slides.length){
+      const g=document.createElement('span'); g.className='gap'; dots.appendChild(g);
+    }
+    const a=document.createElement('a');
+    a.href='#s'+(i+1);
+    a.setAttribute('aria-label', i<firstAppx ? '第 '+(i+1)+' 頁' : '附錄 A'+(i-firstAppx+1));
+    dots.appendChild(a);
+  });
+  const links=[...dots.querySelectorAll('a')];
+
+  const current=()=>{
+    const mid=innerHeight*0.4;
+    let c=0;
+    slides.forEach((s,i)=>{ if(s.getBoundingClientRect().top<=mid) c=i; });
+    return c;
+  };
+  const go=n=>{
+    n=Math.max(0,Math.min(slides.length-1,n));
+    slides[n].scrollIntoView({behavior:'smooth'});
+  };
+
+  /* ── presenter window ─────────────────────────
+     Opens a separate window (put it on your laptop, keep the deck fullscreen on
+     the projector). Written into an about:blank popup and driven directly via
+     the window handle — no localStorage / BroadcastChannel, so it works from
+     file:// where those are unreliable. */
+  let pres=null;
+  const label=i => i<firstAppx ? pad(i+1)+' / '+pad(firstAppx) : '附錄 A'+(i-firstAppx+1);
+  const titleOf=i => {
+    if(i>=slides.length) return '—— 結束 ——';
+    const h=slides[i].querySelector('h1,h2');
+    return h ? h.textContent.replace(/\s+/g,' ').trim() : label(i);
+  };
+
+  const PRES_DOC = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<title>講稿 · HOYA Market Agent</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#12151c;color:#e8ebf0;font-family:'Inter','Segoe UI','PingFang TC','Microsoft JhengHei',sans-serif;
+  height:100vh;display:flex;flex-direction:column;line-height:1.5;-webkit-font-smoothing:antialiased}
+header{display:flex;align-items:center;gap:18px;padding:14px 22px;border-bottom:1px solid #262b36;flex:0 0 auto}
+#pcount{font-family:'SF Mono','Consolas',monospace;font-size:15px;font-weight:700;color:#4fb6d4;letter-spacing:.04em}
+#ptimer{font-family:'SF Mono','Consolas',monospace;font-size:30px;font-weight:700;letter-spacing:-.03em;
+  margin-left:auto;color:#e8ebf0;transition:color .3s}
+#ptimer.warn{color:#e8a33d} #ptimer.over{color:#ef6a6a}
+.btn{background:#1e232e;border:1px solid #2f3644;color:#aab3c2;border-radius:7px;padding:6px 13px;
+  font-size:12.5px;cursor:pointer;font-family:inherit}
+.btn:hover{background:#272d3a;color:#e8ebf0}
+main{flex:1 1 auto;overflow-y:auto;padding:24px 26px}
+#pnotes{font-size:17px;line-height:1.72;color:#c4cbd7;max-width:920px}
+#pnotes p{margin-bottom:13px}
+#pnotes b{color:#fff;font-weight:650}
+#pnotes code{font-family:'SF Mono','Consolas',monospace;font-size:.87em;background:#1e232e;
+  padding:2px 6px;border-radius:4px;color:#8fd4e8}
+footer{flex:0 0 auto;border-top:1px solid #262b36;padding:13px 22px;display:flex;align-items:center;gap:16px}
+.lbl{font-family:'SF Mono','Consolas',monospace;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:#6a748a;flex:0 0 auto}
+#pnext{font-size:15px;font-weight:600;color:#8f99ab;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;flex:1 1 auto}
+.nav{display:flex;gap:7px;flex:0 0 auto}
+.nav .btn{font-size:16px;padding:4px 15px;line-height:1.3}
+</style></head><body>
+<header>
+  <div id="pcount">—</div>
+  <button class="btn" id="tgl">暫停</button>
+  <button class="btn" id="rst">歸零</button>
+  <div id="ptimer">00:00</div>
+</header>
+<main><div id="pnotes"></div></main>
+<footer>
+  <span class="lbl">下一頁</span>
+  <div id="pnext">—</div>
+  <div class="nav"><button class="btn" id="prv">◀</button><button class="btn" id="nxt">▶</button></div>
+</footer>
+<script>
+var t0=Date.now(), acc=0, running=true, WARN=480, OVER=600;
+var el=document.getElementById('ptimer');
+function tick(){
+  var s = running ? acc+Math.floor((Date.now()-t0)/1000) : acc;
+  var m=Math.floor(s/60);
+  el.textContent=String(m).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+  el.className = s>=OVER ? 'over' : (s>=WARN ? 'warn' : '');
+}
+setInterval(tick,250); tick();
+document.getElementById('tgl').onclick=function(){
+  if(running){ acc+=Math.floor((Date.now()-t0)/1000); running=false; this.textContent='繼續'; }
+  else { t0=Date.now(); running=true; this.textContent='暫停'; }
+};
+document.getElementById('rst').onclick=function(){ acc=0; t0=Date.now(); tick(); };
+function go(d){ try{ window.opener.__hoyaGo(d); }catch(e){} }
+document.getElementById('prv').onclick=function(){ go(-1); };
+document.getElementById('nxt').onclick=function(){ go(1); };
+document.addEventListener('keydown',function(e){
+  var k=e.key.toLowerCase();
+  if(['arrowdown','arrowright','pagedown',' '].indexOf(k)>-1){ e.preventDefault(); go(1); }
+  else if(['arrowup','arrowleft','pageup'].indexOf(k)>-1){ e.preventDefault(); go(-1); }
+});
+<\/script></body></html>`;
+
+  const openPresenter=()=>{
+    if(pres && !pres.closed){ pres.focus(); return; }
+    pres=window.open('','hoyaPresenter','width=760,height=620');
+    if(!pres){ alert('瀏覽器擋掉了彈出視窗。請允許此頁的彈出視窗後再按一次 P。'); return; }
+    pres.document.open();
+    pres.document.write(PRES_DOC);
+    pres.document.close();
+    document.body.classList.remove('notes-on');   // never show notes on the deck itself
+    setTimeout(()=>{ syncPresenter(current()); }, 60);
+  };
+
+  const syncPresenter=c=>{
+    if(!pres || pres.closed) return;
+    const d=pres.document;
+    const cnt=d.getElementById('pcount'), nts=d.getElementById('pnotes'), nxt=d.getElementById('pnext');
+    if(!cnt||!nts||!nxt) return;
+    const n=slides[c].querySelector('.notes');
+    cnt.textContent=label(c);
+    nts.innerHTML = n ? n.innerHTML : '<p style="color:#6a748a">（本頁無講稿）</p>';
+    nxt.textContent=titleOf(c+1);
+    nts.parentNode.scrollTop=0;
+  };
+
+  window.__hoyaGo = d => go(current()+d);
+  addEventListener('pagehide',()=>{ if(pres && !pres.closed) pres.close(); });
+
+  let raf=null;
+  const update=()=>{
+    raf=null;
+    const c=current();
+    links.forEach((a,i)=>a.classList.toggle('on',i===c));
+    counter.textContent=label(c);
+    const h=document.documentElement.scrollHeight-innerHeight;
+    pbar.style.width=(h>0?scrollY/h*100:0)+'%';
+    const n=slides[c].querySelector('.notes');
+    drawerBody.innerHTML = n ? n.innerHTML : '<p style="color:#8590a3">（本頁無講稿）</p>';
+    syncPresenter(c);
+  };
+  addEventListener('scroll',()=>{ if(!raf) raf=requestAnimationFrame(update); },{passive:true});
+  addEventListener('resize',update,{passive:true});
+
+  addEventListener('keydown',e=>{
+    if(e.metaKey||e.ctrlKey||e.altKey) return;
+    const k=e.key.toLowerCase();
+    if(['arrowdown','arrowright','pagedown',' '].includes(k)){e.preventDefault();go(current()+1);}
+    else if(['arrowup','arrowleft','pageup'].includes(k)){e.preventDefault();go(current()-1);}
+    else if(k==='home'){e.preventDefault();go(0);}
+    else if(k==='end'){e.preventDefault();go(slides.length-1);}
+    else if(k==='p'){e.preventDefault();openPresenter();}
+    else if(k==='n'){e.preventDefault();document.body.classList.toggle('notes-on');}
+    else if(k==='a'){e.preventDefault();go(firstAppx);}
+    else if(k==='escape'){document.body.classList.remove('notes-on');}
+  });
+
+  update();
+})();
+</script>
+</body>
+</html>

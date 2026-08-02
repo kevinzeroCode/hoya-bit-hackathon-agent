@@ -56,6 +56,12 @@ def test_html_report_is_deterministic(result, ledger) -> None:
     assert first == second
 
 
+def test_html_report_artifact_carries_no_streamlit_embed_script(result, ledger) -> None:
+    """The downloadable artifact stays portable: the Streamlit frame-sizing
+    script is injected by the UI layer only, never by the renderer."""
+    assert "hoya-report-toc" not in render_html(result, ledger)
+
+
 def test_html_report_preserves_run_mode_disclosure(result, ledger) -> None:
     report = render_html(result, ledger)
     assert "rehearsal 可重現資料結果" in report

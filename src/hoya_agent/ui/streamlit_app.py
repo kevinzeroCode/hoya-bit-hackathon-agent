@@ -183,6 +183,92 @@ def _artifact_text(view: dict, name: str) -> str | None:
     return None
 
 
+# `st.iframe(..., height="content")` measures the srcdoc document and sizes both
+# the frame *and* its element container, so the report flows with the page instead
+# of scrolling inside a fixed viewport. Sizing the iframe alone is not enough: the
+# container keeps the declared height and the report then overlaps everything
+# below it (the download row, the other tab panels).
+_TOC_MARKER = "hoya-report-toc"
+_TOC_SCRIPT = """
+<script id="hoya-report-toc">
+'use strict';
+(function () {
+  // A content-sized frame never scrolls, so the report's own TOC anchors would
+  // be dead links. Scroll the host page instead. Streamlit's scrolling box is
+  // not always the window, so walk up for the frame's nearest scrollable
+  // ancestor. Same-origin access is granted by the iframe's `allow-same-origin`.
+  var frame = window.frameElement;
+  if (!frame) return;  // cross-origin: leave the default anchor behaviour
+
+  // Streamlit measures this document and posts the size to the host, but only
+  // when the measurement *changes* — and a srcdoc frame can load before the host
+  // attaches its listener, so the one and only measurement is lost and the frame
+  // stays at its unmeasured height (a short box with an inner scrollbar). The
+  // report is static, so nothing ever triggers a resend. Perturb the height by
+  // 1px and restore it: each change re-fires Streamlit's observer, and the final
+  // post carries the true height.
+  function nudge() {
+    document.body.style.paddingBottom = '1px';
+    setTimeout(function () { document.body.style.paddingBottom = ''; }, 50);
+  }
+  [250, 900, 2000].forEach(function (delay) { setTimeout(nudge, delay); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(nudge);
+
+  function host() {
+    var doc = window.parent.document;
+    var el = frame.parentElement;
+    while (el && el !== doc.documentElement) {
+      var overflow = window.parent.getComputedStyle(el).overflowY;
+      if (/(auto|scroll|overlay)/.test(overflow) && el.scrollHeight > el.clientHeight + 1) return el;
+      el = el.parentElement;
+    }
+    return window.parent;
+  }
+
+  document.addEventListener('click', function (event) {
+    var link = event.target.closest ? event.target.closest('a[href^="#"]') : null;
+    if (!link) return;
+    var target = document.getElementById(link.getAttribute('href').slice(1));
+    if (!target) return;
+    try {
+      // The frame never scrolls, so the target's rect inside it is its offset
+      // from the frame top; the frame's own rect is in host viewport coords.
+      var delta = frame.getBoundingClientRect().top + target.getBoundingClientRect().top - 12;
+      host().scrollBy({ top: delta, behavior: 'smooth' });
+      event.preventDefault();
+    } catch (err) { /* cross-origin parent: leave the default anchor behaviour */ }
+  });
+})();
+</script>
+"""
+
+
+def _embeddable_report(html: str) -> str:
+    """The report document plus the TOC-navigation script, for the report frame.
+
+    Injected here and not in `reporting.html_renderer` so the downloadable
+    `final_report.html` artifact stays free of Streamlit-specific script.
+    """
+    if "</body>" not in html:
+        return html + _TOC_SCRIPT
+    return html.replace("</body>", _TOC_SCRIPT + "</body>", 1)
+
+
+def _embed_report(html: str) -> None:
+    """Show the report inline, sized to its content.
+
+    `st.iframe` (Streamlit 1.6x) sizes the element container from the measured
+    document. On older Streamlit — `pyproject` allows `>=1.36` — fall back to the
+    fixed-height component, which keeps its own inner scrollbar but never
+    overlaps the surrounding layout.
+    """
+    embeddable = _embeddable_report(html)
+    if hasattr(st, "iframe"):
+        st.iframe(embeddable, height="content")
+    else:
+        st.components.v1.html(embeddable, height=1100, scrolling=True)
+
+
 def _source_links_markdown(items: list[dict]) -> str:
     """A prominent, clickable list of every source with a URL.
 
@@ -245,7 +331,7 @@ def _render_result(view: dict) -> None:
         st.caption("完整研究報告")
         html_report = _artifact_text(view, "final_report.html")
         if html_report:
-            st.components.v1.html(html_report, height=1100, scrolling=True)
+            _embed_report(html_report)
         else:
             st.markdown(view["report_markdown"] or "_(無)_")
     with tab_evidence:

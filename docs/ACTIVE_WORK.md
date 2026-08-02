@@ -53,6 +53,18 @@
   `asset.value`（字串），`reasoning/planner.py:56` 卻拿 `str()` 去比 plan 端的 `Asset` enum，
   Python 3.11 起 `str(Asset.BTC)` 是 `'Asset.BTC'` 不是 `'BTC'`，所以**每次 live run 的
   LLM 計畫都被判違規丟棄**，改用決定論預設計畫。修點在凍結的 `reasoning/`，需 owner 同意。
+- **2026-08-02 報告不再有內層捲軸**：`ui/streamlit_app.py:_embed_report()` 改用
+  `st.iframe(..., height="content")`——Streamlit 會量測 srcdoc 內容並同時調整 **frame 與其
+  element container**，報告隨主頁面一起捲動。兩個已知陷阱：① 用字元數推估高度（`722c6df`
+  已撤回）永遠會猜錯；② 只放大 iframe 而不動 container，報告會溢出並蓋住下方的下載列與
+  其他分頁。舊版 Streamlit（`pyproject` 允許 >=1.36，無 `st.iframe`）自動退回固定 1100px
+  元件——會有內層捲軸，但不會破版。`_embeddable_report()` 另注入 TOC 錨點腳本（content-sized
+  frame 不會捲動，導覽連結需改捲外層）＋一個 1px 高度 nudge：Streamlit **只在量測值改變時**
+  才回報，而 srcdoc frame 可能在 host 掛上 listener 前就 load 完，那唯一一次量測會遺失，
+  報告就卡在未量測高度（矮框＋內層捲軸）；報告是靜態的，不會再觸發重送。腳本只在 UI 路徑
+  注入，下載的 `final_report.html` artifact 維持乾淨（`tests/unit/ui/test_report_embed.py`
+  與 renderer 測試把關）。以 Edge headless + CDP 實測：frame 4419px／內容 4418px、三個
+  分頁皆可見且未被遮蓋、下載列位於 frame 之下。
 
 ## Completed and frozen
 
