@@ -67,6 +67,7 @@ class MappingArbiter:
     """
 
     inner: Arbiter
+    max_attempts: int = 2
 
     @property
     def settings(self) -> Any:
@@ -81,22 +82,31 @@ class MappingArbiter:
         deadline: float,
         degradation_notes: Any = (),
     ) -> tuple[Any, list[str]]:
-        generation, notes = await self.inner.run(
-            request=request,
-            ledger=ledger,
-            indicators=indicators,
-            deadline=deadline,
-            degradation_notes=degradation_notes,
-        )
-        notes = list(notes)
-        try:
-            result = build_analysis_result(generation, request=request, ledger=ledger)
-        except Exception as exc:  # noqa: BLE001 - surface why the mapping failed
-            result = None
-            notes.append(
-                f"Arbiter 輸出無法映射為有效 AnalysisResult({type(exc).__name__}):"
-                f"{str(exc)[:400]}"
+        result: Any = None
+        notes: list[str] = []
+        for _ in range(self.max_attempts):
+            generation, gen_notes = await self.inner.run(
+                request=request,
+                ledger=ledger,
+                indicators=indicators,
+                deadline=deadline,
+                degradation_notes=degradation_notes,
             )
+            notes = list(gen_notes)
+            try:
+                result = build_analysis_result(generation, request=request, ledger=ledger)
+            except Exception as exc:  # noqa: BLE001 - surface why the mapping failed
+                result = None
+                notes.append(
+                    f"Arbiter 輸出無法映射為有效 AnalysisResult({type(exc).__name__}):"
+                    f"{str(exc)[:400]}"
+                )
+            # A usable result has structured claims (or is honestly insufficient).
+            # Retry a degenerate prose-only / unmapped result once — the model is
+            # non-deterministic, and a retry (or the arbiter's own fact-layer
+            # fallback on timeout) yields real claims instead of empty layers.
+            if result is not None and (result.claims or result.insufficient_data):
+                return result, notes
         return result, notes
 
 

@@ -41,6 +41,8 @@ language: zh-Hant
 
 這是本題評分的核心能力，務必做出真正的層次，而不是把三層寫成同一句話的三種說法。
 
+> **強制要求:`claims` 陣列不得為空。** `direct_answer` 只是摘要,**你必須另外在 `claims` 建立結構化主張**:至少 **2 個 `fact`、1 個 `inference`、1 個 `conclusion`**(除非 `insufficient_data=true`)。只把分析寫在 `direct_answer` 而 `claims` 留空 = 不合格。每個 Ledger 中的關鍵證據(市場數值、重要新聞)都應對應到至少一個 fact claim。
+
 | `claim_type` | 內容 | `based_on_claim_ids` | 證據要求 |
 |---|---|---|---|
 | `fact` | 單一可直接查證的觀察，幾乎是 Evidence 的改寫 | **必須為空** | 至少一條非 `neutral` 的 link |
