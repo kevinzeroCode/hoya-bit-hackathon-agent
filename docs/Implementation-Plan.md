@@ -1404,3 +1404,8 @@ tests/integration/test_streamlit_bronze.py tests/integration/test_report_safety_
 → **53 passed**；`ruff check .` → **All checks passed!**。完整非 live gate 將於提交前再次執行。
 完整非 live gate 複跑結果：`PYTHONPATH=src python -m pytest tests/unit tests/contract tests/integration -q`
 → **1267 passed in 63.64s**；`ruff check .` → **All checks passed!**。
+## 2026-08-02 reasoning card layout follow-up
+
+修正 HTML 推理卡片的欄位配置：主張文字保留足夠閱讀寬度，支持證據與依據標籤改為右側
+自動換行排列；窄螢幕時切換為單欄。驗證：HTML/UI targeted tests **7 passed**，
+`ruff check .` **All checks passed!**。
