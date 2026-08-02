@@ -84,6 +84,11 @@ class BedrockSettings:
     primary_model_id: str
     fallback_model_id: str | None = None
     call_timeout_seconds: float = MAX_CALL_TIMEOUT_SECONDS
+    # Near-deterministic but not greedy: at the provider default (1.0) identical
+    # runs diverged wildly (1 of 7 rehearsals produced a conclusion claim), while
+    # 0.0 would make a retry of the same messages a near-exact replay of the
+    # same degenerate output. None sends no temperature at all.
+    temperature: float | None = 0.2
 
     def resolved_timeout(self) -> float:
         return min(self.call_timeout_seconds, MAX_CALL_TIMEOUT_SECONDS)
@@ -143,6 +148,7 @@ def build_converse_request(
     json_schema: Mapping[str, Any],
     max_tokens: int,
     tool_name: str = STRUCTURED_TOOL_NAME,
+    temperature: float | None = None,
 ) -> dict[str, Any]:
     """Build a Converse request that forces one structured tool call.
 
@@ -150,10 +156,13 @@ def build_converse_request(
     requires ``system[0].text`` to be at least one character, so sending a blank
     block fails botocore's client-side validation before the request is sent.
     """
+    inference_config: dict[str, Any] = {"maxTokens": max_tokens}
+    if temperature is not None:
+        inference_config["temperature"] = temperature
     request: dict[str, Any] = {
         "modelId": model_id,
         "messages": [dict(message) for message in messages],
-        "inferenceConfig": {"maxTokens": max_tokens},
+        "inferenceConfig": inference_config,
         "toolConfig": {
             "tools": [
                 {
@@ -284,6 +293,7 @@ class BedrockLLMClient:
                 messages=current_messages,
                 json_schema=json_schema,
                 max_tokens=max_tokens,
+                temperature=self.settings.temperature,
             )
             timeout = effective_timeout(deadline, self.settings.resolved_timeout())
             started = time.monotonic()

@@ -191,7 +191,18 @@ class ScriptedLLM:
                             "text": "BTC 的 14 日報酬為 -4.88%。",
                             "based_on_claim_ids": [],
                             "confidence": "medium",
-                        }
+                        },
+                        {
+                            # The injected StrictArbiterOutput refuses a confident
+                            # result without a conclusion, so the double must
+                            # produce one. No numbers: provenance checks apply.
+                            "claim_id": "cl_002",
+                            "claim_type": "conclusion",
+                            "assets": ["BTC"],
+                            "text": "就指定期間而言，BTC 呈現溫和回落的整理格局。",
+                            "based_on_claim_ids": ["cl_001"],
+                            "confidence": "medium",
+                        },
                     ],
                     "claim_evidence_links": [
                         {
@@ -199,7 +210,13 @@ class ScriptedLLM:
                             "evidence_id": "ev_001",
                             "stance": "supports",
                             "reason": "deterministic 市場計算。",
-                        }
+                        },
+                        {
+                            "claim_id": "cl_002",
+                            "evidence_id": "ev_001",
+                            "stance": "supports",
+                            "reason": "同一市場計算支持此結論。",
+                        },
                     ],
                     "confidence": "medium",
                     "confidence_rationale": "單一獨立市場來源支持。",

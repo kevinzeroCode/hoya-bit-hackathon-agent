@@ -29,6 +29,7 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import ValidationError
 
 from hoya_agent.adapters.organizer_csv import default_data_dir, load_organizer_csv
+from hoya_agent.conclusion_guards import ensure_honest_insufficiency
 from hoya_agent.data.market_worker import build_market_evidence
 from hoya_agent.data.price_analysis import build_comparison_evidence
 from hoya_agent.data.regime import build_regime_evidence, classify_market_regime
@@ -473,6 +474,10 @@ class DeadlineAwarePipeline:
                 state.settle(STAGE_ARBITER, StageState.degraded, message=extra_notes[-1])
                 return None, extra_notes
             extra_notes.extend(projection_notes)
+        # AC 6.4 / AC 9.6: a claims-empty result may never ship as a confident
+        # report, whichever arbiter implementation produced it.
+        if isinstance(result, AnalysisResult):
+            result = ensure_honest_insufficiency(result)
         state.settle(STAGE_ARBITER, StageState.completed)
         return result, extra_notes + list(arbiter_notes)
 

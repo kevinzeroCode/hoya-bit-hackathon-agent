@@ -156,6 +156,32 @@ class RequestBuildingTests(unittest.TestCase):
         )
         self.assertNotIn("system", request)
 
+    def test_temperature_is_included_when_given(self):
+        request = build_converse_request(
+            model_id="anthropic.primary",
+            system_prompt="sys",
+            messages=[{"role": "user", "content": [{"text": "hi"}]}],
+            json_schema=DemoResult.model_json_schema(),
+            max_tokens=256,
+            temperature=0.2,
+        )
+        self.assertEqual(request["inferenceConfig"]["temperature"], 0.2)
+
+    def test_temperature_is_omitted_when_none(self):
+        request = build_converse_request(
+            model_id="anthropic.primary",
+            system_prompt="sys",
+            messages=[{"role": "user", "content": [{"text": "hi"}]}],
+            json_schema=DemoResult.model_json_schema(),
+            max_tokens=256,
+        )
+        self.assertNotIn("temperature", request["inferenceConfig"])
+
+    def test_settings_temperature_reaches_the_provider_request(self):
+        client, fake = make_client([tool_response({"headline": "ok", "score": 1})])
+        run(client)
+        self.assertEqual(fake.requests[0]["inferenceConfig"]["temperature"], 0.2)
+
     def test_repair_message_quotes_errors_without_dropping_history(self):
         original = [{"role": "user", "content": [{"text": "原始問題"}]}]
         repaired = build_repair_messages(original, {"score": "x"}, "score must be int")
