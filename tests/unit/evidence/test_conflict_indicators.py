@@ -120,6 +120,34 @@ def test_same_independence_group_on_both_sides_is_not_material() -> None:
     assert indicators == []
 
 
+def test_identical_group_sets_with_two_groups_are_material() -> None:
+    """§9 條件三看的是「存在跨群組的支持/反對配對」，不是兩側群組集合不同。
+
+    supports 與 opposes 各自橫跨 {binance.com, coindesk.com} 時，
+    (binance 支持, coindesk 反對) 就是一組跨群組配對，必須判為 material。
+    """
+    ledger = _ledger(
+        _item("ev_001", reliability=Reliability.high, group="binance.com"),
+        _item("ev_002", reliability=Reliability.medium, group="coindesk.com"),
+        _item("ev_003", reliability=Reliability.medium, group="binance.com"),
+        _item("ev_004", reliability=Reliability.medium, group="coindesk.com"),
+    )
+    indicators = build_conflict_indicators(
+        claim_evidence_links=[
+            _link("cl_001", "ev_001", Stance.supports),
+            _link("cl_001", "ev_004", Stance.supports),
+            _link("cl_001", "ev_002", Stance.opposes),
+            _link("cl_001", "ev_003", Stance.opposes),
+        ],
+        ledger=ledger,
+    )
+
+    assert len(indicators) == 1
+    assert indicators[0].claim_id == "cl_001"
+    assert indicators[0].supporting_evidence_ids == ["ev_001", "ev_004"]
+    assert indicators[0].opposing_evidence_ids == ["ev_002", "ev_003"]
+
+
 def test_support_only_claim_has_no_indicator() -> None:
     ledger = _ledger(
         _item("ev_001", reliability=Reliability.high, group="organizer-public-market-data"),
