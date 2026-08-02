@@ -150,12 +150,15 @@ def detect_material_conflict(
     supporting_groups = list({item.independence_group for item in qualified_support})
     opposing_groups = list({item.independence_group for item in qualified_oppose})
 
-    # Check all three conditions
+    # Check all three conditions. A cross-group pair exists exactly when the
+    # two sides span more than one group in total: identical group sets like
+    # supports={A,B} / opposes={A,B} still pair A against B.
     has_both_sides = bool(qualified_support) and bool(qualified_oppose)
-    has_independent_pair = bool(
-        set(supporting_groups) - set(opposing_groups)
-        or set(opposing_groups) - set(supporting_groups)
-    ) if has_both_sides else False
+    has_independent_pair = (
+        len(set(supporting_groups) | set(opposing_groups)) >= 2
+        if has_both_sides
+        else False
+    )
 
     return ConflictResult(
         claim_id=claim_id,

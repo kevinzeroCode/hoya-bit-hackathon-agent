@@ -58,6 +58,7 @@ class Claim(BaseModel):
     claim_id: str
     claim_type: str
     assets: list[str] = []
+    time_range: dict[str, str] | None = None
     text: str = ""
     based_on_claim_ids: list[str] = []
     confidence: str = "medium"
