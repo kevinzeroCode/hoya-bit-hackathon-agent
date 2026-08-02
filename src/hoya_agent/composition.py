@@ -27,16 +27,17 @@ from urllib.parse import quote_plus
 
 import httpx
 
-from hoya_agent.adapters.bedrock import BedrockLLMClient, BedrockSettings
+from hoya_agent.adapters.bedrock import BedrockLLMClient, BedrockSettings, remaining_seconds
 from hoya_agent.adapters.live_sources import binance_bar_loader, fear_greed_drafts
 from hoya_agent.adapters.port_adapters import RssResearchAdapter
+from hoya_agent.conclusion_guards import StrictArbiterGeneration, ensure_honest_insufficiency
 from hoya_agent.models import Asset, ResearchPlan, ResearchStep, SourceStatus, SourceType
 from hoya_agent.orchestration.pipeline import DeadlineAwarePipeline, OrganizerCsvPipeline
 from hoya_agent.ports import Clock, StaticToolRegistry
 from hoya_agent.reasoning.arbiter import Arbiter, ArbiterSettings
 from hoya_agent.reasoning.mapping import build_analysis_result
 from hoya_agent.reasoning.research_agent import ResearchAgent
-from hoya_agent.reasoning.schemas import ArbiterGeneration, DraftBatch, GenLink
+from hoya_agent.reasoning.schemas import DraftBatch, GenLink
 
 _BINANCE_URL = "https://api.binance.com/api/v3/klines"
 _COINDESK_RSS = "https://www.coindesk.com/arc/outboundfeeds/rss/"
@@ -204,6 +205,9 @@ class MappingArbiter:
 
     inner: Arbiter
     max_attempts: int = 2
+    # A retry started with less than this budget will be killed by the 45s stage
+    # timeout anyway, taking the attempt-1 notes down with it.
+    min_retry_seconds: float = 15.0
 
     @property
     def settings(self) -> Any:
@@ -220,7 +224,11 @@ class MappingArbiter:
     ) -> tuple[Any, list[str]]:
         result: Any = None
         notes: list[str] = []
-        for _ in range(self.max_attempts):
+        for attempt in range(self.max_attempts):
+            # Budget on the same time.monotonic() clock the LLM call budgets use.
+            if attempt and remaining_seconds(deadline) < self.min_retry_seconds:
+                notes.append("Arbiter 重試因剩餘時間不足而略過")
+                break
             generation, gen_notes = await self.inner.run(
                 request=request,
                 ledger=ledger,
@@ -243,6 +251,9 @@ class MappingArbiter:
             # fallback on timeout) yields real claims instead of empty layers.
             if result is not None and (result.claims or result.insufficient_data):
                 return result, notes
+        # Both attempts degenerate: ship it honestly rather than confidently.
+        if result is not None:
+            result = ensure_honest_insufficiency(result)
         return result, notes
 
 
@@ -404,7 +415,7 @@ def build_live_pipeline(
     arbiter = MappingArbiter(
         inner=Arbiter(
             llm=_GroundingRepairLLM(llm),
-            result_schema=ArbiterGeneration,
+            result_schema=StrictArbiterGeneration,
             settings=ArbiterSettings(max_tokens=arbiter_max_tokens),
         )
     )

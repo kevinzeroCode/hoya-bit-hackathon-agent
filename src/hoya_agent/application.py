@@ -39,6 +39,7 @@ from hoya_agent.adapters.port_adapters import (
     fetch_with_single_retry,
 )
 from hoya_agent.clock import build_run_context
+from hoya_agent.conclusion_guards import StrictArbiterOutput
 from hoya_agent.evidence.policies import registered_domain
 from hoya_agent.models import (
     AnalysisRequest,
@@ -64,7 +65,6 @@ from hoya_agent.orchestration.pipeline import (
 )
 from hoya_agent.ports import Clock, ProgressSink, StaticToolRegistry
 from hoya_agent.reasoning.arbiter import Arbiter, ArbiterSettings
-from hoya_agent.reasoning.arbiter_output import ArbiterOutput
 from hoya_agent.reasoning.planner import (
     DEFAULT_LOOKBACK_DAYS,
     Planner,
@@ -370,9 +370,9 @@ def build_research_pipeline(
     model, and that remains the S8 live gate.
 
     When an `llm` is supplied and no `arbiter` is given, the Arbiter is wired with
-    `ArbiterOutput` as its structured-output schema — `AnalysisResult` cannot serve
-    that role, because it requires the frozen request context the model must not
-    restate. `orchestration/pipeline.py` projects the output back.
+    `StrictArbiterOutput` as its structured-output schema — `AnalysisResult` cannot
+    serve that role, because it requires the frozen request context the model must
+    not restate. `orchestration/pipeline.py` projects the output back.
     """
     source_notes = source_note_sink if source_note_sink is not None else []
     registry = tool_registry or build_research_tool_registry(
@@ -408,7 +408,7 @@ def build_research_pipeline(
         # demo path fixed this; this path was left behind.
         arbiter = Arbiter(
             llm=llm,
-            result_schema=ArbiterOutput,
+            result_schema=StrictArbiterOutput,
             settings=ArbiterSettings(max_tokens=ARBITER_MAX_TOKENS),
         )
     return DeadlineAwarePipeline(

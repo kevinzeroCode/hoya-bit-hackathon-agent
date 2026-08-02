@@ -137,6 +137,31 @@ class FailingArbiter:
         raise ValueError("injected invalid schema after repair")
 
 
+class DegenerateArbiter:
+    """Returns a schema-valid AnalysisResult with no claims and medium confidence.
+
+    This is the dominant live failure (docs/rehearsals/run-log.md): six of seven
+    rehearsal runs produced exactly this shape and it rendered as a confident
+    report with an empty conclusion section.
+    """
+
+    async def run(self, *, request, **kwargs):
+        del kwargs
+        from hoya_agent.models import AnalysisResult, Reliability
+
+        result = AnalysisResult(
+            run_id=request.run_id,
+            question=request.question,
+            assets=[Asset(asset) for asset in request.assets],
+            analysis_as_of=request.analysis_as_of,
+            direct_answer="只有散文的回答，沒有任何 claim。",
+            confidence=Reliability.medium,
+            confidence_rationale="模型自報信心。",
+            insufficient_data=False,
+        )
+        return result, []
+
+
 def _context() -> object:
     request = AnalysisRequest(
         question="BTC 市場狀態？",
@@ -205,3 +230,19 @@ async def test_arbiter_failure_preserves_ledger_and_deterministic_fallback() -> 
     assert outcome.ledger.items
     assert outcome.terminal_state is TerminalState.degraded
     assert any("deterministic fallback" in note for note in outcome.degradation_notes)
+
+
+async def test_claims_empty_result_never_ships_as_a_confident_report() -> None:
+    """AC 6.4 / AC 9.6: no conclusions ⇒ the report must say so, at low confidence."""
+    from hoya_agent.models import Reliability
+
+    outcome = await DeadlineAwarePipeline(
+        clock=Clock(),
+        market_pipeline=OrganizerCsvPipeline(analysis_date=date(2026, 5, 31)),
+        arbiter=DegenerateArbiter(),
+    ).execute(_context(), lambda event: None)
+
+    assert outcome.result is not None
+    assert outcome.result.claims == []
+    assert outcome.result.insufficient_data is True
+    assert outcome.result.confidence is Reliability.low
