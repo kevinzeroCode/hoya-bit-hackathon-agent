@@ -242,10 +242,13 @@ def _render_result(view: dict) -> None:
     # Report / Evidence / Execution Log as three tabs (spec §3.2 S3).
     tab_report, tab_evidence, tab_log = st.tabs(["📄 報告", "🧾 證據來源", "🪵 執行紀錄"])
     with tab_report:
-        st.caption("完整研究報告")
         html_report = _artifact_text(view, "final_report.html")
         if html_report:
-            st.components.v1.html(html_report, height=1100, scrolling=True)
+            with st.expander("完整研究報告（已展開）", expanded=True):
+                # Give the self-contained report enough room to flow with the
+                # page instead of creating a second scrollbar inside Streamlit.
+                report_height = max(1400, min(5200, 900 + len(html_report) // 10))
+                st.components.v1.html(html_report, height=report_height, scrolling=False)
         else:
             st.markdown(view["report_markdown"] or "_(無)_")
     with tab_evidence:
