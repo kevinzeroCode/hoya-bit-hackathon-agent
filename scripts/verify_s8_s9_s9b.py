@@ -12,7 +12,7 @@ from hoya_agent.evidence.drafts import pending
 from hoya_agent.evidence.policies import SourceClass
 from hoya_agent.models import Asset, EvidenceLedger, RunMode, SourceType
 from hoya_agent.orchestration.pipeline import DeadlineAwarePipeline, OrganizerCsvPipeline
-from hoya_agent.reporting.artifacts import ARTIFACT_NAMES
+from hoya_agent.reporting.artifacts import DELIVERABLE_NAMES
 
 
 class FixedClock:
@@ -79,7 +79,7 @@ async def verify() -> None:
         summary = await service.run(request)
         run_dir = Path(summary.artifact_dir)
         names = {path.name for path in run_dir.iterdir()}
-        assert names == set(ARTIFACT_NAMES), names
+        assert names == set(DELIVERABLE_NAMES), names
         ledger = EvidenceLedger.model_validate_json(
             (run_dir / "evidence.json").read_text(encoding="utf-8")
         )
