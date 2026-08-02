@@ -839,3 +839,7 @@ participation), `a5_attribution` (cross-asset attribution), `a7_analogs`
 - `RssResearchAdapter` preserves deterministic reliability and independence
   metadata on each `RawSourceRecord`. Orchestration joins that metadata back to
   the extraction result by `record_id`; the LLM never assigns source trust.
+
+## 2026-08-02 P4 HTML report
+
+`reporting/html_renderer.py` is the deterministic, self-contained P4 renderer. It reads only validated `AnalysisResult` and `EvidenceLedger`, escapes every dynamic value, and emits `final_report.html`. `ApplicationService` writes it atomically after the required submission artifacts; Streamlit embeds it in the Report tab.
