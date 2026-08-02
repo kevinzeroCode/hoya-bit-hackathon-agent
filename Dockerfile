@@ -17,6 +17,14 @@ COPY .streamlit ./.streamlit
 COPY src ./src
 RUN pip install -e .
 
+# Versioned prompts (reasoning/prompt_library.py resolves these relative to the
+# installed package at runtime, not bundled by hatchling). Missing this COPY
+# means every Bedrock call — Planner, Research extraction, Arbiter — fails
+# immediately with PromptError before any network call, which is silent in
+# rehearsal/demo (fixture paths never load a prompt) and only surfaces once a
+# live/official run tries to reason.
+COPY prompts ./prompts
+
 # 官方資料集(Bronze 離線用),用環境變數指定路徑
 COPY HOYA_BIT_crypto_market_dataset ./HOYA_BIT_crypto_market_dataset
 ENV HOYA_DATA_DIR=/app/HOYA_BIT_crypto_market_dataset/data
