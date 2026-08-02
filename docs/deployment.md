@@ -22,6 +22,7 @@ as a boolean and never a value.
 | `BEDROCK_FALLBACK_MODEL_ID` | no | throttling fallback |
 | `CRYPTOPANIC_API_TOKEN` | no | degrades to a disclosed gap without it |
 | `HOYA_DATA_DIR` | no | set inside the image to `/app/HOYA_BIT_crypto_market_dataset/data` |
+| `HOYA_MARKET_CACHE_DIR` | no | local Binance daily-K cache, for example `/app/market_cache`; prepopulate with `scripts/prefetch_market_data.py` |
 | `ARTIFACT_ROOT` | no | only read by `Settings.from_env`; the UI writes to a per-run temp dir |
 
 Credentials themselves come from the standard AWS chain — an instance role on EC2, a
