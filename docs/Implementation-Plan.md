@@ -1361,3 +1361,18 @@ Note: `tests/unit/skills/` raises a NumPy `Timedelta` `DeprecationWarning` from
 
 Verification evidence and remaining gates are recorded in [S8-S9-S9B implementation](S8-S9-S9B-implementation.md).
 Remaining: S11 deploy/timed rehearsal.
+
+## 2026-08-02 Arbiter validation repair follow-up
+
+Live runs were producing Evidence successfully but sometimes dropping all inference
+and conclusion claims because Bedrock attached numeric claims to the wrong evidence
+IDs or emitted a conclusion with only neutral links. The composition root now wraps
+the Bedrock client with a deterministic, evidence-only link repair before the frozen
+Arbiter gate: it can add a support link only when the claim's numeric atom appears in
+matching Evidence, and can inherit support for a conclusion from a supported upstream
+claim. It never changes claim text or invents Evidence; unsupported output still
+degrades safely.
+
+Verification after the repair: targeted Arbiter/composition tests `12 passed`; full
+non-live gate `1267 passed in 32.65s`; `ruff check .` → `All checks passed!`. The live
+Bedrock path itself was not rerun in this environment.

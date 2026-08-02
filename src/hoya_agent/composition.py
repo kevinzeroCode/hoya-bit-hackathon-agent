@@ -15,6 +15,9 @@ Two run shapes:
 
 from __future__ import annotations
 
+import json
+import re
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -32,10 +35,142 @@ from hoya_agent.ports import Clock, StaticToolRegistry
 from hoya_agent.reasoning.arbiter import Arbiter, ArbiterSettings
 from hoya_agent.reasoning.mapping import build_analysis_result
 from hoya_agent.reasoning.research_agent import ResearchAgent
-from hoya_agent.reasoning.schemas import ArbiterGeneration, DraftBatch
+from hoya_agent.reasoning.schemas import ArbiterGeneration, DraftBatch, GenLink
 
 _BINANCE_URL = "https://api.binance.com/api/v3/klines"
 _COINDESK_RSS = "https://www.coindesk.com/arc/outboundfeeds/rss/"
+
+_ARBITER_NUMBER_RE = re.compile(r"\d+(?:[.,]\d+)*")
+_ARBITER_INTERNAL_ID_RE = re.compile(r"\b(?:ev|cl|run)_[0-9A-Za-z_]+")
+
+
+def _number_tokens(value: object) -> set[str]:
+    """Return normalized numeric atoms, excluding run-local IDs."""
+    text = _ARBITER_INTERNAL_ID_RE.sub(" ", unicodedata.normalize("NFKC", str(value or "")))
+    return {match.group().replace(",", "") for match in _ARBITER_NUMBER_RE.finditer(text)}
+
+
+def _asset_text(value: object) -> str | None:
+    raw = getattr(value, "value", value)
+    text = str(raw or "").strip()
+    if text.startswith("Asset."):
+        text = text.split(".", 1)[1]
+    return text.upper() or None
+
+
+def _repair_arbiter_generation(generation: Any, evidence: Sequence[dict[str, Any]]) -> Any:
+    """Repair only links that can be proven from the Arbiter evidence payload.
+
+    Bedrock occasionally emits a valid claim with a stale/wrong evidence ID, or
+    gives a conclusion only neutral links. The frozen Arbiter correctly rejects
+    those outputs. Before that gate, add a support link only when the same claim
+    number is present in a matching-asset evidence item; for conclusions, inherit
+    support from an upstream claim. No claim text or evidence content is changed.
+    """
+    claims = list(getattr(generation, "claims", ()) or ())
+    links = list(getattr(generation, "claim_evidence_links", ()) or ())
+    if not claims or not evidence:
+        return generation
+
+    evidence_by_id = {str(item.get("evidence_id")): item for item in evidence}
+    evidence_atoms = {
+        eid: _number_tokens(f"{item.get('normalized_fact', '')} {item.get('content_reference', '')}")
+        for eid, item in evidence_by_id.items()
+    }
+
+    def claim_assets(claim: Any) -> set[str]:
+        return {_asset_text(asset) for asset in (getattr(claim, "assets", ()) or ()) if _asset_text(asset)}
+
+    def compatible(item: dict[str, Any], assets: set[str]) -> bool:
+        item_asset = _asset_text(item.get("asset"))
+        return item_asset is None or not assets or item_asset in assets
+
+    links_by_claim: dict[str, list[Any]] = {}
+    for link in links:
+        links_by_claim.setdefault(str(link.claim_id), []).append(link)
+
+    additions: list[Any] = []
+    for claim in claims:
+        claim_id = str(claim.claim_id)
+        existing = links_by_claim.get(claim_id, [])
+        existing_ids = {str(link.evidence_id) for link in existing}
+        linked_atoms = set().union(*(evidence_atoms.get(eid, set()) for eid in existing_ids))
+        missing_atoms = _number_tokens(getattr(claim, "text", "")) - linked_atoms
+        assets = claim_assets(claim)
+        candidates = (
+            [
+                eid
+                for eid, item in evidence_by_id.items()
+                if eid not in existing_ids
+                and compatible(item, assets)
+                and missing_atoms & evidence_atoms[eid]
+            ]
+            if missing_atoms
+            else []
+        )
+        # Numeric claims get only evidence that contains the missing atom. This
+        # fixes wrong IDs without turning an unsupported qualitative claim into a
+        # false fact.
+        for eid in candidates:
+            if missing_atoms and not (missing_atoms & evidence_atoms[eid]):
+                continue
+            additions.append(
+                GenLink(
+                    claim_id=claim_id,
+                    evidence_id=eid,
+                    stance="supports",
+                    reason="deterministic link repair: claim atom appears in matching Evidence",
+                )
+            )
+            existing_ids.add(eid)
+            linked_atoms |= evidence_atoms[eid]
+            missing_atoms -= evidence_atoms[eid]
+            if not missing_atoms:
+                break
+
+        if str(getattr(claim, "claim_type", "")) == "conclusion" and not any(
+            str(link.stance) == "supports" for link in [*existing, *additions]
+            if str(getattr(link, "claim_id", "")) == claim_id
+        ):
+            deps = list(getattr(claim, "based_on_claim_ids", ()) or ())
+            upstream = [
+                link
+                for link in [*links, *additions]
+                if str(link.claim_id) in deps and str(link.stance) == "supports"
+            ]
+            if upstream:
+                source = upstream[0]
+                additions.append(
+                    GenLink(
+                        claim_id=claim_id,
+                        evidence_id=str(source.evidence_id),
+                        stance="supports",
+                        reason="deterministic link repair: inherited from supported upstream claim",
+                    )
+                )
+
+    if not additions:
+        return generation
+    return generation.model_copy(update={"claim_evidence_links": [*links, *additions]})
+
+
+class _GroundingRepairLLM:
+    """Bedrock adapter decorator that repairs link references before frozen validation."""
+
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
+
+    async def converse_structured(self, **kwargs: Any) -> Any:
+        generated = await self._inner.converse_structured(**kwargs)
+        if kwargs.get("operation") != "arbiter" or not hasattr(generated, "model_copy"):
+            return generated
+        try:
+            text = kwargs["messages"][0]["content"][0]["text"]
+            payload = json.loads(text)
+            evidence = payload.get("evidence", [])
+            return _repair_arbiter_generation(generated, evidence)
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return generated
 
 
 def build_bedrock_llm(
@@ -262,7 +397,7 @@ def build_live_pipeline(
     # (default 8000 tokens can overrun → DeadlineExceeded → fallback).
     arbiter = MappingArbiter(
         inner=Arbiter(
-            llm=llm,
+            llm=_GroundingRepairLLM(llm),
             result_schema=ArbiterGeneration,
             settings=ArbiterSettings(max_tokens=arbiter_max_tokens),
         )

@@ -22,6 +22,11 @@
 | S10 | ✅ | Gold local Exit 已完成（2026-08-02；BTC/ETH 獨立單幣 run、degradation/artifact/fake-clock acceptance） |
 | S11 | 🔴 | 部署與 judged-flow rehearsal 未開始（CI、ECR/EC2、live smoke、rollback、15 分鐘彩排） |
 
+2026-08-02 follow-up: the live Arbiter boundary now performs deterministic evidence-link
+repair for mismatched numeric claims and conclusion support before the frozen validation
+gate. Full non-live verification: `1267 passed`; Ruff clean. Live Bedrock rerun remains
+pending because this environment has no live credentials.
+
 ## Current main
 
 - Commit：`6f914dc`（`main`）。

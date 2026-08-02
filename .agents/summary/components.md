@@ -1,5 +1,14 @@
 # Components
 
+## Arbiter composition boundary validation repair (2026-08-02)
+
+`composition.py` wraps the injected Arbiter LLM for live runs. Before the frozen
+Arbiter validates a provider generation, it may add only evidence links proven by
+numeric-atom overlap with the evidence payload, and may inherit a conclusion's
+support from a supported upstream claim. Claim text and Evidence are never mutated;
+unrepairable output still follows the deterministic fallback path. Regression
+coverage is in `tests/unit/test_composition.py`.
+
 ## Component Map
 
 ```mermaid

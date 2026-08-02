@@ -442,6 +442,10 @@ offline runner in `scripts/run_acceptance.py` and evidence in
 `docs/rehearsals/run-log.md`. These are verification-layer additions; production
 pipeline boundaries are unchanged. S11 deployment remains separate.
 
+The live composition root also owns deterministic Arbiter evidence-link repair
+(`_GroundingRepairLLM`): only links justified by matching evidence atoms or a
+supported upstream claim are added before the frozen reasoning gate.
+
 `orchestration/{pipeline,deadline,run_state}.py` owns deadline-aware H2-Lite sequencing;
 `evidence/trust.py` owns deterministic scorecards; `reporting/renderer.py` owns Trust/Regime
 and the dual-only comparison section. `_provisional_seams.py` is **retired** — runtime imports
