@@ -1213,3 +1213,7 @@ field is `None`, otherwise persists this effective value to both
 `RunConfigSnapshot.model_validate`; `model_copy(update=...)` is prohibited here
 because it skips validation and could allow an official run to claim fixture or
 recorded data.
+
+## 2026-08-02 P4 HTML report
+
+`render_html(result, ledger, *, terminal_state, prompt_version, policy_version, lint) -> str` is pure and performs no I/O. `final_report.html` is the primary browser deliverable; the fixed JSON/JSONL/Markdown submission artifacts, including `evidence_list.json`, remain required.
