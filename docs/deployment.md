@@ -234,6 +234,32 @@ Two consequences of it being a Workshop Studio account:
 - **The account is temporary.** It is reclaimed when the event ends, so nothing here is
   durable infrastructure. Rebuild from §4 and §5 if it is reset.
 
+### 🔴 Binance geo-blocks this EC2 instance — market evidence goes to zero
+
+Verified 2026-08-02 from inside the running container: `curl` to
+`https://api.binance.com/api/v3/ping` returns **HTTP 451** (Unavailable For
+Legal Reasons). This is Binance's own geo-block on US-origin IPs, not a
+network, DNS or security-group problem — `api.alternative.me` from the same
+container returns `200` in the same test.
+
+Binance is the sole designated live market baseline (tasks.md Task 4: on
+baseline failure, emit an honest degraded gap rather than switching provider),
+so on this host the Market Worker's live evidence is zero. Combined with
+CryptoPanic returning `403` (no `CRYPTOPANIC_API_TOKEN` configured — an
+accepted, disclosed gap by design), a live run here can be left with only the
+Fear & Greed item (`low` reliability) as evidence, which yields a report like
+"完成（含降級）", 1 evidence item, confidence `low` — not a crash, but not a
+useful demonstration of the reasoning layer either.
+
+This is a genuine infrastructure conflict, not something a code fix resolves:
+Bedrock's `us.` inference profile requires this instance to stay in a US
+region (see above), and Binance blocks US-origin IPs. **Accepted as a known
+limitation for this deployment** rather than reworked before submission —
+disclose it plainly if a judge runs a live query against this EC2 URL
+directly. It does not affect `rehearsal`/`demo` fixture runs, and it does not
+affect a local (地端) run from a non-US network, which is why the same
+question can look fine on a laptop and degraded here.
+
 ### 🔴 A full evidence ledger can exhaust the Arbiter's 45-second call budget
 
 Observed 2026-08-02 on two live runs from the same commit:
