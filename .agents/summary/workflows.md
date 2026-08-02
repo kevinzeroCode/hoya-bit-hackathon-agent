@@ -580,3 +580,7 @@ flowchart TD
 - No skill calls a model; every number originates in `src/calc/`
 - `src/skills/` and `src/calc/` do not import `hoya_agent`; the two analysis surfaces are independent
 - This flow produces plain named files, not the 4 fixed run artifacts
+
+## 2026-08-02 P4 HTML report
+
+Finalize now renders the audited Markdown report, then renders and atomically writes the self-contained HTML companion from the same validated result and ledger. The UI displays the HTML and falls back to Markdown only when the companion is unavailable.

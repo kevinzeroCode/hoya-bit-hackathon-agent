@@ -144,3 +144,7 @@ New canonical modules: `orchestration/deadline.py`, `orchestration/run_state.py`
 - **Bronze UI:** `ui/streamlit_app.py` (judge-facing, offline-only via `OrganizerCsvPipeline`) + `ui/presenter.py` (framework-free view-model mappings).
 - **Deterministic calc library:** `src/calc/` (indicators, percentile, cross_asset, analogs, data_quality) — no LLM, no network.
 - **Analysis skills:** `src/skills/` (a1_regime, a2_position, a3_risk, a4_participation, a5_attribution, a7_analogs, a9_verification, base, dataset, report, lint, html_report).
+
+## 2026-08-02 P4 HTML report
+
+The Streamlit UI now embeds `final_report.html`, a self-contained Traditional Chinese P4 editorial report with dark, print, mobile, reasoning trace, evidence balance, Trust Scorecard, Evidence Ledger, and reproducibility sections.

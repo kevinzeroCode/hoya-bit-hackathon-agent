@@ -250,3 +250,7 @@ time against half a day of someone else's.
 - `evidence/trust.py` provides deterministic conclusion-only Trust Scorecards.
 - Dual-asset runs keep one run/cutoff/ledger and add report section 12; the frozen reasoning package remains unchanged.
 - Detailed implementation and verification: `docs/S8-S9-S9B-implementation.md` and `.agents/summary/s8-s9-s9b.md`.
+
+## 2026-08-02 P4 HTML report
+
+`src/hoya_agent/reporting/html_renderer.py` owns the deterministic self-contained browser report. It must remain provider-free, escape every dynamic field, use no remote runtime assets, and preserve the fixed submission artifact contract.
