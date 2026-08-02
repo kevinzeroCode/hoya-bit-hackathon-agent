@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from urllib.parse import quote_plus
 
 import httpx
 
@@ -99,11 +100,26 @@ class MappingArbiter:
         return result, notes
 
 
-class _BaselinePlanner:
-    """Deterministic planner: always plan the one baseline news source.
+_NEWS_OPERATIONS = ("baseline_news", "question_news")
 
-    No LLM call for planning — cheaper and more robust than an LLM planner, and
-    the tool allowlist is fixed anyway. Matches the ResearchAgent's expected shape.
+# Full names improve Google News recall (feeds say "Bitcoin", not "BTC") and let
+# the adapter's relevance filter match.
+_ASSET_NAMES = {
+    "BTC": "Bitcoin",
+    "ETH": "Ethereum",
+    "SOL": "Solana",
+    "BNB": "BNB",
+    "XRP": "XRP Ripple",
+}
+
+
+class _BaselinePlanner:
+    """Deterministic planner: plan the fixed baseline feed + a question-driven search.
+
+    No LLM call for planning — cheaper and more robust, and the tool allowlist is
+    fixed. `baseline_news` is a first-party outlet (CoinDesk); `question_news`
+    searches Google News with the run's question, so news adapts to the question
+    without a fragile LLM planner.
     """
 
     def __init__(self, lookback_days: int = 30) -> None:
@@ -121,43 +137,85 @@ class _BaselinePlanner:
                     ResearchStep(
                         step_id="baseline_01",
                         tool_operation="baseline_news",
-                        rationale="baseline first-party news source",
-                    )
+                        rationale="first-party outlet (CoinDesk) baseline",
+                    ),
+                    ResearchStep(
+                        step_id="baseline_02",
+                        tool_operation="question_news",
+                        rationale="question-driven Google News search",
+                    ),
                 ],
             ),
             [],
         )
 
 
-def _news_tool_registry(analysis_as_of: datetime, assets: Sequence[Asset]) -> StaticToolRegistry:
-    """Static allowlist with one op: fetch first-party CoinDesk RSS records.
+def _google_news_url(query: str) -> str:
+    return (
+        "https://news.google.com/rss/search?"
+        f"q={quote_plus(query)}&hl=en-US&gl=US&ceid=US:en"
+    )
 
-    The op owns its own AsyncClient per call (closed cleanly) and passes the
-    frozen cutoff + assets as params — the registry invokes ops with plain params,
-    not a RunContext.
+
+_UA = "Mozilla/5.0 (compatible; HoyaMarketAgent/1.0)"
+
+
+async def _fetch_rss(
+    *, feed_url: str, source_name: str, publisher_domain: str,
+    operation: str, analysis_as_of: datetime, assets: list[str], lookback: int,
+) -> Any:
+    """Fetch one RSS feed → RawSourceRecord[]; own AsyncClient per call, closed cleanly.
+
+    A browser-like User-Agent is required for Google News, which serves an empty
+    response to the default python-httpx agent.
     """
+    async with httpx.AsyncClient(
+        follow_redirects=True, timeout=30.0, headers={"User-Agent": _UA}
+    ) as client:
+        rss = RssResearchAdapter(
+            feed_url=feed_url, source_name=source_name,
+            publisher_domain=publisher_domain, client=client,
+        )
+        result = await rss.fetch(
+            operation=operation, lookback_days=lookback,
+            analysis_as_of=analysis_as_of, assets=assets,
+        )
+    if result.status is not SourceStatus.ok or not result.data:
+        raise RuntimeError(result.error_category or f"{source_name} returned no records")
+    return result.data
+
+
+def _news_tool_registry(
+    analysis_as_of: datetime, assets: Sequence[Asset], question: str
+) -> StaticToolRegistry:
+    """Two independent news ops: fixed first-party CoinDesk + question-driven Google
+    News search. Each op raises on empty so the Research Agent discloses the gap
+    rather than silently dropping the source; two sources add resilience."""
     asset_values = [a.value for a in assets]
+    # Coin-targeted English query only. Empirically, appending the question (Chinese
+    # or extra keywords) collapses Google News recall to ~0 usable items — the
+    # rss.py filter requires the coin name in the title, which narrow searches miss.
+    # The question drives the Arbiter's answer; the search stays reliable.
+    del question
+    names = " ".join(_ASSET_NAMES.get(a, a) for a in asset_values)
+    query = f"{names} cryptocurrency"
 
     async def _baseline_news(**params: Any) -> Any:
-        lookback = params.get("lookback_days", 30)
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
-            rss = RssResearchAdapter(
-                feed_url=_COINDESK_RSS,
-                source_name="CoinDesk",
-                publisher_domain="coindesk.com",
-                client=client,
-            )
-            result = await rss.fetch(
-                operation="baseline_news",
-                lookback_days=lookback,
-                analysis_as_of=analysis_as_of,
-                assets=asset_values,
-            )
-        if result.status is not SourceStatus.ok or not result.data:
-            raise RuntimeError(result.error_category or "baseline RSS returned no records")
-        return result.data
+        return await _fetch_rss(
+            feed_url=_COINDESK_RSS, source_name="CoinDesk", publisher_domain="coindesk.com",
+            operation="baseline_news", analysis_as_of=analysis_as_of, assets=asset_values,
+            lookback=params.get("lookback_days", 30),
+        )
 
-    return StaticToolRegistry({"baseline_news": _baseline_news})
+    async def _question_news(**params: Any) -> Any:
+        return await _fetch_rss(
+            feed_url=_google_news_url(query), source_name="Google News",
+            publisher_domain="news.google.com", operation="question_news",
+            analysis_as_of=analysis_as_of, assets=asset_values,
+            lookback=params.get("lookback_days", 30),
+        )
+
+    return StaticToolRegistry({"baseline_news": _baseline_news, "question_news": _question_news})
 
 
 def build_live_pipeline(
@@ -166,6 +224,7 @@ def build_live_pipeline(
     llm: Any,
     analysis_as_of: datetime,
     assets: Sequence[Asset] = (),
+    question: str = "",
     per_stage_timeout_seconds: float = 45.0,
     kline_limit: int = 1000,
     arbiter_max_tokens: int = 3000,
@@ -206,7 +265,7 @@ def build_live_pipeline(
         research_agent = ResearchAgent(
             llm=llm,
             draft_schema=DraftBatch,
-            tool_registry=_news_tool_registry(analysis_as_of, assets),
+            tool_registry=_news_tool_registry(analysis_as_of, assets, question),
         )
 
     return DeadlineAwarePipeline(
