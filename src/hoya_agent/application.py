@@ -63,7 +63,7 @@ from hoya_agent.orchestration.pipeline import (
     PipelineOutcome,
 )
 from hoya_agent.ports import Clock, ProgressSink, StaticToolRegistry
-from hoya_agent.reasoning.arbiter import Arbiter
+from hoya_agent.reasoning.arbiter import Arbiter, ArbiterSettings
 from hoya_agent.reasoning.arbiter_output import ArbiterOutput
 from hoya_agent.reasoning.planner import (
     DEFAULT_LOOKBACK_DAYS,
@@ -87,6 +87,11 @@ from hoya_agent.reporting.renderer import build_insufficient_data_result, render
 SCHEMA_VERSION = "1.0"
 POLICY_VERSION = "1.0"
 PROMPT_VERSION = "v1"
+
+#: Arbiter output cap. The frozen default is 8000, which can take longer than the
+#: 45-second single-call limit to generate on a full ledger; `composition.py` already
+#: caps it at this value for the live UI path.
+ARBITER_MAX_TOKENS = 3000
 
 # ── Research composition (S6) ───────────────────────────────────────────────
 #
@@ -376,8 +381,15 @@ def build_research_pipeline(
     # The sink travels with the registry, so a caller-supplied registry keeps its
     # own channel rather than losing every retry disclosure.
     source_notes = getattr(registry, "note_sink", source_notes)
+    # An Arbiter runs whenever one is supplied, or whenever an `llm` is available to
+    # build one below. The market branch's "no Arbiter" disclosure is false in that
+    # case, and a report that both states a conclusion and denies having produced one
+    # is worse than either alone — so suppress it here rather than at render time.
+    will_reason = arbiter is not None or llm is not None
     market = market_pipeline or OrganizerCsvPipeline(
-        data_dir=data_dir, analysis_date=analysis_date  # type: ignore[arg-type]
+        data_dir=data_dir,
+        analysis_date=analysis_date,  # type: ignore[arg-type]
+        emit_no_arbiter_note=not will_reason,
     )
     planner: object = (
         Planner(llm=llm, plan_schema=ResearchPlan, tool_registry=registry)
@@ -390,7 +402,15 @@ def build_research_pipeline(
         else None
     )
     if arbiter is None and llm is not None:
-        arbiter = Arbiter(llm=llm, result_schema=ArbiterOutput)
+        # Same cap `composition.build_live_pipeline` already applies: the 8000-token
+        # default can overrun the 45-second single-call limit on a full ledger, and
+        # a DeadlineExceeded there costs the run its entire reasoning layer. The
+        # demo path fixed this; this path was left behind.
+        arbiter = Arbiter(
+            llm=llm,
+            result_schema=ArbiterOutput,
+            settings=ArbiterSettings(max_tokens=ARBITER_MAX_TOKENS),
+        )
     return DeadlineAwarePipeline(
         clock=clock,
         market_pipeline=market,

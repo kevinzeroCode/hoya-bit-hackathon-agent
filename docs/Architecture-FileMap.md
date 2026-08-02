@@ -226,8 +226,24 @@
 | `tests/integration/test_organizer_csv_pipeline.py` | ✅ | `OrganizerCsvPipeline` 離線 BTC run 產出四項 artifacts |
 | `tests/unit/` 其餘 | ○ | deadline、trust、regime 的額外邊界 |
 | `tests/contract/` 其餘 | ○ | 各 adapter 的 `httpx.MockTransport` 契約 |
-| `tests/acceptance/` | ○ | Gold 雙資產、deadline 預算、artifact 契約 |
+| `tests/acceptance/test_gold_assets.py` | ✅ | S10：兩個**不同**資產各一次**獨立**單幣 run、五幣請求 allowlist、baseline 來源缺失的誠實降級（🚫 不得合併成雙幣 run） |
+| `tests/acceptance/test_artifact_contract.py` | ✅ | 四個固定檔名、全部可解析、四份共用一個 `run_id`、11 段、限制有揭露、deterministic rendering（`fetched_at` 正規化後比對） |
+| `tests/acceptance/test_deadline_budget.py` | ✅ | fake-clock：第 12 分鐘停止分析、finalize 早於保留區、optional work 依固定順序放棄 |
 | `tests/live/` | ○ | 真實 provider 與 Bedrock；需 `@pytest.mark.live` **且** `RUN_LIVE_TESTS=1` |
+
+### 4.10b 交付與驗證腳本（`scripts/`、`.github/`）
+
+不在 image 內（`.dockerignore` 排除 `scripts/`），是開發與交付時在 repo 根執行的工具。
+
+| 路徑 | 狀態 | 說明 |
+|---|---|---|
+| `scripts/smoke_test.py` | ✅ | S11 部署 smoke：HTTP health/root ＋ 四項 artifact 解析與 `run_id` 一致。純標準庫。**必須用 `docker cp` ＋ `docker exec` 在容器內跑**——UI 把 artifacts 寫進容器內的 `tempfile.mkdtemp()`，host 端驗到的是 host 的碼 |
+| `scripts/run_acceptance.py` | ✅ | S10 driver：兩資產各一次獨立單幣 run，離線（organizer CSV）或 `--live`。輸出即 `docs/rehearsals/run-log.md` 要的欄位 |
+| `scripts/diagnose_bedrock.py` | ✅ | Bedrock 可用性診斷（3 次呼叫）。目前對 account `035741228337` 回 `ResourceNotFoundException`（帳號未送 Anthropic use case 表單） |
+| `scripts/live_silver_run.py` | ✅ | S8 Silver 證據產生器（`--mode live` / `--mode fallback`） |
+| `scripts/verify_s8_s9_s9b.py` | ✅ | S8/S9/S9B 離線 smoke（不需 pytest 或網路） |
+| `scripts/analyze.py` | ✅ | `src/calc` / `src/skills` 平行工具的 CLI，非 agent pipeline |
+| `.github/workflows/ci.yml` | ✅ | verify（Ruff ＋ 非 live 測試）／container（compose config ＋ build ＋ 容器內 smoke ＋ 非 root ＋ 無 `.env`）／secret-scan（gitleaks 掃 `git archive HEAD`）。🚫 不需要 AWS 憑證 |
 
 ### 4.11 不在 canonical agent tree、目前是平行工具/歷史路徑
 

@@ -39,14 +39,34 @@
 | 5 | After Feature Freeze | 10 | P1 + P4 lead; all rehearse | Docker/ECR/EC2 delivery, one timed judged-flow rehearsal, rollback and submission verification complete without new features |
 | Future | Post-hackathon only | Future Work references | Explicitly re-approved ownership | Never executes during or blocks Bronze, Silver, Gold, deployment, rehearsal or submission |
 
-## Current checkpoint (2026-08-01, main@d7245e4)
+## Current checkpoint (2026-08-02, main@c844a38)
 
-- Complete: Tasks 1, 2, 4 and 6.
-- Core landed but acceptance remains open: Tasks 3 and 8.
-- Mostly landed but canonical baseline acceptance remains open: Task 5.
-- Offline implementation complete, repository-wide gates remain open: Tasks 11 and 12.
-- Not complete: Tasks 0, 7, 9 and 10.
-- Full pytest/Ruff, live Silver, Gold local Exit and deployment/rehearsal must not be claimed.
+- Complete: Tasks 1, 2, 4, 6 and 8 (Silver live Exit passed 2026-08-02).
+- Mostly landed but canonical baseline acceptance remains open: Tasks 3 and 5.
+- Offline implementation complete, repository-wide gates now green: Tasks 11 and 12.
+- **Task 9 (Gold local Exit): automated half complete, live half blocked.** `tests/acceptance/`
+  (29 passed), `scripts/run_acceptance.py` and `docs/rehearsals/run-log.md` exist; the
+  Final Required Gate command runs verbatim for the first time — 1266 passed, Ruff clean.
+  A complete-Evidence run with reasoning is blocked on Bedrock account enablement.
+- **Task 10 (deploy + rehearsal): deployed and verified; one item left.** CI, smoke test,
+  Docker build, in-image smoke, non-root check and secret scan all pass. ECR repository and
+  EC2 host are live: `http://35.91.36.186:8501` running the immutable tag `2cd9b43`, which
+  matches the pushed ECR tag character for character. Rollback was actually executed
+  (`c844a38` and back). CSV/Binance overlap check and the out-of-VCS recorded fallback are
+  done. **The 15-minute timed judged-flow rehearsal has not been executed** — it is a human
+  task; script in `docs/demo-runbook.md`.
+- Not complete: Tasks 0, 7.
+- **Blocker:** AWS account `411451203311` has not submitted the Anthropic use case details
+  form, so every Bedrock call in `us-west-2` returns `ResourceNotFoundException`. Live runs
+  degrade honestly to deterministic market evidence only.
+- Gold local Exit and deployment/rehearsal must still not be claimed as complete.
+
+## Feature Freeze
+
+**In effect from 2026-08-02.** Only bug fixes, reliability fixes, deployment, rehearsal,
+documentation, rollback preparation and submission verification are permitted. Post-freeze
+additions of features, providers, artifact formats, PDF/HTML, additional visualizations, the
+five-coin matrix, Platinum capabilities or H3 implementation are rejected.
 
 ## Required Tasks
 
@@ -330,12 +350,12 @@
     - Create: `scripts/run_acceptance.py`
     - Create: `docs/rehearsals/run-log.md`
   - [ ] Select two different assets for which the designated baseline paths can produce complete Evidence and run each as an independent single-asset Gold validation; keep them separate runs, because this gate proves coin-agnosticism and is not a substitute for the Task 12 dual-asset comparison.
-  - [ ] Retain BTC, ETH, SOL, BNB and XRP request-allowlist tests, but do not require the complete five-coin validation matrix or five-asset calibration.
-  - [ ] For each required Gold asset run, verify the four fixed artifacts, shared `run_id`, Evidence provenance, deterministic rendering, terminal state and explicit limitations.
+  - [x] Retain BTC, ETH, SOL, BNB and XRP request-allowlist tests, but do not require the complete five-coin validation matrix or five-asset calibration. — `tests/acceptance/test_gold_assets.py`
+  - [x] For each required Gold asset run, verify the four fixed artifacts, shared `run_id`, Evidence provenance, deterministic rendering, terminal state and explicit limitations. — `tests/acceptance/test_artifact_contract.py`, 9 passed
   - [ ] Exercise required baseline-source and Bedrock degradation cases locally and verify honest partial/degraded behavior without an unimplemented provider fallback.
-  - [ ] Add a fake-clock deadline acceptance test proving nonessential calls cancel by minute 12 and deterministic artifact finalization starts before the reserved deadline.
-  - [ ] Record the two run IDs, assets, modes, durations, degradation results and artifact paths in `docs/rehearsals/run-log.md`; additional asset runs are optional and non-blocking.
-  - [ ] Run `python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q` and `ruff check .`.
+  - [x] Add a fake-clock deadline acceptance test proving nonessential calls cancel by minute 12 and deterministic artifact finalization starts before the reserved deadline. — `tests/acceptance/test_deadline_budget.py`, 9 passed
+  - [x] Record the two run IDs, assets, modes, durations, degradation results and artifact paths in `docs/rehearsals/run-log.md`; additional asset runs are optional and non-blocking. — four runs recorded (BTC/ETH × offline/live)
+  - [x] Run `python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q` and `ruff check .`. — 1266 passed; All checks passed!
   - **Acceptance:** Gold local Exit passes only after Silver has passed, two different assets have passed as separate local single-asset runs, required degradation checks have passed, and deterministic artifact checks have passed. Docker build/runtime, ECR deployment, EC2 deployment, the timed judged-flow rehearsal and submission verification are explicitly excluded from this local gate. Reaching this gate triggers Feature Freeze if Day 2 midday has not already triggered it.
   - **Commit:** `test: verify gold local exit`
 
@@ -350,15 +370,16 @@
     - Create: `docs/architecture.md`
     - Create: `scripts/smoke_test.py`
     - Modify: `README.md`
-  - [ ] Begin Feature Freeze immediately when Gold local Exit occurs or Day 2 midday arrives, whichever occurs first. After that point, permit only bug fixes, reliability fixes, deployment, rehearsal, documentation, rollback preparation and submission verification.
+  - [x] Begin Feature Freeze immediately when Gold local Exit occurs or Day 2 midday arrives, whichever occurs first. After that point, permit only bug fixes, reliability fixes, deployment, rehearsal, documentation, rollback preparation and submission verification. — in effect 2026-08-02
   - [ ] Reject post-freeze additions of features, providers, artifact formats, PDF/HTML requirements, additional visualizations, the five-coin matrix, Platinum capabilities or H3 implementation.
-  - [ ] Run the full non-live verification command from `.kiro/steering/testing.md`; fixes required by failures remain allowed under Feature Freeze.
-  - [ ] After Gold local Exit, build the Docker image, verify local runtime, push a commit-SHA tag to ECR and deploy that immutable tag to one EC2 host with `docker compose`; document environment names, healthcheck and rollback command without secrets.
-  - [ ] Smoke-test the public URL, healthcheck and all artifact downloads using `scripts/smoke_test.py` without counting this as an additional required rehearsal.
-  - [ ] Save one complete recorded fallback run outside source control and document how `demo` exposes its original timestamp and recorded status.
-  - [ ] Update README with local run, test, Docker, configuration and artifact instructions; add CI for non-live tests and Ruff.
+  - [x] Run the full non-live verification command from `.kiro/steering/testing.md`; fixes required by failures remain allowed under Feature Freeze. — 1266 passed, Ruff clean
+  - [x] After Gold local Exit, build the Docker image, verify local runtime, push a commit-SHA tag to ECR and deploy that immutable tag to one EC2 host with `docker compose`; document environment names, healthcheck and rollback command without secrets. — tag `2cd9b43` on `i-000a2cdc6d3c1afab`; `docs/deployment.md`
+  - [x] Smoke-test the public URL, healthcheck and all artifact downloads using `scripts/smoke_test.py` without counting this as an additional required rehearsal. — public health `ok`; in-image smoke passed on EC2. UI download buttons remain a manual check (Streamlit websocket, not headless-verifiable)
+  - [x] Save one complete recorded fallback run outside source control and document how `demo` exposes its original timestamp and recorded status. — `hoya-demo-fallback
+un_20260802_015425_demo1`; `docs/demo-runbook.md`
+  - [x] Update README with local run, test, Docker, configuration and artifact instructions; add CI for non-live tests and Ruff. — `.github/workflows/ci.yml`, three jobs green
   - [ ] Complete one full 15-minute timed judged-flow rehearsal from question entry through artifact inspection and record run ID, mode, duration, source gaps and artifact paths. Additional rehearsals are optional and must not delay deployment or submission.
-  - [ ] Run a repository secret scan and inspect `git status` and `git ls-files` for `.env`, keys and credentials; verify rollback and submission evidence.
+  - [x] Run a repository secret scan and inspect `git status` and `git ls-files` for `.env`, keys and credentials; verify rollback and submission evidence. — gitleaks: 315 tracked files and 206 commits, no leaks; rollback executed once
   - **Acceptance:** Feature Freeze used the earlier approved trigger; Docker local runtime, ECR and EC2 delivery checks are complete; exactly one complete timed judged-flow rehearsal is required; demo fallback remains honest; rollback and submission evidence are documented; H3 is labelled unimplemented with no optional in-hackathon gate.
   - **Commit:** `docs: finalize deploy and demo runbook`
 

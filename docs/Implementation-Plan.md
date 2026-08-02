@@ -58,19 +58,35 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S8** H2-Lite Silver | ✅ | **Silver live Exit 已過（2026-08-02）**：`tests/live/test_live_silver_pipeline.py` → 1 passed in 50.15s，schema-valid Bedrock 結構化輸出 ＋ 四項 artifacts。live composition root `composition.py` ＋ `adapters/live_sources.py` 已落地 |
 | **S9** 創意層 | ✅（離線） | Trust Scorecard、regime/unavailable、Evidence-backed invalidation 與 renderer 已通過離線 smoke |
 | **S9B** 雙幣比較 | ✅（離線） | 單一 run/cutoff/ledger、UTC 對齊、balanced Arbiter projection、比較 Claim 與第 12 段已通過 |
-| **S10** Gold local Exit | ✅ | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 已完成（2026-08-02） |
-| **S11** 部署與彩排 | 🔴 | CI、ECR/EC2、live smoke、rollback 與 15 分鐘 judged-flow rehearsal 尚缺 |
+| **S10** Gold local Exit | 🟡 | 自動 acceptance 已補齊（`tests/acceptance/` 29 passed）、兩資產各兩次獨立單幣 run 已跑並記錄；**complete-Evidence（含推論結論）的 run 仍缺**，卡在 Bedrock 帳號未開通，見 `docs/rehearsals/run-log.md` |
+| **S11** 部署與彩排 | 🟡 | CI、smoke test、本地 Docker、**ECR/EC2 部署已上線並驗證**、**rollback 已實跑一次**、secret scan、CSV/Binance 重疊檢查、recorded fallback 全數完成；**只剩 15 分鐘 judged-flow rehearsal（人工）** |
 
 **目前完成分層：**嚴格完成 S0/S1/S2/S3/S4/S5/S6/S7；離線功能完成 S9/S9B；
-**S8 Silver Exit 已完成（2026-08-02）**；S10 Gold local Exit 已完成；S11 尚未完成。
+**S8 Silver Exit 已完成（2026-08-02）**；S10/S11 各完成一半（見上表）。
 
-**Repository-wide gate 實跑（2026-08-02, commit `6f914dc`, Python 3.12）：**
-`python -m pytest tests/unit tests/contract tests/integration -q` → **1235 passed, 0 failed**；
-`ruff check .` → **All checks passed!**。GitHub Actions/status checks 尚未配置。
-即使如此，仍不得把離線 smoke 說成 Gold 或部署完成——那兩項要的是 live 計時與部署證據。
+**Repository-wide gate 實跑（2026-08-02, branch `agent/s11-delivery` @ `c844a38`, Python 3.12）：**
+`python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q`
+→ **1266 passed, 0 failed**（1237 基準 ＋ 29 新增 acceptance）；`ruff check .` → **All checks passed!**。
+這是 `tasks.md` Final Required Gate 那條指令**第一次能逐字執行**——先前 `tests/acceptance/`
+不存在，pytest 會直接 `ERROR: file or directory not found`。
 
-**下一條關鍵路徑：** S3 Bronze ✅ → S4 ✅ → S6 ✅ → S8 推理接線 ✅ →
-**S8 live Silver ✅（2026-08-02）** → **S10 Gold local Exit ✅（2026-08-02）** → S11 部署與計時彩排。
+**GitHub Actions 已配置**（`.github/workflows/ci.yml`）：verify（ruff ＋ 非 live 測試）、
+container（`docker compose config` ＋ image build ＋ 容器內 smoke ＋ 非 root/無 `.env` 檢查）、
+secret-scan（gitleaks 掃追蹤內容 ＋ 追蹤檔名檢查）。三個 job 都不需要 AWS 憑證。
+
+**Secret scan 實跑（2026-08-02, gitleaks v8.28.0）：**追蹤內容 315 檔 → **no leaks found**；
+全歷史 206 commits → **no leaks found**。（工作樹全掃會有 125 筆，全部落在 `.venv/` 的
+botocore／numpy／pyarrow 測試 fixture，非 repo 內容——所以 CI 只掃 `git archive HEAD`。）
+
+**✅ Bedrock 已可用（帳號已換）：**競賽帳號改為主辦方的 AWS Workshop Studio 帳號
+`411451203311`；`scripts/diagnose_bedrock.py` → **3/3 成功，每次約 8 秒**。憑證短期、帳號臨時。
+
+**🔴 兩個在 live run 才會現形的缺陷（皆未修，見 S11 現況區塊）：**
+1. 證據一多，Arbiter 撞 45 秒單次上限 → 整個推理層掉光。BTC（20 筆證據）失敗、ETH（6 筆）成功。
+2. Planner 的資產比對因 `str(Asset.BTC) == 'Asset.BTC'` 永遠不相等 → LLM 計畫每次被丟棄。
+
+**下一條關鍵路徑：** S8 live Silver ✅ → S10 自動 acceptance ✅ →
+**S10 complete-Evidence run（等 Bedrock 開通）** → S11 ECR/EC2 → 15 分鐘計時彩排。
 
 ---
 
@@ -433,9 +449,6 @@ class ApplicationService(Protocol):
 ---
 
 ### S3 — Streamlit Bronze 檢查點 + 禁語 lint + 容器殼 ★ **Bronze Exit**
-
-> **2026-08-02 P4 HTML 交付更新：✅ 完成。** 每次 run 額外產出自包含 `final_report.html`，作為主要人類可讀報告；`final_report.md`、`evidence_list.json`、完整 Ledger、Execution Log 與 Run Config 的最新提交契約均保留。HTML 只讀 validated `AnalysisResult + EvidenceLedger`，全動態值 escape，無 CDN／runtime network，並支援 dark、print、mobile。Streamlit Report tab 直接嵌入 HTML。驗證：使用者指定套件 **31 passed**；整合基底完整 non-live 套件 **1148 passed / 75 warnings**；Ruff clean。最新 main 新增 Evidence List 後由 PR CI 再驗。
-
 
 > **現況：✅ 已完成（2026-08-01）。整合於 post-S2-swap `main`。**
 > **已落地：** `src/hoya_agent/ui/{__init__,presenter,streamlit_app}.py`、
@@ -1197,7 +1210,26 @@ UI 停用第二幣加選、只接受單幣請求，並在文件與簡報揭露�
 
 ### S10 — Gold local Exit：兩個資產各跑一次獨立單幣 run
 
-> **現況：✅ 已完成（2026-08-02）。** `tests/acceptance/` 新增兩個獨立 BTC/ETH 單幣 run、固定 artifacts/provenance/degradation 驗收與 fake-clock deadline gate；`scripts/run_acceptance.py` 可重現離線 Gold 路徑，實際 run-log 見 `docs/rehearsals/run-log.md`。同學的 P4 self-contained `final_report.html` 已整合，Markdown 與 HTML 交付都受 artifact contract 驗證。驗證：acceptance/UI/HTML 相關測試 `25 passed`；repository-wide `1272 passed in 24.36s`（unit/contract/integration/acceptance, not live）；`ruff check .` → `All checks passed!`。此環境使用 Python 3.11 執行，未另行宣稱 3.12。
+> **現況：🟡 自動 acceptance 與兩資產獨立 run 已完成；complete-Evidence run 卡在 Bedrock 帳號開通。**
+>
+> **2026-08-02（`agent/s11-delivery` @ `c844a38`）實跑：**
+> - `tests/acceptance/test_{gold_assets,artifact_contract,deadline_budget}.py` 建立 → **29 passed**。
+> - `scripts/run_acceptance.py` 建立；離線（organizer CSV）與 live baseline 各跑一次 BTC/ETH
+>   獨立單幣 run，共四次 run，全部四項 artifacts 齊全、run_id 互異、ledger 不互相污染。
+> - `python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q`
+>   → **1266 passed**；`ruff check .` → **All checks passed!**。
+> - run ID／時長／降級／artifact 路徑全部記在 `docs/rehearsals/run-log.md`。
+>
+> **踩到的坑（留給後面的人）：**
+> 1. `tests/acceptance/` 先前不存在，但 `tasks.md` 的 Final Required Gate 與本文 S11 的閘門指令
+>    逐字包含它 → pytest 會 `ERROR: file or directory not found`。閘門指令根本跑不完。
+> 2. 「deterministic rendering」不等於 byte-identical：`fetched_at` 是 provenance（本 process
+>    何時讀到來源），CSV 讀取的取得時間本來就是當下牆鐘，兩次相同輸入必然差幾秒。
+>    acceptance 測試把它正規化後比對，並另有一條測試釘住「唯一容許漂移的欄位就是 `fetched_at`」。
+> 3. **Bedrock 帳號未開通**（見 §1.1）：live baseline run 的 Planner／research extraction／Arbiter
+>    全部 `LLMUnavailableError`，evidence 只剩 deterministic 市場證據 5 筆。四項 artifacts 仍齊全，
+>    降級被誠實揭露。**因此 S10 不得記為完成。**
+>
 > **指派：** 全員；任務 A 擁有這個閘門。
 
 **目標**：用兩個**不同**資產各自的獨立單幣 run，證明 pipeline 真的是 coin-agnostic。
@@ -1234,7 +1266,41 @@ Silver 已過；兩個不同資產各自以獨立單幣 run 通過；必要的�
 
 ### S11 — Feature Freeze、部署與計時彩排
 
-> **現況：🔴 未開始。**
+> **現況：🟡 本地交付層完成；雲端與彩排未開始。**
+>
+> **2026-08-02（`agent/s11-delivery` @ `c844a38`）實跑：**
+>
+> | 項目 | 狀態 | 實際證據 |
+> |---|---|---|
+> | `.github/workflows/ci.yml` | ✅ | verify／container／secret-scan 三個 job，皆不需 AWS 憑證 |
+> | `scripts/smoke_test.py` | ✅ | 純標準庫；HTTP health/root ＋ 四項 artifact 解析與 run_id 一致 |
+> | `docker build` | ✅ | `hoya-agent:c844a38`，860 MB |
+> | 本地 runtime | ✅ | 容器 `Up (healthy)`；`/_stcore/health` → `ok`；`/` → 200、10 626 bytes |
+> | **容器內** smoke | ✅ | `docker cp` ＋ `docker exec` → 四項 artifacts、6 log events、5 evidence、run_id 一致 |
+> | 非 root | ✅ | `docker exec … id` → `uid=10001(appuser)` |
+> | image 無秘密 | ✅ | `/app` 內無 `.env`、無 `*.pem`／`*.key` |
+> | `docker compose config` | ✅ | VALID |
+> | secret scan | ✅ | gitleaks v8.28.0：追蹤內容 315 檔 no leaks；全歷史 206 commits no leaks |
+> | ECR repository | ✅ | `hoya-agent`，IMMUTABLE ＋ scanOnPush；tag `2cd9b43`、`c844a38` |
+> | EC2 部署 | ✅ | `i-000a2cdc6d3c1afab`，t3.small AL2023 @ us-west-2a |
+> | 公開 healthcheck | ✅ | `http://35.91.36.186:8501/_stcore/health` → `ok` |
+> | tag 逐字相同 | ✅ | `docker inspect` → `…/hoya-agent:2cd9b43`，與推上 ECR 的完全一致 |
+> | EC2 上容器內 smoke | ✅ | 四項 artifacts、6 log events、5 evidence、run_id 一致 |
+> | 零金鑰 | ✅ | IAM instance role `hoya-agent-ec2`；SG 只開 8501 給單一來源 IP，**不開 22**，管理走 SSM；IMDSv2 強制 |
+> | rollback 演練 | ✅ | 回退 `c844a38`（20 秒健康）→ 前滾 `2cd9b43`（20 秒健康） |
+> | CSV/Binance 重疊檢查 | ✅ | 五幣 31 天，close 差異 **0.0000%**；🚫 但不得因此宣稱 CSV 來自 Binance |
+> | recorded fallback（版控外） | ✅ | `hoya-demo-fallback
+un_20260802_015425_demo1`，報告標示 demo ＋ 原始時間 |
+> | **15 分鐘計時彩排** | 🔴 | **未執行 —— 人工項目，腳本見 `docs/demo-runbook.md`** |
+>
+> **踩到的坑：**
+> 1. **UI 的 artifacts 寫在容器內的 `tempfile.mkdtemp()`**（`ui/streamlit_app.py`），host 端程序看不到。
+>    所以 smoke test 必須用 `docker exec` **在容器內**跑，才是在驗「部署的那個 image」而不是 host 的碼。
+>    而 `.dockerignore` 排除了 `scripts/`，所以要先 `docker cp` 進去。
+> 2. **gitleaks 不能直接掃 checkout 目錄**：整棵依賴樹會噴 125 筆 false positive（botocore／numpy／
+>    pyarrow 自帶的範例金鑰），真發現會被淹掉。CI 改成掃 `git archive HEAD` 解出來的追蹤內容。
+> 3. 在 Git Bash 下 `docker exec … /tmp/x.py` 會被 MSYS 改寫成 Windows 路徑，要 `MSYS_NO_PATHCONV=1`。
+>
 > **指派：** 任務 A 與 D 共同主導；全員參與彩排。
 
 **目標**：在不加新功能的前提下把東西送上去，並完成一次完整計時的評審流程彩排。
@@ -1363,57 +1429,4 @@ Note: `tests/unit/skills/` raises a NumPy `Timedelta` `DeprecationWarning` from
 `src/skills/a9_verification.py:72` (non-fatal, in a parallel tool package, not the agent pipeline).
 
 Verification evidence and remaining gates are recorded in [S8-S9-S9B implementation](S8-S9-S9B-implementation.md).
-Remaining: S11 deploy/timed rehearsal.
-
-## 2026-08-02 Arbiter validation repair follow-up
-
-Live runs were producing Evidence successfully but sometimes dropping all inference
-and conclusion claims because Bedrock attached numeric claims to the wrong evidence
-IDs or emitted a conclusion with only neutral links. The composition root now wraps
-the Bedrock client with a deterministic, evidence-only link repair before the frozen
-Arbiter gate: it can add a support link only when the claim's numeric atom appears in
-matching Evidence, and can inherit support for a conclusion from a supported upstream
-claim. It never changes claim text or invents Evidence; unsupported output still
-degrades safely.
-
-Verification after the repair: targeted Arbiter/composition tests `12 passed`; full
-non-live gate `1267 passed in 32.65s`; `ruff check .` → `All checks passed!`. The live
-Bedrock path itself was not rerun in this environment.
-
-## 2026-08-02 report safety fallback follow-up
-
-An official ETH run exposed a provider-generated prohibited term (`減倉`) reaching
-the final renderer. The lint correctly rejected it, but the application boundary
-previously allowed that `ValueError` to abort the run after Evidence List output.
-`ApplicationService` now catches only the report safety-lint failure, replaces the
-unsafe Arbiter result with the deterministic insufficient-data result, marks the
-run `degraded`, and completes all artifacts. The offending wording is not copied
-into the fallback disclosure. Regression coverage is in
-`tests/integration/test_report_safety_fallback.py`.
-
-Verification: full non-live gate `1273 passed in 21.33s`; `ruff check .` → `All checks
-passed!`; targeted safety/render tests `34 passed`. Live Bedrock was not rerun here.
-## 2026-08-02 reviewer UI polish follow-up
-
-評審畫面已移除 H3 未實作提示，以及 H2-Lite、Arbiter、Planner、Renderer、artifact
-等內部實作術語；保留研究報告、證據來源、執行紀錄、限制揭露與下載按鈕。HTML
-與 Markdown 報告的可重現性、資料不足與安全降級文字也改為面向使用者的正式表述。
-
-本次驗證：`PYTHONPATH=src python -m pytest tests/unit/reporting
-tests/integration/test_streamlit_bronze.py tests/integration/test_report_safety_fallback.py -q`
-→ **53 passed**；`ruff check .` → **All checks passed!**。完整非 live gate 將於提交前再次執行。
-完整非 live gate 複跑結果：`PYTHONPATH=src python -m pytest tests/unit tests/contract tests/integration -q`
-→ **1267 passed in 63.64s**；`ruff check .` → **All checks passed!**。
-## 2026-08-02 reasoning card layout follow-up
-
-修正 HTML 推理卡片的欄位配置：主張文字保留足夠閱讀寬度，支持證據與依據標籤改為右側
-自動換行排列；窄螢幕時切換為單欄。驗證：HTML/UI targeted tests **7 passed**，
-`ruff check .` **All checks passed!**。
-## 2026-08-02 report display rollback
-
-Streamlit 報告區恢復穩定版：使用固定 1100px 的內嵌視窗與內層捲軸，移除預設展開及
-依 HTML 長度動態拉高的容器。這讓評審頁面的方塊與文字維持正常大小；推理卡片的
-桌面與窄螢幕換行修正仍保留。
-
-本次驗證：`PYTHONPATH=src python -m pytest tests/unit tests/contract tests/integration -q`
-→ **待提交前完成**；`ruff check .` → **待提交前完成**。
+Remaining: S10 Gold local Exit and S11 deploy/timed rehearsal.

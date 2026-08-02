@@ -87,4 +87,5 @@ async def test_missing_baseline_market_data_is_an_explicit_degraded_run(tmp_path
     assert summary.terminal_state in {TerminalState.degraded, TerminalState.failed}
     assert ledger.items == []
     assert ledger.degradation_events
-    assert "insufficient" in (run_dir / FINAL_REPORT).read_text(encoding="utf-8").lower()
+    report = (run_dir / FINAL_REPORT).read_text(encoding="utf-8").lower()
+    assert "insufficient" in report or "資料不足" in report
