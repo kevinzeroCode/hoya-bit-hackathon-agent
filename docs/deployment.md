@@ -179,6 +179,44 @@ docker run -d --restart unless-stopped -p 8501:8501 --name hoya-agent \
 curl -f http://localhost:8501/_stcore/health
 ```
 
+## 6. Continuous deployment (added 2026-08-02)
+
+`.github/workflows/deploy.yml` automates §4–§5 after `.github/workflows/ci.yml`'s
+`CI` workflow finishes successfully on `main` (`workflow_run`, filtered to
+`conclusion == 'success'`), plus a manual `workflow_dispatch` for an ad-hoc
+re-run. It builds the image tagged with the deployed commit's short SHA, pushes
+to ECR, then drives the same SSM Run Command flow used by hand in §5 — pull,
+rewrite `HOYA_IMAGE` in `/opt/hoya/deploy/.env`, `docker compose -p hoya -f
+compose.https.yml up -d` — and finally runs `scripts/smoke_test.py` inside the
+freshly swapped container. Any step failing (including the smoke test) fails
+the job; the previous container keeps serving traffic until a swap actually
+completes, since compose only recreates the `hoya-agent` service.
+
+**Live deployment is `docker compose -p hoya`, not the bare `docker run` in
+§5.** §5 predates the Caddy/HTTPS/basic-auth layer that now fronts the
+instance; treat it as the conceptual shape (pull → swap → verify), not a
+literal command to paste. `-p hoya` matters — running compose from
+`/opt/hoya/deploy` without it creates a second stack that fights the first one
+for port 443.
+
+Credentials: IAM user `github-actions-hoya-deploy`, access key stored as the
+encrypted repo secrets `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`. Its
+inline policy is scoped to exactly what the workflow needs — ECR push to the
+`hoya-agent` repository only, `ssm:SendCommand` against this one EC2 instance
+and the `AWS-RunShellScript` document only, `ssm:GetCommandInvocation` (no
+resource-level restriction is possible for that action). Non-sensitive config
+(`AWS_REGION`, `AWS_ACCOUNT_ID`, `ECR_REPO`, `EC2_INSTANCE_ID`) is stored as
+repo variables, not secrets.
+
+This account is a temporary Workshop Studio grant (see below) — when it is
+reclaimed, this user and its key go with it. Rotate or delete the key from IAM
+directly if the pipeline is ever retired before then; nothing else in the repo
+references it.
+
+Rollback stays a manual, deliberate action (§5's rollback section) — the
+pipeline does not automatically roll back a failed deploy, it just refuses to
+report success.
+
 ## Known operational conditions
 
 ### ✅ Bedrock is enabled on account `411451203311`
