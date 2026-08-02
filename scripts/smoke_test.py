@@ -96,13 +96,13 @@ def check_http(base_url: str, *, timeout_seconds: float) -> list[str]:
 
 
 def check_artifacts() -> list[str]:
-    """One real offline run, then audit the four files it left on disk."""
+    """One real offline run, then audit the files it left on disk."""
     try:
         from hoya_agent.application import ApplicationService, build_request
         from hoya_agent.clock import SystemClock
         from hoya_agent.models import Asset, RunMode
         from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline
-        from hoya_agent.reporting.artifacts import ARTIFACT_NAMES
+        from hoya_agent.reporting.artifacts import DELIVERABLE_NAMES
     except ImportError as exc:  # pragma: no cover - environment problem, not a code path
         raise SmokeFailure(f"hoya_agent is not importable here: {exc}") from exc
 
@@ -133,11 +133,11 @@ def check_artifacts() -> list[str]:
         summary = asyncio.run(service.run(request))
         run_dir = Path(summary.artifact_dir)
 
-        names = tuple(ARTIFACT_NAMES) or FALLBACK_ARTIFACT_NAMES
+        names = tuple(DELIVERABLE_NAMES) or FALLBACK_ARTIFACT_NAMES
         on_disk = sorted(path.name for path in run_dir.iterdir())
         if on_disk != sorted(names):
             raise SmokeFailure(f"expected artifacts {sorted(names)}, found {on_disk}")
-        passed.append(f"four fixed artifacts written ({', '.join(sorted(names))})")
+        passed.append(f"fixed deliverables written ({', '.join(sorted(names))})")
 
         config_text = (run_dir / "run_config.json").read_text(encoding="utf-8")
         try:
