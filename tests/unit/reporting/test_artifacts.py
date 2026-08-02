@@ -21,6 +21,7 @@ from hoya_agent.reporting.artifacts import (
     EVIDENCE_LIST,
     EXECUTION_LOG,
     FINAL_REPORT,
+    HTML_REPORT,
     RUN_CONFIG,
     LocalArtifactStore,
 )
@@ -90,6 +91,18 @@ def test_rewrite_never_exposes_partial_content(tmp_path) -> None:
     store.write_text(FINAL_REPORT, "第一版\n")
     store.write_text(FINAL_REPORT, "第二版\n")
     assert (store.run_dir / FINAL_REPORT).read_text(encoding="utf-8") == "第二版\n"
+
+
+def test_html_report_uses_the_same_atomic_store_without_changing_required_artifacts(
+    tmp_path,
+) -> None:
+    store = LocalArtifactStore(tmp_path / RUN_ID)
+    assert store.write_text(HTML_REPORT, "<!doctype html><title>HOYA</title>") is True
+    assert (store.run_dir / HTML_REPORT).read_text(encoding="utf-8").startswith(
+        "<!doctype html>"
+    )
+    assert HTML_REPORT in store.artifact_paths()
+    assert HTML_REPORT not in store.missing_artifacts()
 
 
 def test_execution_log_streams_one_json_object_per_line(tmp_path) -> None:
