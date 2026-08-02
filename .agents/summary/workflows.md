@@ -8,6 +8,13 @@ degradation, fixed artifact parsing/checksums, Evidence provenance, deterministi
 rendering, and the minute-12 deadline/finalize reserve. See
 `docs/rehearsals/run-log.md` for the recorded verification.
 
+## Report safety failure path
+
+If the final Markdown renderer's advice lint detects provider-generated prescriptive
+wording, `ApplicationService` discards that model result, renders the deterministic
+insufficient-data result, marks the run `degraded`, and continues finalizing all
+artifacts. The original prohibited wording is not placed in the fallback report.
+
 ## Primary Workflow: Complete Analysis Run
 
 ```mermaid

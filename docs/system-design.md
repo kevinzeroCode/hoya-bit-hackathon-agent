@@ -382,6 +382,10 @@ The local implementation now follows the six-stage H2-Lite path with a 720-secon
 
 ## 2026-08-02 live composition root + UI + mapping update
 
+Application-level report safety lint failures now follow the degradation contract:
+the unsafe Arbiter result is discarded, a deterministic insufficient-data report is
+rendered, and artifact finalization continues with terminal state `degraded`.
+
 - **Live data path landed.** `src/hoya_agent/composition.py::build_live_pipeline()` is the live
   composition root (alongside `ApplicationService`): real-time Binance daily klines + Alternative.me
   Fear & Greed (both key-less) feed the deterministic pipeline, then a `MappingArbiter` runs the

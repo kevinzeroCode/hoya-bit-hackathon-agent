@@ -1379,3 +1379,17 @@ degrades safely.
 Verification after the repair: targeted Arbiter/composition tests `12 passed`; full
 non-live gate `1267 passed in 32.65s`; `ruff check .` → `All checks passed!`. The live
 Bedrock path itself was not rerun in this environment.
+
+## 2026-08-02 report safety fallback follow-up
+
+An official ETH run exposed a provider-generated prohibited term (`減倉`) reaching
+the final renderer. The lint correctly rejected it, but the application boundary
+previously allowed that `ValueError` to abort the run after Evidence List output.
+`ApplicationService` now catches only the report safety-lint failure, replaces the
+unsafe Arbiter result with the deterministic insufficient-data result, marks the
+run `degraded`, and completes all artifacts. The offending wording is not copied
+into the fallback disclosure. Regression coverage is in
+`tests/integration/test_report_safety_fallback.py`.
+
+Verification: full non-live gate `1273 passed in 21.33s`; `ruff check .` → `All checks
+passed!`; targeted safety/render tests `34 passed`. Live Bedrock was not rerun here.

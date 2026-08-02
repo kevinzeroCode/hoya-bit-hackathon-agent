@@ -29,6 +29,10 @@ Markdown/Evidence/Log/Run Config downloads. Full non-live verification: `1272 pa
 Ruff clean. Live Bedrock rerun remains pending because this environment has no live
 credentials.
 
+Safety follow-up: report advice-lint failures now degrade to a complete deterministic
+artifact set instead of aborting after Evidence List generation. Latest full non-live
+verification: `1273 passed`; Ruff clean.
+
 ## Current main
 
 - Commit：`6f914dc`（`main`）。

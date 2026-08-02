@@ -569,7 +569,28 @@ class ApplicationService:
                     message=f"wrote {EVIDENCE_LIST}",
                 )
             )
-        report = render(result, ledger, lint=advice_violations)
+        report_safety_degraded = False
+        try:
+            report = render(result, ledger, lint=advice_violations)
+        except ValueError as exc:
+            # Model wording can contain prohibited prescriptive language even when
+            # its claims and Evidence are otherwise valid. Safety lint must never
+            # turn the artifact-first run into an exception: discard the unsafe
+            # model result and render the normal deterministic fallback instead.
+            if not str(exc).startswith("report failed prohibited-advice lint:"):
+                raise
+            report_safety_degraded = True
+            safety_reason = (
+                "Arbiter 輸出未通過報告安全檢查，已捨棄不合規文字並改用 deterministic fallback。"
+            )
+            result = build_insufficient_data_result(
+                run_id=context.run_id,
+                question=context.question,
+                assets=list(context.assets),
+                analysis_as_of=context.analysis_as_of,
+                reason=safety_reason,
+            )
+            report = render(result, ledger, lint=advice_violations)
         if store.write_text(FINAL_REPORT, report):
             emit(
                 self._event(
@@ -584,6 +605,8 @@ class ApplicationService:
         # Derive the honest delivery state after every required artifact has
         # been attempted; the optional HTML projection must display that state.
         terminal_state = _terminal_state(outcome.terminal_state, store)
+        if report_safety_degraded and terminal_state is TerminalState.completed:
+            terminal_state = TerminalState.degraded
         html_report = render_html(
             result,
             ledger,
