@@ -142,7 +142,47 @@ pydantic 轉出來的 `Asset` enum。Python 3.11 起 `str(Asset.BTC)` 回 `'Asse
 報告自己打自己臉。已修，並補上兩條回歸測試
 （`tests/integration/test_composed_research_pipeline.py`），其中一條在修復前確實會紅。
 
+## 2026-08-02 — `arbiter_max_tokens` 實測（同帳號、同模型、同一天）
+
+模型：`us.anthropic.claude-haiku-4-5-20251001-v1:0` @ `us-west-2`，account `411451203311`。
+
+| 路徑 | max_tokens | 時長 (s) | evidence | Arbiter | 信心 | 結論層 claim |
+|---|---:|---:|---:|---|---|---|
+| UI（`composition.build_live_pipeline`） | 3000 | 49.0 | 21 | ✅ completed | low | **無** |
+| UI | 3000 | 75.7 | 35 | ✅ completed | medium | **無** |
+| UI | **6000** | 116.0 | 32 | 🔴 `DeadlineExceeded` | low | 無 |
+| 腳本（`build_research_pipeline`） | 8000 | 67.6 | 20 | 🔴 `DeadlineExceeded` | low | 無 |
+| 腳本 | 8000 | 35.3 | 6 | ✅ completed | high | **有**（`cl_009`） |
+| 腳本 | 3000 | 52.0 | 18 | ✅ completed | medium | **無** |
+| 腳本 | 3000 | 46.2 | 6 | ✅ completed | low | **無** |
+
+### 結論一：`max_tokens=3000` 是對的，🚫 不要調高
+
+6000 直接把 Arbiter 推過 45 秒單次上限。`composition.py` 早就把 UI 路徑設成 3000 並留了註解
+（「default 8000 tokens can overrun → DeadlineExceeded → fallback」），只是
+`application.build_research_pipeline` 沒跟上，仍用凍結預設 8000。**已補齊**（`ARBITER_MAX_TOKENS`）。
+
+### 結論二：結論層 claim 不穩定，這是尚未解決的問題
+
+七次 live run 中**只有一次**產出結論層 claim。其餘即使 Arbiter 正常完成、
+信心到 `medium`、`insufficient_data=False`，第 7 段仍是「本次 run 未產出可驗證的結論層 claim」。
+用 `MappingArbiter` 的 spy 攔截模型原始輸出，看到的是 `claims` **本身就是空的**（0 筆），
+不是 mapping 丟掉的。
+
+先前一度以為是 UI 與腳本用不同 Arbiter schema（`ArbiterGeneration` vs `ArbiterOutput`）造成的差異，
+**但更多樣本推翻了這個假設**——兩條路徑都會出現空結論，差別是 run 之間的變異。
+`main` 上的 `a1d17f2 fix(arbiter): guarantee non-empty structured claims on live runs`
+顯然沒有完全蓋住這個情況。
+
+**未修：** 修點在凍結的 `reasoning/` 套件（Arbiter 或 prompt），屬推理層 owner 的決定。
+
+### 對 demo 的實際影響
+
+live run 可以展示：多來源即時證據（18–35 筆、2–4 個獨立上游、3 種 source type）、
+信任漏斗、Evidence Ledger、Execution Log、四項可下載 artifacts、以及決定論的信心上限規則。
+**不能保證展示的是：第 7 段的結論。** 彩排時要先知道這件事。
+
 ### Gold local Exit 狀態更新
 
-complete-Evidence run **部分達成**：ETH 已有完整證據＋推論＋結論（信心 `high`）；
-BTC 因上述 Arbiter 逾時尚未取得。兩資產都要成功才算 S10 收尾。
+complete-Evidence run **未達成**：曾有一次 ETH 取得完整證據＋推論＋結論（信心 `high`），
+但無法穩定重現。兩資產都要能穩定產出才算 S10 收尾。
