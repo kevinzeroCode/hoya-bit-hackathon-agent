@@ -31,13 +31,23 @@ from hoya_agent.reasoning.arbiter import (
 )
 
 
-def ev(evidence_id, reliability="medium", group="g1", source_type="news", published=None):
+def ev(
+    evidence_id,
+    reliability="medium",
+    group="g1",
+    source_type="news",
+    published=None,
+    fact="14 日報酬為 -4.9%",
+    asset="BTC",
+):
     return Evidence(
         evidence_id=evidence_id,
         reliability=reliability,
         independence_group=group,
         source_type=source_type,
         published_at=published or "2026-07-16T00:00:00Z",
+        normalized_fact=fact,
+        asset=asset,
     )
 
 
@@ -240,6 +250,159 @@ class StructuralValidationTests(unittest.TestCase):
         self.assertEqual(structural_violations(result, {"ev_001", "ev_002"}), [])
 
 
+class NumberProvenanceTests(unittest.TestCase):
+    """Claim 與 direct_answer 中的數字必須溯源自連結證據（prompt 鐵律一的程式化）。"""
+
+    def ledger(self):
+        return {
+            "ev_001": ev("ev_001", "high", "one.com", fact="14 日報酬為 -4.9%"),
+            "ev_002": ev("ev_002", "high", "two.com", fact="成交量 z-score 為 +1.8"),
+        }
+
+    def test_grounded_numbers_pass(self):
+        self.assertEqual(
+            structural_violations(
+                good_result(), {"ev_001", "ev_002"}, evidence_by_id=self.ledger()
+            ),
+            [],
+        )
+
+    def test_fabricated_number_is_a_violation(self):
+        result = good_result()
+        result.claims[0].text = "報酬為 -12.5%"
+        violations = structural_violations(
+            result, {"ev_001", "ev_002"}, evidence_by_id=self.ledger()
+        )
+        self.assertTrue(any("12.5" in v and "cl_001" in v for v in violations))
+
+    def test_thousand_separator_matches_plain_form(self):
+        ledger = dict(self.ledger())
+        ledger["ev_001"] = ev("ev_001", "high", "one.com", fact="收盤價 68000 美元")
+        result = good_result()
+        result.claims[0].text = "收盤價為 68,000"
+        self.assertEqual(
+            structural_violations(result, {"ev_001", "ev_002"}, evidence_by_id=ledger),
+            [],
+        )
+
+    def test_upstream_claim_evidence_grounds_inference_numbers(self):
+        # cl_002 依賴 cl_001；-4.9 由 cl_001 連結的 ev_001 溯源，即使 cl_002
+        # 自己的 link（ev_002）不含該數字。
+        result = good_result()
+        result.claims[1].text = "跌幅 -4.9% 伴隨量能放大，屬帶量整理"
+        self.assertEqual(
+            structural_violations(
+                result, {"ev_001", "ev_002"}, evidence_by_id=self.ledger()
+            ),
+            [],
+        )
+
+    def test_time_range_dates_are_exempt(self):
+        result = good_result()
+        result.claims[0].time_range = {"start": "2026-07-03", "end": "2026-07-16"}
+        result.claims[0].text = "2026-07-03 至 2026-07-16 期間報酬為 -4.9%"
+        self.assertEqual(
+            structural_violations(
+                result, {"ev_001", "ev_002"}, evidence_by_id=self.ledger()
+            ),
+            [],
+        )
+
+    def test_internal_evidence_ids_are_not_treated_as_numbers(self):
+        result = good_result()
+        result.claims[1].text = "如 ev_002 所示，量能高於自身基準"
+        self.assertEqual(
+            structural_violations(
+                result, {"ev_001", "ev_002"}, evidence_by_id=self.ledger()
+            ),
+            [],
+        )
+
+    def test_direct_answer_numbers_must_be_grounded(self):
+        result = good_result()
+        result.direct_answer = "跌幅達 -20%，市場疲弱。"
+        violations = structural_violations(
+            result, {"ev_001", "ev_002"}, evidence_by_id=self.ledger()
+        )
+        self.assertTrue(any("direct_answer" in v and "20" in v for v in violations))
+
+    def test_check_is_skipped_without_an_evidence_map(self):
+        result = good_result()
+        result.claims[0].text = "報酬為 -12.5%"
+        self.assertEqual(structural_violations(result, {"ev_001", "ev_002"}), [])
+
+
+class AssetConsistencyTests(unittest.TestCase):
+    """Claim 宣稱的資產必須與其連結證據的資產有交集（market-wide 例外）。"""
+
+    def test_claim_with_no_matching_asset_evidence_is_a_violation(self):
+        result = good_result()
+        result.claims[0].assets = ["BTC"]
+        ledger = {
+            "ev_001": ev("ev_001", "high", "one.com", asset="ETH"),
+            "ev_002": ev("ev_002", "high", "two.com", asset="ETH"),
+        }
+        violations = structural_violations(
+            result, {"ev_001", "ev_002"}, evidence_by_id=ledger
+        )
+        self.assertTrue(any("cl_001" in v and "asset" in v for v in violations))
+
+    def test_market_wide_evidence_grounds_any_asset(self):
+        result = good_result()
+        result.claims[0].assets = ["BTC"]
+        ledger = {
+            "ev_001": ev("ev_001", "high", "one.com", asset=None),
+            "ev_002": ev("ev_002", "high", "two.com"),
+        }
+        self.assertEqual(
+            structural_violations(result, {"ev_001", "ev_002"}, evidence_by_id=ledger),
+            [],
+        )
+
+    def test_one_matching_link_among_several_passes(self):
+        result = good_result()
+        result.claims[0].assets = ["BTC"]
+        result.claim_evidence_links.append(
+            Link(claim_id="cl_001", evidence_id="ev_003", stance="supports")
+        )
+        ledger = {
+            "ev_001": ev("ev_001", "high", "one.com", asset="ETH"),
+            "ev_002": ev("ev_002", "high", "two.com"),
+            "ev_003": ev("ev_003", "high", "three.com", asset="BTC"),
+        }
+        self.assertEqual(
+            structural_violations(
+                result, {"ev_001", "ev_002", "ev_003"}, evidence_by_id=ledger
+            ),
+            [],
+        )
+
+    def test_dual_asset_claim_matches_either_asset(self):
+        result = good_result()
+        result.claims[0].assets = ["BTC", "ETH"]
+        ledger = {
+            "ev_001": ev("ev_001", "high", "one.com", asset="ETH"),
+            "ev_002": ev("ev_002", "high", "two.com"),
+        }
+        self.assertEqual(
+            structural_violations(result, {"ev_001", "ev_002"}, evidence_by_id=ledger),
+            [],
+        )
+
+    def test_neutral_only_links_are_not_asset_checked(self):
+        result = good_result()
+        result.claims[0].assets = ["BTC"]
+        result.claim_evidence_links[0].stance = "neutral"
+        ledger = {
+            "ev_001": ev("ev_001", "high", "one.com", asset="ETH"),
+            "ev_002": ev("ev_002", "high", "two.com"),
+        }
+        violations = structural_violations(
+            result, {"ev_001", "ev_002"}, evidence_by_id=ledger
+        )
+        self.assertFalse(any("share no asset" in v for v in violations))
+
+
 class ConfidenceCapTests(unittest.TestCase):
     def test_material_conflict_forces_the_claim_to_low(self):
         payload = good_result().model_dump()
@@ -333,7 +496,7 @@ class ArbiterRunTests(unittest.TestCase):
         gen = Result(
             direct_answer="帶量整理。",
             claims=[
-                Claim(claim_id="cl_001", claim_type="fact", text="報酬 -3%"),
+                Claim(claim_id="cl_001", claim_type="fact", text="報酬為 -4.9%"),
                 Claim(
                     claim_id="cl_002", claim_type="inference",
                     text="回落有承接", based_on_claim_ids=["cl_001"],
@@ -362,6 +525,58 @@ class ArbiterRunTests(unittest.TestCase):
         self.assertEqual(kept, {"cl_001", "cl_002", "cl_003"})
         self.assertTrue(any(c.claim_type == "conclusion" for c in result.claims))
         self.assertTrue(any("部分不合規" in note for note in notes))
+
+    def test_fabricated_number_on_leaf_conclusion_is_repaired_away(self):
+        # 只有 cl_004 引用了證據裡不存在的數字：修剪它、保留其餘推理層。
+        gen = Result(
+            direct_answer="帶量整理。",
+            claims=[
+                Claim(claim_id="cl_001", claim_type="fact", text="報酬為 -4.9%"),
+                Claim(
+                    claim_id="cl_002", claim_type="inference",
+                    text="回落有承接", based_on_claim_ids=["cl_001"],
+                ),
+                Claim(
+                    claim_id="cl_003", claim_type="conclusion",
+                    text="屬整理非崩跌", based_on_claim_ids=["cl_002"],
+                ),
+                Claim(
+                    claim_id="cl_004", claim_type="conclusion",
+                    text="下一步看 123456", based_on_claim_ids=["cl_002"],
+                ),
+            ],
+            claim_evidence_links=[
+                Link(claim_id="cl_001", evidence_id="ev_001", stance="supports"),
+                Link(claim_id="cl_002", evidence_id="ev_001", stance="supports"),
+                Link(claim_id="cl_003", evidence_id="ev_002", stance="supports"),
+                Link(claim_id="cl_004", evidence_id="ev_002", stance="supports"),
+            ],
+            confidence="medium",
+        )
+        ledger = Ledger(items=[ev("ev_001", "high", "a.com"), ev("ev_002", "high", "b.com")])
+        result, notes = run_arbiter(FakeLLM([gen]), ledger)
+        self.assertFalse(result.insufficient_data)
+        kept = {c.claim_id for c in result.claims}
+        self.assertEqual(kept, {"cl_001", "cl_002", "cl_003"})
+        self.assertTrue(any("部分不合規" in note for note in notes))
+
+    def test_fabricated_number_generation_falls_back(self):
+        # 偽造數字出現在唯一的 fact 上：修剪會連鎖清空整張圖，只能 fallback。
+        bad = good_result()
+        bad.claims[0].text = "報酬為 -99.9%"
+        ledger = Ledger(items=[ev("ev_001", "high"), ev("ev_002", "high")])
+        result, notes = run_arbiter(FakeLLM([bad]), ledger)
+        self.assertTrue(result.insufficient_data)
+        self.assertTrue(any("結構驗證" in note for note in notes))
+
+    def test_ungrounded_direct_answer_cannot_be_repaired(self):
+        # direct_answer 不是 claim，修剪救不了它：數字無法溯源就 fallback。
+        bad = good_result()
+        bad.direct_answer = "跌幅達 -20%，市場疲弱。"
+        ledger = Ledger(items=[ev("ev_001", "high"), ev("ev_002", "high")])
+        result, notes = run_arbiter(FakeLLM([bad]), ledger)
+        self.assertTrue(result.insufficient_data)
+        self.assertTrue(any("結構驗證" in note for note in notes))
 
     def test_empty_ledger_short_circuits_without_calling_the_model(self):
         llm = FakeLLM([])

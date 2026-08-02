@@ -16,9 +16,12 @@ independent of the shared contracts package. Wire it with the real
 
 from __future__ import annotations
 
+import re
+import unicodedata
 from collections import defaultdict, deque
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -179,8 +182,200 @@ def detect_cycle(claims: Sequence[Any]) -> bool:
     return any(visit(node) for node in graph)
 
 
+#: Numeric tokens: digits with optional decimal/thousand-separator groups.
+_NUMBER_TOKEN_RE = re.compile(r"\d+(?:[.,]\d+)*")
+
+#: Run-local identifiers whose digits are references, not market values.
+_INTERNAL_ID_RE = re.compile(r"\b(?:ev|cl|run)_[0-9A-Za-z_]+")
+
+
+def _number_tokens(text: Any) -> set[Decimal]:
+    """Every numeric value mentioned in ``text``, NFKC-normalized.
+
+    Thousand separators collapse ("68,000" == "68000") and signs are dropped on
+    both the claim and the evidence side, so comparison is by magnitude of the
+    written token, never by any computation.
+    """
+    if text is None:
+        return set()
+    cleaned = _INTERNAL_ID_RE.sub(" ", unicodedata.normalize("NFKC", str(text)))
+    tokens: set[Decimal] = set()
+    for match in _NUMBER_TOKEN_RE.finditer(cleaned):
+        try:
+            tokens.add(Decimal(match.group().replace(",", "")))
+        except InvalidOperation:  # pragma: no cover - regex admits only digits
+            continue
+    return tokens
+
+
+def _evidence_number_pool(item: Any) -> set[Decimal]:
+    pool = _number_tokens(_attr(item, "normalized_fact"))
+    pool |= _number_tokens(_attr(item, "content_reference"))
+    metric_value = _attr(item, "metric_value")
+    if metric_value is not None:
+        pool |= _number_tokens(str(metric_value))
+    return pool
+
+
+def _time_range_tokens(claim: Any) -> set[Decimal]:
+    time_range = _attr(claim, "time_range")
+    if time_range is None:
+        return set()
+    return _number_tokens(_attr(time_range, "start")) | _number_tokens(
+        _attr(time_range, "end")
+    )
+
+
+def _number_gaps(
+    result: Any, evidence_by_id: Mapping[str, Any]
+) -> tuple[dict[str, list[Decimal]], list[Decimal]]:
+    """(claim_id -> ungrounded numbers, ungrounded direct-answer numbers).
+
+    A number is grounded when it appears in evidence linked to the claim or to
+    one of its transitive upstream claims; the claim's own ``time_range`` dates
+    are exempt because the window comes from the plan, not from evidence. The
+    direct answer is checked against the whole ledger.
+    """
+    claims = list(_attr(result, "claims") or ())
+    links = list(_attr(result, "claim_evidence_links") or ())
+
+    direct: dict[str, set[str]] = defaultdict(set)
+    for link in links:
+        direct[str(_attr(link, "claim_id"))].add(str(_attr(link, "evidence_id")))
+    deps = {
+        str(_attr(claim, "claim_id")): [
+            str(dep) for dep in (_attr(claim, "based_on_claim_ids") or ())
+        ]
+        for claim in claims
+    }
+
+    def reachable_pool(claim_id: str) -> set[Decimal]:
+        pool: set[Decimal] = set()
+        seen: set[str] = set()
+        stack = [claim_id]
+        while stack:
+            current = stack.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            for evidence_id in direct.get(current, ()):
+                item = evidence_by_id.get(evidence_id)
+                if item is not None:
+                    pool |= _evidence_number_pool(item)
+            stack.extend(deps.get(current, ()))
+        return pool
+
+    claim_gaps: dict[str, list[Decimal]] = {}
+    all_time_range_tokens: set[Decimal] = set()
+    for claim in claims:
+        claim_id = str(_attr(claim, "claim_id"))
+        exempt = _time_range_tokens(claim)
+        all_time_range_tokens |= exempt
+        tokens = _number_tokens(_attr(claim, "text")) - exempt
+        if not tokens:
+            continue
+        missing = tokens - reachable_pool(claim_id)
+        if missing:
+            claim_gaps[claim_id] = sorted(missing)
+
+    answer_tokens = _number_tokens(_attr(result, "direct_answer"))
+    answer_tokens -= all_time_range_tokens
+    answer_tokens -= _number_tokens(_attr(result, "analysis_as_of"))
+    answer_missing: list[Decimal] = []
+    if answer_tokens:
+        ledger_pool: set[Decimal] = set()
+        for item in evidence_by_id.values():
+            ledger_pool |= _evidence_number_pool(item)
+        answer_missing = sorted(answer_tokens - ledger_pool)
+    return claim_gaps, answer_missing
+
+
+def _asset_gaps(result: Any, evidence_by_id: Mapping[str, Any]) -> dict[str, list[str]]:
+    """claim_id -> claim assets for claims whose linked evidence shares no asset.
+
+    Market-wide evidence (``asset=None``, e.g. Fear & Greed) grounds any asset.
+    Claims whose links all fail to resolve are left to the unknown-reference
+    check rather than double-reported here.
+    """
+    links = list(_attr(result, "claim_evidence_links") or ())
+    linked: dict[str, list[str]] = defaultdict(list)
+    for link in links:
+        if str(_attr(link, "stance")) in {"supports", "opposes"}:
+            linked[str(_attr(link, "claim_id"))].append(
+                str(_attr(link, "evidence_id"))
+            )
+
+    def plain(value: Any) -> str:
+        return str(getattr(value, "value", value))
+
+    gaps: dict[str, list[str]] = {}
+    for claim in _attr(result, "claims") or ():
+        claim_id = str(_attr(claim, "claim_id"))
+        claim_assets = {plain(asset) for asset in (_attr(claim, "assets") or ())}
+        if not claim_assets:
+            continue
+        resolved = [
+            evidence_by_id[evidence_id]
+            for evidence_id in linked.get(claim_id, ())
+            if evidence_id in evidence_by_id
+        ]
+        if not resolved:
+            continue
+        matched = any(
+            _attr(item, "asset") is None or plain(_attr(item, "asset")) in claim_assets
+            for item in resolved
+        )
+        if not matched:
+            gaps[claim_id] = sorted(claim_assets)
+    return gaps
+
+
+def number_provenance_violations(
+    result: Any, evidence_by_id: Mapping[str, Any]
+) -> list[str]:
+    """Numbers in claim texts and the direct answer must be quoted from evidence.
+
+    The Arbiter prompt's first hard rule ("不得自創任何市場數值") becomes a
+    deterministic check over `_number_gaps`.
+    """
+    claim_gaps, answer_missing = _number_gaps(result, evidence_by_id)
+    violations = [
+        f"claim {claim_id} cites numbers not present in linked evidence: "
+        + ", ".join(str(value) for value in missing)
+        for claim_id, missing in claim_gaps.items()
+    ]
+    if answer_missing:
+        violations.append(
+            "direct_answer cites numbers not present in the evidence ledger: "
+            + ", ".join(str(value) for value in answer_missing)
+        )
+    return violations
+
+
+def asset_consistency_violations(
+    result: Any, evidence_by_id: Mapping[str, Any]
+) -> list[str]:
+    """Each claim's non-neutral links must include evidence about its assets."""
+    return [
+        f"claim {claim_id} evidence links share no asset with claim assets {assets}"
+        for claim_id, assets in _asset_gaps(result, evidence_by_id).items()
+    ]
+
+
+def semantically_flagged_claim_ids(
+    result: Any, evidence_by_id: Mapping[str, Any]
+) -> set[str]:
+    """Claims the semantic checks reject: repair drops these before salvage."""
+    claim_gaps, _ = _number_gaps(result, evidence_by_id)
+    return set(claim_gaps) | set(_asset_gaps(result, evidence_by_id))
+
+
 def structural_violations(
-    result: Any, ledger_ids: set[str], indicators: Iterable[Any] = ()
+    result: Any,
+    ledger_ids: set[str],
+    indicators: Iterable[Any] = (),
+    *,
+    evidence_by_id: Mapping[str, Any] | None = None,
 ) -> list[str]:
     """List every structural reason the result cannot be trusted.
 
@@ -235,19 +430,47 @@ def structural_violations(
         if basis and str(basis) not in ledger_ids:
             violations.append(f"invalidation condition cites unknown evidence {basis}")
 
+    # Semantic grounding needs evidence content, so it only runs when the
+    # caller supplies the ledger items; ID-only callers keep the old contract.
+    if evidence_by_id is not None:
+        violations.extend(number_provenance_violations(result, evidence_by_id))
+        violations.extend(asset_consistency_violations(result, evidence_by_id))
+
     return violations
 
 
-def _repair_generation(generated: Any, ledger_ids: set[str]) -> Any | None:
+def _repair_generation(
+    generated: Any,
+    ledger_ids: set[str],
+    evidence_by_id: Mapping[str, Any] | None = None,
+) -> Any | None:
     """Deterministically drop the un-supportable claims/links, keeping the rest.
 
     Returns a repaired copy of the generation, or ``None`` if nothing usable
     survives (in which case the caller falls back). Also drops invalidation
-    conditions whose quantified basis cites evidence not in the ledger.
+    conditions whose quantified basis cites evidence not in the ledger. When
+    ledger items are supplied, claims rejected by the semantic checks (numbers
+    without provenance, no shared asset) are removed first so salvage cascades
+    over their dependents like any other unusable claim.
     """
+    claims_in = list(_attr(generated, "claims") or ())
+    links_in = list(_attr(generated, "claim_evidence_links") or ())
+    if evidence_by_id is not None:
+        flagged = semantically_flagged_claim_ids(generated, evidence_by_id)
+        if flagged:
+            claims_in = [
+                claim
+                for claim in claims_in
+                if str(_attr(claim, "claim_id")) not in flagged
+            ]
+            links_in = [
+                link
+                for link in links_in
+                if str(_attr(link, "claim_id")) not in flagged
+            ]
     claims, links = salvage_claim_graph(
-        list(_attr(generated, "claims") or ()),
-        list(_attr(generated, "claim_evidence_links") or ()),
+        claims_in,
+        links_in,
         insufficient_data=bool(_attr(generated, "insufficient_data", False)),
         valid_evidence_ids=set(ledger_ids),
     )
@@ -372,6 +595,7 @@ class Arbiter:
         """Return ``(result, notes)``; never raises for a provider failure."""
         items = list(_attr(ledger, "items") or ())
         ledger_ids = {str(_attr(item, "evidence_id")) for item in items}
+        evidence_by_id = {str(_attr(item, "evidence_id")): item for item in items}
         selected = select_evidence(items, indicators, self.settings.max_evidence)
         notes: list[str] = list(degradation_notes)
 
@@ -398,23 +622,26 @@ class Arbiter:
             notes.append(f"Arbiter 生成失敗（{type(exc).__name__}），改用決定論後備結果")
             return self._fallback(request, selected, notes, str(exc)), notes
 
-        violations = structural_violations(generated, ledger_ids, indicators)
+        violations = structural_violations(
+            generated, ledger_ids, indicators, evidence_by_id=evidence_by_id
+        )
         if violations:
             # Repair before discarding: drop only the claims that cannot be
             # supported (e.g. a conclusion whose only link is neutral) plus their
             # dependents and dangling links, and keep the rest. A single bad
             # claim must not sink every inference and conclusion into the
             # fact-only fallback. Deterministic — no extra model call.
-            repaired = _repair_generation(generated, ledger_ids)
+            repaired = _repair_generation(generated, ledger_ids, evidence_by_id)
             if repaired is not None and not structural_violations(
-                repaired, ledger_ids, indicators
+                repaired, ledger_ids, indicators, evidence_by_id=evidence_by_id
             ):
                 dropped = len(_attr(generated, "claims") or ()) - len(
                     _attr(repaired, "claims") or ()
                 )
                 notes.append(
                     f"Arbiter 輸出部分不合規，已移除 {dropped} 個無法佐證的 claim"
-                    "（缺少支持證據或依賴已失效），保留其餘可驗證的推論與結論"
+                    "（缺少支持證據、數值或資產無法溯源，或依賴已失效），"
+                    "保留其餘可驗證的推論與結論"
                 )
                 generated = repaired
             else:
@@ -425,7 +652,6 @@ class Arbiter:
                 return self._fallback(request, selected, notes, violations[0]), notes
 
         payload = generated.model_dump()
-        evidence_by_id = {str(_attr(item, "evidence_id")): item for item in items}
         payload, cap_notes = apply_confidence_caps(payload, indicators, evidence_by_id)
         notes.extend(cap_notes)
         payload.setdefault("degradation_notes", [])
