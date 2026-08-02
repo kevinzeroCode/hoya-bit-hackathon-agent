@@ -280,3 +280,24 @@ These are transitive dependencies that come with the declared packages:
 - `.env` is local-only, excluded from Git
 - `run_config.json` records key *presence* (bool), never values
 - No credentials in image layers, compose files, or artifacts
+
+## CI and Delivery Tooling (added 2026-08-02, S11)
+
+Not runtime dependencies — none of these ship inside the image (`.dockerignore`
+excludes `scripts/`), and none require an AWS credential.
+
+| Tool | Where | Purpose |
+|---|---|---|
+| `actions/checkout@v5`, `actions/setup-python@v5` | `.github/workflows/ci.yml` | checkout + Python 3.12 with pip cache |
+| `ghcr.io/gitleaks/gitleaks:v8.28.0` | CI `secret-scan` job, and locally | secret scan over `git archive HEAD` output |
+| Docker + Compose v2 | CI `container` job, and locally | image build, `docker compose config`, in-image smoke |
+
+**CI jobs:** `verify` (Ruff + `pytest tests/unit tests/contract tests/integration
+tests/acceptance -m "not live" -q`), `container` (compose config -> build -> run ->
+in-image smoke -> non-root + no-`.env` checks), `secret-scan`.
+
+**Why gitleaks scans `git archive HEAD` and not the checkout directory:** scanning the
+directory also sweeps the installed dependency tree, whose own test fixtures contain
+example keys. That produced 125 findings, all in `.venv/` (botocore, numpy, pyarrow),
+which would drown any real one. Tracked content: 315 files, no leaks. Full history:
+206 commits, no leaks.

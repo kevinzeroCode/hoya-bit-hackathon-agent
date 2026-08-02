@@ -75,7 +75,9 @@ src/hoya_agent/
 src/calc/                  # Parallel tool package (NOT in agent pipeline) — pandas calculations
 src/skills/                # Parallel tool package (NOT in agent pipeline) — A1..A9 analysis skills
 prompts/                   # planner-v1.md, research-extraction-v1.md, arbiter-v1.md
-tests/                     # unit/ contract/ integration/ live/ fixtures/ (acceptance/ not yet created)
+tests/                     # unit/ contract/ integration/ acceptance/ live/ fixtures/
+scripts/                   # delivery + verification tools (excluded from the image)
+.github/workflows/ci.yml   # verify / container / secret-scan — no AWS credential needed
 ```
 
 > `_provisional_seams.py` is retired (deleted); application, artifacts, and
@@ -149,8 +151,8 @@ Environment variables (via `config.py`):
 # Install
 python -m pip install -e ".[dev]"
 
-# Default suite (no network)
-python -m pytest tests/unit tests/contract tests/integration -q
+# Default suite (no network) — the canonical gate, verbatim
+python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q
 
 # Lint
 ruff check .
@@ -165,7 +167,13 @@ python -m pytest tests/live -m live -vv -s
 - `tests/fakes.py` provides shared test doubles: `FixedClock`, `FakeLLM`, `FakeSourceAdapter`, etc.
 - Golden fixtures with `pytest.approx` for indicator calculations
 - Markers: `integration`, `acceptance`, `live`
-- `tests/acceptance/` and `tests/live/` directories do not exist yet; planned for Day 2
+- `tests/acceptance/` holds the S10 Gold local Exit gate (29 tests): two different assets as two
+  *independent* single-asset runs, the four-artifact contract, and a fake-clock deadline proof.
+  It is offline and `-m "not live"` safe, so CI runs it.
+- `tests/live/` is opt-in: `@pytest.mark.live` **and** `RUN_LIVE_TESTS=1`.
+- **The canonical gate command** (`tasks.md` Final Required Gate) names `tests/acceptance`
+  verbatim, so it only runs if that directory exists:
+  `python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q`
 
 ## Detailed Documentation
 
@@ -241,6 +249,30 @@ all** — an absent one makes people go and check, a wrong one gets believed.
 
 If you are unsure whether your change warrants an update, update it. Three minutes of your
 time against half a day of someone else's.
+
+## 2026-08-02 S10 acceptance + S11 local delivery layer
+
+- `tests/acceptance/` created (29 tests). Before this, the gate command in `tasks.md` and
+  `docs/Implementation-Plan.md` named a directory that did not exist, so `pytest` errored
+  out before running anything. It now runs verbatim: **1266 passed**, Ruff clean.
+- `scripts/run_acceptance.py` drives the two real Gold runs behind `docs/rehearsals/run-log.md`;
+  `scripts/smoke_test.py` is the stdlib-only deployment smoke (HTTP health/root + four
+  artifacts + one shared `run_id`).
+- `.github/workflows/ci.yml` added: `verify`, `container`, `secret-scan`. No AWS credential.
+- **"Deterministic rendering" is not byte-identity.** `fetched_at` is provenance — when this
+  process read the source — and for a CSV read that genuinely is wall-clock now. The
+  acceptance test normalizes it, and a second test pins `fetched_at` as the *only* field
+  allowed to differ between two runs of identical inputs.
+- **Verify a deployment inside the container.** The UI writes artifacts to a per-run
+  `tempfile.mkdtemp()`, so a host-side check proves the host's code, not the image's.
+  `.dockerignore` excludes `scripts/`, hence `docker cp` then `docker exec`.
+- **Do not point gitleaks at the checkout directory.** It also sweeps the installed
+  dependency tree: 125 findings, every one a botocore/numpy/pyarrow example key. CI scans
+  `git archive HEAD` instead — 315 tracked files, no leaks; full history 206 commits, clean.
+- **Bedrock is blocked on account enablement, not code.** Account `035741228337` returns
+  `ResourceNotFoundException: Model use case details have not been submitted for this
+  account` for every model and profile tried. Live runs degrade to deterministic market
+  evidence and still ship four artifacts. Do not record Gold or deployment as complete.
 
 ## 2026-08-01 S8 / S9 / S9B integration
 

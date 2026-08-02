@@ -284,8 +284,18 @@ flowchart LR
 - Artifacts written to mounted local volume
 - EC2 instance role for Bedrock permissions (no stored credentials)
 - Non-root Docker image with pinned dependencies
-- Deployment flow: Docker build → ECR (immutable tag) → EC2 `docker compose pull` / `up`
-  (see `docs/deploy-ec2.md`, `docs/Tech-Stack-Plan.md`)
+- Deployment flow: Docker build → ECR (immutable commit-SHA tag) → EC2, running the
+  character-for-character identical tag. Canonical procedure: **`docs/deployment.md`**
+  (`docs/deploy-ec2.md` is retired and now points there). One-page overview:
+  `docs/architecture.md`. Demo script: `docs/demo-runbook.md`.
+- Administration goes through **SSM Session Manager**; port 22 is never opened.
+- **Verifying a deployment means running `scripts/smoke_test.py` *inside* the container**
+  (`docker cp` + `docker exec`). The Streamlit UI writes artifacts to a per-run
+  `tempfile.mkdtemp()` that no host process can see, so a host-side artifact check would
+  prove the host's code rather than the image's. `.dockerignore` excludes `scripts/`,
+  which is why the file is copied in rather than already present.
+- CI (`.github/workflows/ci.yml`) builds the image and runs that same in-image smoke test
+  on every push, plus non-root (`uid=10001`) and no-`.env`-in-image assertions.
 
 ## Run Modes and Data-Mode Honesty
 
