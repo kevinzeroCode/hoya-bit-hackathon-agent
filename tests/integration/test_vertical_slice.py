@@ -28,10 +28,12 @@ from hoya_agent.models import (
 from hoya_agent.orchestration.pipeline import AnalysisPipeline, EventEmitter, PipelineOutcome
 from hoya_agent.reporting.artifacts import (
     ARTIFACT_NAMES,
+    DELIVERABLE_NAMES,
     EVIDENCE_LEDGER,
     EVIDENCE_LIST,
     EXECUTION_LOG,
     FINAL_REPORT,
+    HTML_REPORT,
     RUN_CONFIG,
 )
 
@@ -170,7 +172,7 @@ async def test_offline_rehearsal_run_writes_all_parseable_artifacts(tmp_path) ->
     summary = await service.run(_rehearsal_request(), progress=progress)
 
     run_dir = Path(summary.artifact_dir)
-    assert sorted(p.name for p in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
+    assert sorted(p.name for p in run_dir.iterdir()) == sorted(DELIVERABLE_NAMES)
     assert summary.missing_artifacts == []
     assert summary.terminal_state is TerminalState.completed
     assert summary.run_mode is RunMode.rehearsal
@@ -178,6 +180,7 @@ async def test_offline_rehearsal_run_writes_all_parseable_artifacts(tmp_path) ->
     config = json.loads((run_dir / RUN_CONFIG).read_text(encoding="utf-8"))
     ledger = EvidenceLedger.model_validate_json((run_dir / EVIDENCE_LEDGER).read_text(encoding="utf-8"))
     report = (run_dir / FINAL_REPORT).read_text(encoding="utf-8")
+    html_report = (run_dir / HTML_REPORT).read_text(encoding="utf-8")
 
     # Evidence List (提交清單 ②): every row carries exactly the four required
     # columns the competition mandates, one row per ledger evidence.
@@ -193,6 +196,9 @@ async def test_offline_rehearsal_run_writes_all_parseable_artifacts(tmp_path) ->
     # One run_id across all four artifacts and the UI summary.
     assert config["run_id"] == summary.run_id == ledger.run_id
     assert summary.run_id in report
+    assert summary.run_id in html_report
+    assert html_report.startswith("<!doctype html>")
+    assert '<section id="trust">' in html_report
     assert {line["run_id"] for line in log_lines if "run_id" in line} == {summary.run_id}
 
     assert config["effective_run_mode"] == "rehearsal"
@@ -203,6 +209,7 @@ async def test_offline_rehearsal_run_writes_all_parseable_artifacts(tmp_path) ->
         EVIDENCE_LEDGER,
         EVIDENCE_LIST,
         FINAL_REPORT,
+        HTML_REPORT,
     }
     assert all(len(digest) == 64 for digest in config["artifact_checksums"].values())
     assert config["missing_artifacts"] == []
@@ -242,7 +249,7 @@ async def test_evidence_is_persisted_even_when_analysis_is_missing(tmp_path) -> 
     summary = await service.run(_rehearsal_request())
     run_dir = Path(summary.artifact_dir)
 
-    assert sorted(p.name for p in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
+    assert sorted(p.name for p in run_dir.iterdir()) == sorted(DELIVERABLE_NAMES)
     assert summary.terminal_state is TerminalState.degraded
     assert summary.insufficient_data is True
     assert summary.confidence is Reliability.low
