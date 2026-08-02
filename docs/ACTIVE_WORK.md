@@ -121,3 +121,8 @@ python scripts/diagnose_bedrock.py        # Bedrock 可用性（需 AWS_REGION +
 3. S9/S9B 的「完成」只代表離線能力；S8 Silver 已過，S10 Gold、S11 deployment 各有獨立 gate。
 4. 每次合併後同步本檔、Implementation Plan 與 Kiro WIP；不得保留已刪檔案的現況描述。
 5. `src/calc/`、`src/skills/` 是平行工具套，不屬 agent pipeline；改動它們不需動 agent 狀態表。
+
+## 2026-08-02 local market cache
+
+新增 Binance 五年日 K 分頁預抓與本地 CSV 快取；live pipeline 會優先讀取
+`HOYA_MARKET_CACHE_DIR`，沒有快取才使用即時單頁抓取。

@@ -591,3 +591,10 @@ flowchart TD
 ## 2026-08-02 P4 HTML report
 
 Finalize now renders the audited Markdown report, then renders and atomically writes the self-contained HTML companion from the same validated result and ledger. The UI displays the HTML and falls back to Markdown only when the companion is unavailable.
+
+## 2026-08-02 local market history cache
+
+`scripts/prefetch_market_data.py` uses paginated Binance daily klines to write
+validated per-asset CSVs for a five-year window. The live `binance_bar_loader`
+checks `HOYA_MARKET_CACHE_DIR` first and only calls the one-page live endpoint
+when the requested asset is not cached.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -32,6 +33,21 @@ def test_binance_loader_raises_when_empty_so_pipeline_degrades(monkeypatch):
     load = live_sources.binance_bar_loader(_NOW)
     with pytest.raises(ValueError, match="Binance fetch failed"):
         load("BTC")
+
+
+def test_binance_loader_prefers_local_cache(tmp_path: Path, monkeypatch):
+    cache = tmp_path / "BTC_daily_ohlcv.csv"
+    cache.write_text(
+        "date,open,high,low,close,volume\n2026-07-31,1,2,0.5,1.5,10\n",
+        encoding="utf-8",
+    )
+
+    async def _unexpected(*a, **k):
+        raise AssertionError("cache hit must not call Binance")
+
+    monkeypatch.setattr(live_sources, "fetch_binance_daily", _unexpected)
+    load = live_sources.binance_bar_loader(_NOW, cache_dir=tmp_path)
+    assert load("BTC")[0].close == 1.5
 
 
 def test_fear_greed_drafts_returns_drafts_and_degradation(monkeypatch):

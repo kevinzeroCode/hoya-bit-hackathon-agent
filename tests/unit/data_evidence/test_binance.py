@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 import pytest
 
-from hoya_agent.adapters.binance import fetch_binance_daily
+from hoya_agent.adapters.binance import fetch_binance_daily, fetch_binance_daily_history
 from hoya_agent.data.types import MarketBar
 
 UTC = timezone.utc
@@ -64,3 +64,27 @@ async def test_http_error_is_degradation_not_crash():
     )
     assert bars == []
     assert degradation
+
+
+async def test_history_paginates_with_start_and_end_times():
+    requests: list[dict[str, str]] = []
+    first = [_kline(date(2029, 8, 1) + timedelta(days=i), 1, 2, 0.5, 1.5, 10) for i in range(1000)]
+    second = [_kline(date(2033, 1, 1), 1.5, 2.5, 1, 2, 12)]
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(dict(request.url.params))
+        return httpx.Response(200, json=first if len(requests) == 1 else second)
+
+    bars, degradation = await fetch_binance_daily_history(
+        "BTC",
+        analysis_as_of=datetime(2035, 1, 3, tzinfo=UTC),
+        client=_client(handler),
+        days=2000,
+    )
+
+    assert len(bars) == 1001
+    assert bars[0].date == date(2029, 8, 1)
+    assert not degradation
+    assert len(requests) == 2
+    assert requests[0]["limit"] == "1000"
+    assert "startTime" in requests[0] and "endTime" in requests[0]

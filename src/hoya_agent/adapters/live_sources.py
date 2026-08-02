@@ -18,14 +18,17 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import os
 from collections.abc import Callable, Coroutine, Sequence
 from datetime import datetime
+from pathlib import Path
 from typing import Any, TypeVar
 
 import httpx
 
 from hoya_agent.adapters.alternative_me import fetch_fear_greed
 from hoya_agent.adapters.binance import fetch_binance_daily
+from hoya_agent.adapters.organizer_csv import load_organizer_csv
 from hoya_agent.data.types import MarketBar
 from hoya_agent.evidence.drafts import PendingEvidence
 
@@ -49,7 +52,11 @@ def _run_sync(coro: Coroutine[Any, Any, _T]) -> _T:
 
 
 def binance_bar_loader(
-    analysis_as_of: datetime, *, limit: int = _DEFAULT_KLINE_LIMIT, timeout: float = 45.0
+    analysis_as_of: datetime,
+    *,
+    limit: int = _DEFAULT_KLINE_LIMIT,
+    timeout: float = 45.0,
+    cache_dir: str | os.PathLike[str] | None = None,
 ) -> Callable[[str], Sequence[MarketBar]]:
     """A sync `BarLoader(asset) -> bars` backed by live Binance daily klines.
 
@@ -59,6 +66,15 @@ def binance_bar_loader(
     """
 
     def _load(asset: str) -> Sequence[MarketBar]:
+        selected_cache = cache_dir or os.getenv("HOYA_MARKET_CACHE_DIR")
+        if selected_cache:
+            try:
+                cached = load_organizer_csv(Path(selected_cache) / f"{asset}_daily_ohlcv.csv")
+            except (FileNotFoundError, OSError, ValueError):
+                cached = []
+            if cached and cached[-1].date <= analysis_as_of.date():
+                return cached
+
         async def _fetch() -> tuple[list[MarketBar], list[str]]:
             async with httpx.AsyncClient() as client:
                 return await fetch_binance_daily(

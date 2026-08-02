@@ -124,9 +124,21 @@ CI（`.github/workflows/ci.yml`）在每次 push 跑三個 job：**verify**（Ru
 | `BEDROCK_FALLBACK_MODEL_ID` | 否 | throttling fallback |
 | `CRYPTOPANIC_API_TOKEN` | 否 | 沒有就誠實揭露缺口 |
 | `HOYA_DATA_DIR` | 否 | 覆寫資料集路徑；容器內已設好 |
+| `HOYA_MARKET_CACHE_DIR` | 否 | 即時 Binance 日 K 本地快取；建議先用 `python scripts/prefetch_market_data.py` 建立五年資料 |
 
 憑證本身走標準 AWS 鏈：本機用 profile、EC2 用 instance role。🚫 機器上不放 access key。
 完整清單見 [`.env.example`](.env.example) 與 [Deployment](docs/deployment.md)。
+
+### 建立五年日 K 本地快取
+
+分析前可先抓取五年 Binance 日線，避免每次 run 重新下載：
+
+```bash
+python scripts/prefetch_market_data.py --output-dir market_cache
+```
+
+設定 `HOYA_MARKET_CACHE_DIR=market_cache` 後，live pipeline 會優先讀取本地 CSV；
+快取不存在時才回到原本的即時 Binance 路徑。
 
 ## Artifacts
 

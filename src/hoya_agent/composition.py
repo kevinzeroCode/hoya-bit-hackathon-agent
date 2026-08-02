@@ -16,6 +16,7 @@ Two run shapes:
 from __future__ import annotations
 
 import json
+import os
 import re
 import unicodedata
 from collections.abc import Sequence
@@ -374,6 +375,7 @@ def build_live_pipeline(
     kline_limit: int = 1000,
     arbiter_max_tokens: int = 3000,
     enable_news: bool = True,
+    market_cache_dir: str | os.PathLike[str] | None = None,
 ) -> DeadlineAwarePipeline:
     """Live market + sentiment + (optional) first-party news, then Arbiter reasoning.
 
@@ -383,7 +385,11 @@ def build_live_pipeline(
     or extraction fails — the market + sentiment + Arbiter path is unaffected.
     """
     market_pipeline = OrganizerCsvPipeline(
-        load_bars=binance_bar_loader(analysis_as_of, limit=kline_limit),
+        load_bars=binance_bar_loader(
+            analysis_as_of,
+            limit=kline_limit,
+            cache_dir=market_cache_dir,
+        ),
         extra_drafts=fear_greed_drafts(analysis_as_of),
         analysis_date=analysis_as_of.date(),
         market_source_name="binance_spot",

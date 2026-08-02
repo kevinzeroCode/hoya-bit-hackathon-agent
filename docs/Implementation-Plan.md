@@ -1430,3 +1430,11 @@ Note: `tests/unit/skills/` raises a NumPy `Timedelta` `DeprecationWarning` from
 
 Verification evidence and remaining gates are recorded in [S8-S9-S9B implementation](S8-S9-S9B-implementation.md).
 Remaining: S10 Gold local Exit and S11 deploy/timed rehearsal.
+
+## 2026-08-02 five-year local market cache
+
+Binance daily klines now have a paginated five-year prefetch path via
+`scripts/prefetch_market_data.py`. The generated per-asset CSVs use the existing
+validated OHLCV schema. `build_live_pipeline()` and `binance_bar_loader()` read
+`HOYA_MARKET_CACHE_DIR` first, so the interactive path can reuse local history
+and only fall back to the existing one-page live request when no cache is present.

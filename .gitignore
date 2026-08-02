@@ -35,6 +35,7 @@ htmlcov/
 artifacts/
 runs/
 logs/
+market_cache/
 
 # IDEs
 .idea/
