@@ -77,9 +77,11 @@ from hoya_agent.reporting.artifacts import (
     EVIDENCE_LEDGER,
     EVIDENCE_LIST,
     FINAL_REPORT,
+    HTML_REPORT,
     RUN_CONFIG,
     LocalArtifactStore,
 )
+from hoya_agent.reporting.html_renderer import render_html
 from hoya_agent.reporting.renderer import build_insufficient_data_result, render
 
 SCHEMA_VERSION = "1.0"
@@ -576,6 +578,25 @@ class ApplicationService:
                     "artifact_write",
                     "ok",
                     message=f"wrote {FINAL_REPORT}",
+                )
+            )
+
+        html_report = render_html(
+            result,
+            ledger,
+            terminal_state=outcome.terminal_state.value,
+            prompt_version=self._prompt_version,
+            policy_version=self._policy_version,
+            lint=advice_violations,
+        )
+        if store.write_text(HTML_REPORT, html_report):
+            emit(
+                self._event(
+                    context,
+                    "artifact",
+                    "artifact_write",
+                    "ok",
+                    message=f"wrote {HTML_REPORT}",
                 )
             )
 
