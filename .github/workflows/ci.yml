@@ -1,0 +1,114 @@
+# S11 CI — the repository gate, run on every push.
+#
+# Three independent jobs, none of which needs an AWS credential:
+#   verify       the non-live test suite + Ruff (the command from tasks.md verbatim)
+#   container    Compose config, image build, and a smoke test *inside* the image
+#   secret-scan  gitleaks over tracked content only, plus a tracked-filename check
+#
+# Live tests (`tests/live`, marker `live`) are never selected here: they are not in
+# the path list, `-m "not live"` deselects them anyway, and RUN_LIVE_TESTS is unset.
+name: CI
+
+on:
+  push:
+    branches: [main, "agent/**", "fix/**", "feat/**", "task/**"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: tests + ruff (py3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Ruff
+        run: ruff check .
+
+      - name: Non-live test suite
+        run: python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q
+
+  container:
+    name: docker build + in-image smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose config is valid
+        run: docker compose config
+
+      - name: Build the image with the commit SHA as its tag
+        run: docker build -t hoya-agent:${{ github.sha }} .
+
+      - name: Start the container
+        run: docker run -d --name hoya-agent -p 8501:8501 hoya-agent:${{ github.sha }}
+
+      - name: Container runs as the non-root appuser
+        run: |
+          uid="$(docker exec hoya-agent id -u)"
+          test "$uid" = "10001" || { echo "FAIL: container runs as uid $uid, expected 10001"; exit 1; }
+          echo "ok: uid $uid (appuser)"
+
+      - name: No .env or key material inside the image
+        run: |
+          if docker exec hoya-agent sh -c 'ls -A /app/.env /app/*.pem /app/*.key 2>/dev/null' | grep -q .; then
+            echo "FAIL: credential-shaped file present in the image"; exit 1
+          fi
+          echo "ok: no credential-shaped file in /app"
+
+      # scripts/ is excluded by .dockerignore, so the smoke test is copied in.
+      # It must run *inside* the container: the UI writes artifacts to a per-run
+      # temporary directory that no host process can see.
+      - name: Smoke test inside the image
+        run: |
+          docker cp scripts/smoke_test.py hoya-agent:/tmp/smoke_test.py
+          docker exec hoya-agent python /tmp/smoke_test.py --base-url http://localhost:8501 --timeout 120
+
+      - name: Container logs
+        if: failure()
+        run: docker logs hoya-agent
+
+      - name: Clean up
+        if: always()
+        run: docker rm -f hoya-agent || true
+
+  secret-scan:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Scan what the repository actually ships. Scanning the checkout directory
+      # would also sweep the installed dependency tree, whose own test fixtures
+      # are full of example keys and drown any real finding.
+      - name: gitleaks over tracked content
+        run: |
+          mkdir -p "$RUNNER_TEMP/tracked"
+          git archive HEAD | tar -x -C "$RUNNER_TEMP/tracked"
+          docker run --rm -v "$RUNNER_TEMP/tracked:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.28.0 \
+            dir /repo --no-banner --redact --exit-code 1
+
+      - name: No credential-shaped file is tracked
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$|\.pem$|\.key$|\.p12$|secrets\.toml$'; then
+            echo "FAIL: a credential-shaped file is tracked"; exit 1
+          fi
+          echo "ok: no credential-shaped tracked files"

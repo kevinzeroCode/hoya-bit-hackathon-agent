@@ -2,7 +2,10 @@
 
 > **開工前先讀。** 這份文件只記當前事實與路徑 ownership；歷史狀態請看 Git。
 >
-> 最後更新：2026-08-02，live Silver Exit 已過、UI／live composition root／calc／skills 已落地，基準 `main@6f914dc`。
+> 最後更新：2026-08-02，S11 本地交付層完成（CI／smoke／Docker／secret scan），基準 `main@c844a38`。
+> **Feature Freeze 已生效**（2026-08-02）：此後只准 bug fix、可靠性修復、部署、彩排、文件、
+> rollback 準備與提交驗證。🚫 新功能、新 provider、新 artifact 格式、PDF/HTML、額外視覺化、
+> 五幣矩陣、Platinum、H3 一律拒絕。
 
 ## Authoritative status
 
@@ -19,22 +22,28 @@
 | S8 | ✅ | **Silver live Exit 已過（2026-08-02）**：`tests/live/test_live_silver_pipeline.py` → 1 passed in 50.15s，schema-valid Bedrock 結構化輸出 ＋ 四項 artifacts。live composition root `composition.py` ＋ `adapters/live_sources.py` 已落地 |
 | S9 | ✅（離線） | Trust/Regime/Invalidation 完成 |
 | S9B | ✅（離線） | one-run dual-asset comparison 完成 |
-| S10 | 🔴 | Gold local Exit 未開始（兩次獨立單幣 run ＋ fake-clock budget acceptance） |
-| S11 | 🔴 | 部署與 judged-flow rehearsal 未開始（CI、ECR/EC2、live smoke、rollback、15 分鐘彩排） |
+| S10 | 🟡 | `tests/acceptance/` 29 passed（兩資產獨立單幣 run、artifact 契約、fake-clock deadline）；`scripts/run_acceptance.py` ＋ `docs/rehearsals/run-log.md` 已落地。**complete-Evidence run 仍缺**——Bedrock 帳號未開通 |
+| S11 | 🟡 | CI（3 job）、`scripts/smoke_test.py`、本地 Docker runtime、容器內 smoke、非 root、secret scan 全數通過；**ECR/EC2、rollback、15 分鐘彩排未開始** |
 
 ## Current main
 
-- Commit：`6f914dc`（`main`）。
+- Commit：`c844a38`（`main`）。S11 工作在 `agent/s11-delivery`。
 - `src/hoya_agent/` 有 55 個 Python 檔；新增 `composition.py`、`adapters/live_sources.py`、
   `reasoning/{mapping,schemas}.py`、`evidence/{grounding,triangulation}.py`、`ui/{presenter,streamlit_app}.py`。
 - `_provisional_seams.py` 與 `test_s1_seam_bridge.py` 已刪除；runtime imports 指向 canonical models/ports。
 - **平行工具套** `src/calc/`（6 檔）與 `src/skills/`（13 檔）已納入 `main` 追蹤，是獨立價格分析腳本／技能，
   非 agent pipeline 的一部分；各自有 `tests/unit/{calc,skills}/`。
-- **2026-08-02 離線實跑**：`python -m pytest tests/unit tests/contract tests/integration -q` →
-  **1235 passed, 0 failed**；`ruff check .` → **All checks passed!**（Python 3.12）。
+- **2026-08-02 離線實跑**（`c844a38`, Python 3.12）：
+  `python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q`
+  → **1266 passed, 0 failed**；`ruff check .` → **All checks passed!**。
 - **Silver live gate**：`tests/live/test_live_silver_pipeline.py` → 1 passed in 50.15s；S8 關閉。
-- GitHub Actions/status checks 尚未配置；S8 以 D 槽 credentialed manual live gate 驗收通過。
-- `tests/acceptance/` 尚不存在；`tests/live/` 有 opt-in source/Bedrock/silver-pipeline gate。
+- **GitHub Actions 已配置**：`.github/workflows/ci.yml` — verify／container／secret-scan，皆免 AWS 憑證。
+- `tests/acceptance/` **已建立**（3 檔、29 tests）；`tests/live/` 有 opt-in source/Bedrock/silver-pipeline gate。
+- **🔴 Bedrock 帳號阻塞**：account `035741228337` @ `us-west-2` 每次呼叫都回
+  `ResourceNotFoundException: Model use case details have not been submitted for this account`。
+  Haiku 4.5／Claude 3 Haiku／Sonnet 4.5、`us.` 與 `global.` profile 全試過皆 0/3。
+  這是 Bedrock console 的帳號開通動作。S8 的 Silver Exit 是在**另一個已開通帳號**上過的。
+  未開通前，任何 live run 都只有 deterministic 市場證據、無推論與結論（誠實降級，四項 artifacts 仍齊全）。
 
 ## Completed and frozen
 
@@ -60,18 +69,28 @@ S9B 的 per-asset/source 配額位於 orchestration projection；完整 Ledger a
 
 | 優先 | 工作 | Owner | 完成條件 |
 |---:|---|---|---|
-| 1 | S10 Gold local Exit | 全員 | 兩個不同資產各一次獨立單幣 run＋fake-clock deadline/artifact gate |
-| 2 | S11 deploy/rehearse | P1/P4 | CI、ECR/EC2（見 `docs/deploy-ec2.md`）、rollback、15 分鐘完整彩排 |
-| 3 | GitHub Actions / status checks | P1 | CI workflow 配置 |
-| 4 | repository hygiene | 各 owner | full pytest 綠、Ruff 零錯誤、狀態文件同步 |
+| 1 | **開通 Bedrock 帳號** | 帳號持有者 | 在 `035741228337` 的 Bedrock console 送出 Anthropic use case details 表單；`scripts/diagnose_bedrock.py` 3/3 成功 |
+| 2 | S10 complete-Evidence run | 全員 | 開通後 `python scripts/run_acceptance.py --live`，兩資產都出推論／結論 Claim |
+| 3 | S11 ECR/EC2 部署 | P1/P4 | ECR immutable tag → EC2 跑同一 tag → 公開 healthcheck → rollback 實跑一次 |
+| 4 | S11 15 分鐘計時彩排 | 全員 | §3.2 的 S11 人工清單逐項簽核 |
+| 5 | repository hygiene | 各 owner | full pytest 綠、Ruff 零錯誤、狀態文件同步 |
 
 ## Commands
 
 ```bash
 python -m pip install -e ".[dev]"
-python -m pytest tests/unit tests/contract tests/integration -q
+
+# tasks.md 的 Final Required Gate（逐字）
+python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q
 ruff check .
-python scripts/verify_s8_s9_s9b.py
+docker compose config
+git status --short
+
+# 額外驗收
+python scripts/verify_s8_s9_s9b.py       # S8/S9/S9B 離線 smoke
+python scripts/run_acceptance.py          # S10 兩資產獨立單幣 run（離線）
+python scripts/smoke_test.py --artifacts-only
+python scripts/diagnose_bedrock.py        # Bedrock 可用性（需 AWS_REGION + BEDROCK_PRIMARY_MODEL_ID）
 ```
 
 ## Coordination rules

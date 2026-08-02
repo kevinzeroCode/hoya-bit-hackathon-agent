@@ -58,19 +58,34 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S8** H2-Lite Silver | ✅ | **Silver live Exit 已過（2026-08-02）**：`tests/live/test_live_silver_pipeline.py` → 1 passed in 50.15s，schema-valid Bedrock 結構化輸出 ＋ 四項 artifacts。live composition root `composition.py` ＋ `adapters/live_sources.py` 已落地 |
 | **S9** 創意層 | ✅（離線） | Trust Scorecard、regime/unavailable、Evidence-backed invalidation 與 renderer 已通過離線 smoke |
 | **S9B** 雙幣比較 | ✅（離線） | 單一 run/cutoff/ledger、UTC 對齊、balanced Arbiter projection、比較 Claim 與第 12 段已通過 |
-| **S10** Gold local Exit | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 尚缺 |
-| **S11** 部署與彩排 | 🔴 | CI、ECR/EC2、live smoke、rollback 與 15 分鐘 judged-flow rehearsal 尚缺 |
+| **S10** Gold local Exit | 🟡 | 自動 acceptance 已補齊（`tests/acceptance/` 29 passed）、兩資產各兩次獨立單幣 run 已跑並記錄；**complete-Evidence（含推論結論）的 run 仍缺**，卡在 Bedrock 帳號未開通，見 `docs/rehearsals/run-log.md` |
+| **S11** 部署與彩排 | 🟡 | CI、`scripts/smoke_test.py`、本地 Docker runtime、secret scan 已完成；ECR/EC2、rollback、15 分鐘 judged-flow rehearsal 尚缺 |
 
 **目前完成分層：**嚴格完成 S0/S1/S2/S3/S4/S5/S6/S7；離線功能完成 S9/S9B；
-**S8 Silver Exit 已完成（2026-08-02）**；未完成 S10/S11。
+**S8 Silver Exit 已完成（2026-08-02）**；S10/S11 各完成一半（見上表）。
 
-**Repository-wide gate 實跑（2026-08-02, commit `6f914dc`, Python 3.12）：**
-`python -m pytest tests/unit tests/contract tests/integration -q` → **1235 passed, 0 failed**；
-`ruff check .` → **All checks passed!**。GitHub Actions/status checks 尚未配置。
-即使如此，仍不得把離線 smoke 說成 Gold 或部署完成——那兩項要的是 live 計時與部署證據。
+**Repository-wide gate 實跑（2026-08-02, branch `agent/s11-delivery` @ `c844a38`, Python 3.12）：**
+`python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q`
+→ **1266 passed, 0 failed**（1237 基準 ＋ 29 新增 acceptance）；`ruff check .` → **All checks passed!**。
+這是 `tasks.md` Final Required Gate 那條指令**第一次能逐字執行**——先前 `tests/acceptance/`
+不存在，pytest 會直接 `ERROR: file or directory not found`。
 
-**下一條關鍵路徑：** S3 Bronze ✅ → S4 ✅ → S6 ✅ → S8 推理接線 ✅ →
-**S8 live Silver ✅（2026-08-02）** → S10 Gold local Exit → S11 部署與計時彩排。
+**GitHub Actions 已配置**（`.github/workflows/ci.yml`）：verify（ruff ＋ 非 live 測試）、
+container（`docker compose config` ＋ image build ＋ 容器內 smoke ＋ 非 root/無 `.env` 檢查）、
+secret-scan（gitleaks 掃追蹤內容 ＋ 追蹤檔名檢查）。三個 job 都不需要 AWS 憑證。
+
+**Secret scan 實跑（2026-08-02, gitleaks v8.28.0）：**追蹤內容 315 檔 → **no leaks found**；
+全歷史 206 commits → **no leaks found**。（工作樹全掃會有 125 筆，全部落在 `.venv/` 的
+botocore／numpy／pyarrow 測試 fixture，非 repo 內容——所以 CI 只掃 `git archive HEAD`。）
+
+**🔴 Bedrock 帳號阻塞：**AWS account `035741228337` @ `us-west-2` 的每一次 Bedrock 呼叫都回
+`ResourceNotFoundException: Model use case details have not been submitted for this account`。
+Haiku 4.5、Claude 3 Haiku、Sonnet 4.5，`us.` 與 `global.` profile 全試過，`scripts/diagnose_bedrock.py`
+各 0/3 成功。這是 Bedrock console 的帳號開通動作，不是程式缺陷——pipeline 照設計誠實降級並仍產出四項
+artifacts。S8 記錄的 Silver Exit 是在**另一個已開通的帳號**上執行的。
+
+**下一條關鍵路徑：** S8 live Silver ✅ → S10 自動 acceptance ✅ →
+**S10 complete-Evidence run（等 Bedrock 開通）** → S11 ECR/EC2 → 15 分鐘計時彩排。
 
 ---
 
@@ -1194,7 +1209,26 @@ UI 停用第二幣加選、只接受單幣請求，並在文件與簡報揭露�
 
 ### S10 — Gold local Exit：兩個資產各跑一次獨立單幣 run
 
-> **現況：🔴 未開始。相依 S8（Silver）。**
+> **現況：🟡 自動 acceptance 與兩資產獨立 run 已完成；complete-Evidence run 卡在 Bedrock 帳號開通。**
+>
+> **2026-08-02（`agent/s11-delivery` @ `c844a38`）實跑：**
+> - `tests/acceptance/test_{gold_assets,artifact_contract,deadline_budget}.py` 建立 → **29 passed**。
+> - `scripts/run_acceptance.py` 建立；離線（organizer CSV）與 live baseline 各跑一次 BTC/ETH
+>   獨立單幣 run，共四次 run，全部四項 artifacts 齊全、run_id 互異、ledger 不互相污染。
+> - `python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q`
+>   → **1266 passed**；`ruff check .` → **All checks passed!**。
+> - run ID／時長／降級／artifact 路徑全部記在 `docs/rehearsals/run-log.md`。
+>
+> **踩到的坑（留給後面的人）：**
+> 1. `tests/acceptance/` 先前不存在，但 `tasks.md` 的 Final Required Gate 與本文 S11 的閘門指令
+>    逐字包含它 → pytest 會 `ERROR: file or directory not found`。閘門指令根本跑不完。
+> 2. 「deterministic rendering」不等於 byte-identical：`fetched_at` 是 provenance（本 process
+>    何時讀到來源），CSV 讀取的取得時間本來就是當下牆鐘，兩次相同輸入必然差幾秒。
+>    acceptance 測試把它正規化後比對，並另有一條測試釘住「唯一容許漂移的欄位就是 `fetched_at`」。
+> 3. **Bedrock 帳號未開通**（見 §1.1）：live baseline run 的 Planner／research extraction／Arbiter
+>    全部 `LLMUnavailableError`，evidence 只剩 deterministic 市場證據 5 筆。四項 artifacts 仍齊全，
+>    降級被誠實揭露。**因此 S10 不得記為完成。**
+>
 > **指派：** 全員；任務 A 擁有這個閘門。
 
 **目標**：用兩個**不同**資產各自的獨立單幣 run，證明 pipeline 真的是 coin-agnostic。
@@ -1231,7 +1265,33 @@ Silver 已過；兩個不同資產各自以獨立單幣 run 通過；必要的�
 
 ### S11 — Feature Freeze、部署與計時彩排
 
-> **現況：🔴 未開始。**
+> **現況：🟡 本地交付層完成；雲端與彩排未開始。**
+>
+> **2026-08-02（`agent/s11-delivery` @ `c844a38`）實跑：**
+>
+> | 項目 | 狀態 | 實際證據 |
+> |---|---|---|
+> | `.github/workflows/ci.yml` | ✅ | verify／container／secret-scan 三個 job，皆不需 AWS 憑證 |
+> | `scripts/smoke_test.py` | ✅ | 純標準庫；HTTP health/root ＋ 四項 artifact 解析與 run_id 一致 |
+> | `docker build` | ✅ | `hoya-agent:c844a38`，860 MB |
+> | 本地 runtime | ✅ | 容器 `Up (healthy)`；`/_stcore/health` → `ok`；`/` → 200、10 626 bytes |
+> | **容器內** smoke | ✅ | `docker cp` ＋ `docker exec` → 四項 artifacts、6 log events、5 evidence、run_id 一致 |
+> | 非 root | ✅ | `docker exec … id` → `uid=10001(appuser)` |
+> | image 無秘密 | ✅ | `/app` 內無 `.env`、無 `*.pem`／`*.key` |
+> | `docker compose config` | ✅ | VALID |
+> | secret scan | ✅ | gitleaks v8.28.0：追蹤內容 315 檔 no leaks；全歷史 206 commits no leaks |
+> | ECR／EC2 部署 | 🔴 | 未開始 |
+> | rollback 演練 | 🔴 | 未執行 |
+> | 15 分鐘計時彩排 | 🔴 | 未執行 |
+>
+> **踩到的坑：**
+> 1. **UI 的 artifacts 寫在容器內的 `tempfile.mkdtemp()`**（`ui/streamlit_app.py`），host 端程序看不到。
+>    所以 smoke test 必須用 `docker exec` **在容器內**跑，才是在驗「部署的那個 image」而不是 host 的碼。
+>    而 `.dockerignore` 排除了 `scripts/`，所以要先 `docker cp` 進去。
+> 2. **gitleaks 不能直接掃 checkout 目錄**：整棵依賴樹會噴 125 筆 false positive（botocore／numpy／
+>    pyarrow 自帶的範例金鑰），真發現會被淹掉。CI 改成掃 `git archive HEAD` 解出來的追蹤內容。
+> 3. 在 Git Bash 下 `docker exec … /tmp/x.py` 會被 MSYS 改寫成 Windows 路徑，要 `MSYS_NO_PATHCONV=1`。
+>
 > **指派：** 任務 A 與 D 共同主導；全員參與彩排。
 
 **目標**：在不加新功能的前提下把東西送上去，並完成一次完整計時的評審流程彩排。
