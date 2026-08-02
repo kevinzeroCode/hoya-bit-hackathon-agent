@@ -60,3 +60,37 @@ python scripts/live_silver_run.py --mode live --asset BTC
 | Docker CLI | **not installed in this shell** — container checks remain S11 work |
 | AWS CLI | **not installed**; `boto3` reports `NoCredentialsError` |
 | Network | outbound HTTPS available (Binance ping 200, CoinDesk feed 200) |
+
+## 2026-08-02 (S11) — CSV / Binance overlap check
+
+§3.2 的 S11 人工項目：主辦方 CSV 與 Binance 在重疊區間 **2026-05-01 ～ 2026-05-31** 的收盤差異，五幣全查。
+
+**執行**：`adapters/organizer_csv.load_organizer_csv` 對上 `adapters/binance.fetch_binance_daily`，
+逐日比對 close。（一次性檢查，未新增追蹤腳本。）
+
+| 資產 | 重疊天數 | 平均 \|差異\| % | 最大 \|差異\| % |
+|---|---:|---:|---:|
+| BTC | 31 | 0.0000% | 0.0000% |
+| ETH | 31 | 0.0000% | 0.0000% |
+| SOL | 31 | 0.0000% | 0.0000% |
+| BNB | 31 | 0.0000% | 0.0000% |
+| XRP | 31 | 0.0000% | 0.0000% |
+
+抽樣（BTC，close 與 volume 皆到小數點後四位完全相同）：
+
+| date | CSV close | Binance close | CSV volume | Binance volume |
+|---|---:|---:|---:|---:|
+| 2026-05-01 | 78231.1300 | 78231.1300 | 17315.4650 | 17315.4650 |
+| 2026-05-15 | 79113.2100 | 79113.2100 | 17351.2708 | 17351.2708 |
+| 2026-05-31 | 73674.3900 | 73674.3900 | 6986.4571 | 6986.4571 |
+
+**怎麼陳述這件事（重要）**
+
+- ✅ 可以說：兩個來源在這段重疊區間的數值**一致**，所以 2026-06-01 的 CSV → live 來源切換
+  在數值上不會出現斷階。
+- 🚫 **不可以說**：CSV「來自 Binance」。數值一致是**吻合**，不是**出處**。
+  競賽規則明訂主辦方 CSV 的 metadata 只標 `public_market_data`，不得推定其上游交易所
+  （`.kiro/steering/competition-rules.md` → Approved Data Policy）。
+- 兩者仍計為**不同來源**。跨越 2026-06-01 時照樣標記來源切換點並揭露差異（此處差異為零）。
+- 實作上這已經是對的：ledger 裡 CSV 證據的 `independence_group` 是
+  `organizer-public-market-data`，`source_name` 是 `public_market_data`，兩者都沒有提到交易所。

@@ -2,7 +2,7 @@
 
 > **開工前先讀。** 這份文件只記當前事實與路徑 ownership；歷史狀態請看 Git。
 >
-> 最後更新：2026-08-02，S11 本地交付層完成（CI／smoke／Docker／secret scan），基準 `main@c844a38`。
+> 最後更新：2026-08-02，S11 已部署上線（ECR/EC2 + rollback 實跑），只剩 15 分鐘計時彩排，基準 `main@c844a38`。
 > **Feature Freeze 已生效**（2026-08-02）：此後只准 bug fix、可靠性修復、部署、彩排、文件、
 > rollback 準備與提交驗證。🚫 新功能、新 provider、新 artifact 格式、PDF/HTML、額外視覺化、
 > 五幣矩陣、Platinum、H3 一律拒絕。
@@ -23,7 +23,7 @@
 | S9 | ✅（離線） | Trust/Regime/Invalidation 完成 |
 | S9B | ✅（離線） | one-run dual-asset comparison 完成 |
 | S10 | 🟡 | `tests/acceptance/` 29 passed（兩資產獨立單幣 run、artifact 契約、fake-clock deadline）；`scripts/run_acceptance.py` ＋ `docs/rehearsals/run-log.md` 已落地。**complete-Evidence run 仍缺**——Bedrock 帳號未開通 |
-| S11 | 🟡 | CI（3 job）、`scripts/smoke_test.py`、本地 Docker runtime、容器內 smoke、非 root、secret scan 全數通過；**ECR/EC2、rollback、15 分鐘彩排未開始** |
+| S11 | 🟡 | CI（3 job）、smoke test、本地 Docker、**ECR/EC2 已上線**（`http://44.248.255.72:8501`，tag `2cec732`）、**rollback 已實跑**、secret scan、CSV/Binance 重疊檢查、recorded fallback 全過；**只剩 15 分鐘計時彩排（人工）** |
 
 ## Current main
 
@@ -71,8 +71,8 @@ S9B 的 per-asset/source 配額位於 orchestration projection；完整 Ledger a
 |---:|---|---|---|
 | 1 | **開通 Bedrock 帳號** | 帳號持有者 | 在 `035741228337` 的 Bedrock console 送出 Anthropic use case details 表單；`scripts/diagnose_bedrock.py` 3/3 成功 |
 | 2 | S10 complete-Evidence run | 全員 | 開通後 `python scripts/run_acceptance.py --live`，兩資產都出推論／結論 Claim |
-| 3 | S11 ECR/EC2 部署 | P1/P4 | ECR immutable tag → EC2 跑同一 tag → 公開 healthcheck → rollback 實跑一次 |
-| 4 | S11 15 分鐘計時彩排 | 全員 | §3.2 的 S11 人工清單逐項簽核 |
+| 3 | **S11 15 分鐘計時彩排** | 全員 | 用 `docs/demo-runbook.md` 走一次完整流程，§3.2 的 S11 人工清單逐項簽核 |
+| 4 | 彩排後關機 | P1/P4 | `aws ec2 stop-instances --instance-ids i-0fa12c895827d6c4e`（跑著就計費） |
 | 5 | repository hygiene | 各 owner | full pytest 綠、Ruff 零錯誤、狀態文件同步 |
 
 ## Commands

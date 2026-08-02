@@ -59,7 +59,7 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S9** 創意層 | ✅（離線） | Trust Scorecard、regime/unavailable、Evidence-backed invalidation 與 renderer 已通過離線 smoke |
 | **S9B** 雙幣比較 | ✅（離線） | 單一 run/cutoff/ledger、UTC 對齊、balanced Arbiter projection、比較 Claim 與第 12 段已通過 |
 | **S10** Gold local Exit | 🟡 | 自動 acceptance 已補齊（`tests/acceptance/` 29 passed）、兩資產各兩次獨立單幣 run 已跑並記錄；**complete-Evidence（含推論結論）的 run 仍缺**，卡在 Bedrock 帳號未開通，見 `docs/rehearsals/run-log.md` |
-| **S11** 部署與彩排 | 🟡 | CI、`scripts/smoke_test.py`、本地 Docker runtime、secret scan 已完成；ECR/EC2、rollback、15 分鐘 judged-flow rehearsal 尚缺 |
+| **S11** 部署與彩排 | 🟡 | CI、smoke test、本地 Docker、**ECR/EC2 部署已上線並驗證**、**rollback 已實跑一次**、secret scan、CSV/Binance 重疊檢查、recorded fallback 全數完成；**只剩 15 分鐘 judged-flow rehearsal（人工）** |
 
 **目前完成分層：**嚴格完成 S0/S1/S2/S3/S4/S5/S6/S7；離線功能完成 S9/S9B；
 **S8 Silver Exit 已完成（2026-08-02）**；S10/S11 各完成一半（見上表）。
@@ -1280,9 +1280,16 @@ Silver 已過；兩個不同資產各自以獨立單幣 run 通過；必要的�
 > | image 無秘密 | ✅ | `/app` 內無 `.env`、無 `*.pem`／`*.key` |
 > | `docker compose config` | ✅ | VALID |
 > | secret scan | ✅ | gitleaks v8.28.0：追蹤內容 315 檔 no leaks；全歷史 206 commits no leaks |
-> | ECR／EC2 部署 | 🔴 | 未開始 |
-> | rollback 演練 | 🔴 | 未執行 |
-> | 15 分鐘計時彩排 | 🔴 | 未執行 |
+> | ECR repository | ✅ | `hoya-agent`，IMMUTABLE ＋ scanOnPush；tag `2cec732`、`c844a38` |
+> | EC2 部署 | ✅ | `i-0fa12c895827d6c4e`，t3.small AL2023 @ us-west-2a |
+> | 公開 healthcheck | ✅ | `http://44.248.255.72:8501/_stcore/health` → `ok` |
+> | tag 逐字相同 | ✅ | `docker inspect` → `…/hoya-agent:2cec732`，與推上 ECR 的完全一致 |
+> | EC2 上容器內 smoke | ✅ | 四項 artifacts、6 log events、5 evidence、run_id 一致 |
+> | 零金鑰 | ✅ | IAM instance role `hoya-agent-ec2`；SG 只開 8501 給單一來源 IP，**不開 22**，管理走 SSM；IMDSv2 強制 |
+> | rollback 演練 | ✅ | 回退 `c844a38`（20 秒健康）→ 前滾 `2cec732`（20 秒健康） |
+> | CSV/Binance 重疊檢查 | ✅ | 五幣 31 天，close 差異 **0.0000%**；🚫 但不得因此宣稱 CSV 來自 Binance |
+> | recorded fallback（版控外） | ✅ | `hoya-demo-fallbackun_20260802_015425_demo1`，報告標示 demo ＋ 原始時間 |
+> | **15 分鐘計時彩排** | 🔴 | **未執行 —— 人工項目，腳本見 `docs/demo-runbook.md`** |
 >
 > **踩到的坑：**
 > 1. **UI 的 artifacts 寫在容器內的 `tempfile.mkdtemp()`**（`ui/streamlit_app.py`），host 端程序看不到。

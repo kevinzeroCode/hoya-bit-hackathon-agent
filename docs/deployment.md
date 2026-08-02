@@ -4,9 +4,11 @@
 calling Bedrock through an **IAM instance role**. Iron rule: **secrets never enter the image,
 the repository, a log, a compose file or a screenshot.**
 
-> Status: the local delivery layer below is **verified**; the ECR/EC2 section is the
-> procedure and has **not been executed yet**. Nothing here claims otherwise —
-> see [Verified / not verified](#verified--not-verified) at the end.
+> Status 2026-08-02: **deployed and verified.** Live at
+> `http://ec2-44-248-255-72.us-west-2.compute.amazonaws.com:8501`, running ECR tag
+> `2cec732`. Rollback has actually been executed. The one thing still missing is the
+> 15-minute timed judged-flow rehearsal, which is a human task —
+> see [Verified / not verified](#verified--not-verified).
 
 ## Environment variables
 
@@ -213,11 +215,48 @@ do not leave the first pull to the judged window.
 | Non-root, no `.env` in image | ✅ | `uid=10001(appuser)`; `/app/.env` absent |
 | Secret scan | ✅ | tracked 315 files and 206 commits, no leaks |
 | CI | ✅ | all three jobs green on first run |
-| ECR repository + push | 🔴 not executed | — |
-| EC2 deployment | 🔴 not executed | — |
-| Public healthcheck | 🔴 not executed | — |
-| Rollback rehearsal | 🔴 not executed | — |
-| 15-minute timed rehearsal | 🔴 not executed | see [demo-runbook.md](demo-runbook.md) |
+| ECR repository + push | ✅ | `hoya-agent`, IMMUTABLE, scanOnPush; tags `2cec732` and `c844a38` |
+| EC2 deployment | ✅ | `i-0fa12c895827d6c4e`, t3.small, us-west-2a |
+| Public healthcheck | ✅ | `http://44.248.255.72:8501/_stcore/health` → `ok` |
+| Deployed tag == pushed tag | ✅ | `docker inspect` → `…/hoya-agent:2cec732`, character for character |
+| In-image smoke on EC2 | ✅ | four artifacts, 6 log events, 5 evidence, one `run_id` |
+| Non-root + no `.env` on EC2 | ✅ | `uid=10001(appuser)`; `/app/.env` absent |
+| Rollback rehearsal | ✅ | rolled back to `c844a38` (healthy 20 s), rolled forward to `2cec732` (healthy 20 s) |
+| No SSH exposure | ✅ | security group opens 8501 only, to one source IP; administration via SSM |
+| Recorded fallback saved outside VCS | ✅ | `C:\Users\USER\Documents\AWS\hoya-demo-fallback\run_20260802_015425_demo1` |
+| CSV / Binance overlap check | ✅ | five assets, 31 days, 0.0000% close difference — see [live-source-check.md](rehearsals/live-source-check.md) |
+| **15-minute timed rehearsal** | 🔴 **not executed** | human task; script in [demo-runbook.md](demo-runbook.md) |
+| Live run with reasoning | 🔴 blocked | Bedrock account enablement, see above |
+
+## Deployment record — 2026-08-02
+
+| | |
+|---|---|
+| Account / region | `035741228337` / `us-west-2` |
+| ECR | `035741228337.dkr.ecr.us-west-2.amazonaws.com/hoya-agent` — IMMUTABLE, scanOnPush |
+| Deployed tag | `2cec732` (digest `sha256:a2d4e9c9…`), 201 MB compressed |
+| Previous known-good tag | `c844a38` — kept in ECR as the rollback target |
+| Instance | `i-0fa12c895827d6c4e`, t3.small, AL2023 `ami-0b76d82b547c3c077`, 20 GB gp3 |
+| Public URL | `http://ec2-44-248-255-72.us-west-2.compute.amazonaws.com:8501` |
+| IAM instance role | `hoya-agent-ec2` — ECR read-only + SSM core + inline `bedrock:InvokeModel` |
+| Security group | `sg-04cd8a6f9fbf4da5f` — inbound tcp/8501 from `223.137.155.152/32` only. **No port 22.** |
+| IMDS | `HttpTokens=required` (IMDSv2 enforced) |
+| Credentials on host | none — instance role through the standard chain |
+
+**Widen access for the judged run** by adding a source to the security group, and narrow it
+again afterwards:
+
+```bash
+aws ec2 authorize-security-group-ingress --region us-west-2 \
+  --group-id sg-04cd8a6f9fbf4da5f --protocol tcp --port 8501 --cidr <judge-ip>/32
+```
+
+**Stop or terminate when the demo is over** — the instance bills while it runs:
+
+```bash
+aws ec2 stop-instances     --region us-west-2 --instance-ids i-0fa12c895827d6c4e
+aws ec2 terminate-instances --region us-west-2 --instance-ids i-0fa12c895827d6c4e
+```
 
 ## Pre-submission checklist
 

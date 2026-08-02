@@ -9,8 +9,9 @@ Deployment procedure: [deployment.md](deployment.md). Architecture: [architectur
 
 | # | Check | Command / action |
 |---|---|---|
-| 1 | The host is up and healthy | `curl -f http://<host>:8501/_stcore/health` → `ok` |
-| 2 | The running tag is the intended tag | `docker inspect --format '{{.Config.Image}}' hoya-agent` |
+| 1 | The host is up and healthy | `curl -f http://44.248.255.72:8501/_stcore/health` → `ok` |
+| 2 | The running tag is the intended tag | `docker inspect --format '{{.Config.Image}}' hoya-agent` → must end `:2cec732` |
+| 2b | The demo IP is in the security group | 8501 is open to named sources only — add it to `sg-04cd8a6f9fbf4da5f` beforehand |
 | 3 | The image is already pulled | it is 860 MB — never pull during the judged window |
 | 4 | Bedrock answers | `python scripts/diagnose_bedrock.py` → 3/3 |
 | 5 | Browser tab open on the app, zoom set, no `.env` or terminal with secrets visible on screen | |
@@ -71,9 +72,13 @@ A complete recorded run is kept **outside source control** so it can be shown if
 the provider or Bedrock is unusable at demo time:
 
 ```
-C:\Users\USER\Documents\AWS\hoya-demo-fallback\<run_id>\
+C:\Users\USER\Documents\AWS\hoya-demo-fallback\run_20260802_015425_demo1\
     run_config.json  execution_log.jsonl  evidence.json  final_report.md
 ```
+
+Saved 2026-08-02. `run_mode: demo`, `analysis_as_of: 2026-05-31T00:00:00Z`, terminal state
+`degraded`, 5 evidence items. The report header table says it in words:
+"執行模式 | demo（可能包含 recorded fallback，非現場新分析）"。
 
 Switch the UI mode to **離線 demo(官方 CSV)** to show the offline path live, or open the saved
 artifacts directly. In either case `demo` is disclosed in three places: the ⚪ demo badge in the
