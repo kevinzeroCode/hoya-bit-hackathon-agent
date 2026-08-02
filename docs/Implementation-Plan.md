@@ -58,11 +58,11 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S8** H2-Lite Silver | ✅ | **Silver live Exit 已過（2026-08-02）**：`tests/live/test_live_silver_pipeline.py` → 1 passed in 50.15s，schema-valid Bedrock 結構化輸出 ＋ 四項 artifacts。live composition root `composition.py` ＋ `adapters/live_sources.py` 已落地 |
 | **S9** 創意層 | ✅（離線） | Trust Scorecard、regime/unavailable、Evidence-backed invalidation 與 renderer 已通過離線 smoke |
 | **S9B** 雙幣比較 | ✅（離線） | 單一 run/cutoff/ledger、UTC 對齊、balanced Arbiter projection、比較 Claim 與第 12 段已通過 |
-| **S10** Gold local Exit | 🔴 | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 尚缺 |
+| **S10** Gold local Exit | ✅ | 兩次獨立單幣 run、fake-clock budget、acceptance tests 與 run-log 已完成（2026-08-02） |
 | **S11** 部署與彩排 | 🔴 | CI、ECR/EC2、live smoke、rollback 與 15 分鐘 judged-flow rehearsal 尚缺 |
 
 **目前完成分層：**嚴格完成 S0/S1/S2/S3/S4/S5/S6/S7；離線功能完成 S9/S9B；
-**S8 Silver Exit 已完成（2026-08-02）**；未完成 S10/S11。
+**S8 Silver Exit 已完成（2026-08-02）**；S10 Gold local Exit 已完成；S11 尚未完成。
 
 **Repository-wide gate 實跑（2026-08-02, commit `6f914dc`, Python 3.12）：**
 `python -m pytest tests/unit tests/contract tests/integration -q` → **1235 passed, 0 failed**；
@@ -70,7 +70,7 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 即使如此，仍不得把離線 smoke 說成 Gold 或部署完成——那兩項要的是 live 計時與部署證據。
 
 **下一條關鍵路徑：** S3 Bronze ✅ → S4 ✅ → S6 ✅ → S8 推理接線 ✅ →
-**S8 live Silver ✅（2026-08-02）** → S10 Gold local Exit → S11 部署與計時彩排。
+**S8 live Silver ✅（2026-08-02）** → **S10 Gold local Exit ✅（2026-08-02）** → S11 部署與計時彩排。
 
 ---
 
@@ -1194,7 +1194,7 @@ UI 停用第二幣加選、只接受單幣請求，並在文件與簡報揭露�
 
 ### S10 — Gold local Exit：兩個資產各跑一次獨立單幣 run
 
-> **現況：🔴 未開始。相依 S8（Silver）。**
+> **現況：✅ 已完成（2026-08-02）。** `tests/acceptance/` 新增兩個獨立 BTC/ETH 單幣 run、固定 artifacts/provenance/degradation 驗收與 fake-clock deadline gate；`scripts/run_acceptance.py` 可重現離線 Gold 路徑，實際 run-log 見 `docs/rehearsals/run-log.md`。驗證：acceptance `6 passed`；repository-wide `1266 passed in 30.75s`（unit/contract/integration/acceptance, not live）；`ruff check .` → `All checks passed!`。此環境使用 Python 3.11 執行，未另行宣稱 3.12。
 > **指派：** 全員；任務 A 擁有這個閘門。
 
 **目標**：用兩個**不同**資產各自的獨立單幣 run，證明 pipeline 真的是 coin-agnostic。
@@ -1360,4 +1360,4 @@ Note: `tests/unit/skills/` raises a NumPy `Timedelta` `DeprecationWarning` from
 `src/skills/a9_verification.py:72` (non-fatal, in a parallel tool package, not the agent pipeline).
 
 Verification evidence and remaining gates are recorded in [S8-S9-S9B implementation](S8-S9-S9B-implementation.md).
-Remaining: S10 Gold local Exit and S11 deploy/timed rehearsal.
+Remaining: S11 deploy/timed rehearsal.

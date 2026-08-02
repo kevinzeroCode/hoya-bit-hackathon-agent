@@ -319,7 +319,7 @@
   - **Acceptance:** **Met 2026-08-02.** Bronze remains green. Silver passes only after one single-asset live run produces a schema-valid Bedrock result through both designated baseline paths and a separate deterministic fallback/degradation test passes. Optional-source failure is non-blocking, accepted claims remain traceable to Evidence, and artifact failures follow the approved disclosure contract.
   - **Commit:** `feat: integrate resilient h2 lite pipeline`
 
-- [ ] **9. Pass Gold local Exit with two separate single-asset runs**
+- [x] **9. Pass Gold local Exit with two separate single-asset runs**
   - **Owner:** All; P1 owns the gate
   - **Wave / dependency:** Wave 4 / Task 8 Silver acceptance
   - **Spec:** 10.1, 17 Day 2 morning, 18.1-18.4

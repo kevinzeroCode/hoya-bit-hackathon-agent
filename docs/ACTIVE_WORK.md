@@ -19,7 +19,7 @@
 | S8 | ✅ | **Silver live Exit 已過（2026-08-02）**：`tests/live/test_live_silver_pipeline.py` → 1 passed in 50.15s，schema-valid Bedrock 結構化輸出 ＋ 四項 artifacts。live composition root `composition.py` ＋ `adapters/live_sources.py` 已落地 |
 | S9 | ✅（離線） | Trust/Regime/Invalidation 完成 |
 | S9B | ✅（離線） | one-run dual-asset comparison 完成 |
-| S10 | 🔴 | Gold local Exit 未開始（兩次獨立單幣 run ＋ fake-clock budget acceptance） |
+| S10 | ✅ | Gold local Exit 已完成（2026-08-02；BTC/ETH 獨立單幣 run、degradation/artifact/fake-clock acceptance） |
 | S11 | 🔴 | 部署與 judged-flow rehearsal 未開始（CI、ECR/EC2、live smoke、rollback、15 分鐘彩排） |
 
 ## Current main
@@ -60,7 +60,7 @@ S9B 的 per-asset/source 配額位於 orchestration projection；完整 Ledger a
 
 | 優先 | 工作 | Owner | 完成條件 |
 |---:|---|---|---|
-| 1 | S10 Gold local Exit | 全員 | 兩個不同資產各一次獨立單幣 run＋fake-clock deadline/artifact gate |
+| 1 | S10 Gold local Exit | 全員 | ✅ 2026-08-02：兩個不同資產各一次獨立單幣 run＋fake-clock deadline/artifact gate |
 | 2 | S11 deploy/rehearse | P1/P4 | CI、ECR/EC2（見 `docs/deploy-ec2.md`）、rollback、15 分鐘完整彩排 |
 | 3 | GitHub Actions / status checks | P1 | CI workflow 配置 |
 | 4 | repository hygiene | 各 owner | full pytest 綠、Ruff 零錯誤、狀態文件同步 |

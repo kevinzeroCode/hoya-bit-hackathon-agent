@@ -1,5 +1,13 @@
 # Workflows
 
+## Gold local Exit workflow
+
+Run `PYTHONPATH=src python scripts/run_acceptance.py` for two independent BTC/ETH
+offline rehearsal runs. The acceptance suite checks asset allowlisting, market-data
+degradation, fixed artifact parsing/checksums, Evidence provenance, deterministic
+rendering, and the minute-12 deadline/finalize reserve. See
+`docs/rehearsals/run-log.md` for the recorded verification.
+
 ## Primary Workflow: Complete Analysis Run
 
 ```mermaid

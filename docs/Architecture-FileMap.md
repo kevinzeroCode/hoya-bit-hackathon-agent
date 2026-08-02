@@ -437,6 +437,11 @@ renderer ─▶ ① regime headline ② per-conclusion scorecard ③ 量化 inva
 
 ## 2026-08-02 S8/S9/S9B + live/UI/calc-skills status addendum
 
+S10 Gold local Exit acceptance is now tracked by `tests/acceptance/`, with the
+offline runner in `scripts/run_acceptance.py` and evidence in
+`docs/rehearsals/run-log.md`. These are verification-layer additions; production
+pipeline boundaries are unchanged. S11 deployment remains separate.
+
 `orchestration/{pipeline,deadline,run_state}.py` owns deadline-aware H2-Lite sequencing;
 `evidence/trust.py` owns deterministic scorecards; `reporting/renderer.py` owns Trust/Regime
 and the dual-only comparison section. `_provisional_seams.py` is **retired** — runtime imports

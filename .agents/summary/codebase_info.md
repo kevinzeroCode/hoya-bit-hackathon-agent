@@ -1,5 +1,13 @@
 # Codebase Information
 
+## 2026-08-02 S10 Gold local Exit
+
+Offline Gold acceptance coverage now lives in `tests/acceptance/`, with the
+reproducible runner `scripts/run_acceptance.py`. The local gate runs BTC and ETH as
+separate single-asset rehearsal requests through `OrganizerCsvPipeline`, checks fixed
+artifacts and provenance, and records deterministic degradation in
+`docs/rehearsals/run-log.md`. S11 deployment and timed rehearsal remain open.
+
 ## Project Identity
 
 - **Name:** HOYA BIT Hackathon AI Agent (`hoya-agent`)
