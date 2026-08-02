@@ -1409,7 +1409,11 @@ tests/integration/test_streamlit_bronze.py tests/integration/test_report_safety_
 修正 HTML 推理卡片的欄位配置：主張文字保留足夠閱讀寬度，支持證據與依據標籤改為右側
 自動換行排列；窄螢幕時切換為單欄。驗證：HTML/UI targeted tests **7 passed**，
 `ruff check .` **All checks passed!**。
-## 2026-08-02 report display follow-up
+## 2026-08-02 report display rollback
 
-Streamlit 報告區改為預設展開，依 HTML 報告長度配置顯示高度並關閉內層捲軸，評審可直接
-沿頁面閱讀完整報告，也仍可手動收合。
+Streamlit 報告區恢復穩定版：使用固定 1100px 的內嵌視窗與內層捲軸，移除預設展開及
+依 HTML 長度動態拉高的容器。這讓評審頁面的方塊與文字維持正常大小；推理卡片的
+桌面與窄螢幕換行修正仍保留。
+
+本次驗證：`PYTHONPATH=src python -m pytest tests/unit tests/contract tests/integration -q`
+→ **待提交前完成**；`ruff check .` → **待提交前完成**。
