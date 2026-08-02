@@ -434,6 +434,9 @@ class ApplicationService(Protocol):
 
 ### S3 — Streamlit Bronze 檢查點 + 禁語 lint + 容器殼 ★ **Bronze Exit**
 
+> **2026-08-02 P4 HTML 交付更新：✅ 完成。** 每次 run 額外產出自包含 `final_report.html`，作為主要人類可讀報告；`final_report.md`、`evidence_list.json`、完整 Ledger、Execution Log 與 Run Config 的最新提交契約均保留。HTML 只讀 validated `AnalysisResult + EvidenceLedger`，全動態值 escape，無 CDN／runtime network，並支援 dark、print、mobile。Streamlit Report tab 直接嵌入 HTML。驗證：使用者指定套件 **31 passed**；整合基底完整 non-live 套件 **1148 passed / 75 warnings**；Ruff clean。最新 main 新增 Evidence List 後由 PR CI 再驗。
+
+
 > **現況：✅ 已完成（2026-08-01）。整合於 post-S2-swap `main`。**
 > **已落地：** `src/hoya_agent/ui/{__init__,presenter,streamlit_app}.py`、
 > `src/hoya_agent/reporting/advice_lint.py`(禁語 lint,純字串比對,已接進 `application.render(..., lint=advice_violations)`

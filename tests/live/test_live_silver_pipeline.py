@@ -181,6 +181,7 @@ async def test_single_live_run_uses_both_baselines_bedrock_and_four_artifacts(
         "execution_log.jsonl",
         "evidence.json",
         "final_report.md",
+        "final_report.html",
     }
 
     evidence_path = tmp_path / summary.run_id / "evidence.json"

@@ -23,7 +23,7 @@ import pytest
 from hoya_agent.application import ApplicationService, build_request
 from hoya_agent.models import Asset, EvidenceLedger, ExecutionEvent, Reliability, RunMode, SourceType, TerminalState
 from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline
-from hoya_agent.reporting.artifacts import ARTIFACT_NAMES, EVIDENCE_LEDGER, FINAL_REPORT
+from hoya_agent.reporting.artifacts import DELIVERABLE_NAMES, EVIDENCE_LEDGER, FINAL_REPORT
 
 pytestmark = pytest.mark.integration
 
@@ -86,7 +86,7 @@ async def test_real_market_evidence_flows_into_the_four_artifacts(tmp_path) -> N
     summary = await service.run(request, progress=progress)
     run_dir = Path(summary.artifact_dir)
 
-    assert sorted(p.name for p in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
+    assert sorted(p.name for p in run_dir.iterdir()) == sorted(DELIVERABLE_NAMES)
     assert summary.missing_artifacts == []
     assert summary.evidence_item_count > 0
 
@@ -197,7 +197,7 @@ async def test_missing_csv_degrades_honestly_instead_of_crashing(tmp_path) -> No
     run_dir = Path(summary.artifact_dir)
 
     # Still four artifacts, still schema-valid, and the gap is stated.
-    assert sorted(p.name for p in run_dir.iterdir()) == sorted(ARTIFACT_NAMES)
+    assert sorted(p.name for p in run_dir.iterdir()) == sorted(DELIVERABLE_NAMES)
     ledger = EvidenceLedger.model_validate_json((run_dir / EVIDENCE_LEDGER).read_text(encoding="utf-8"))
     assert ledger.items == []
     assert ledger.degradation_events

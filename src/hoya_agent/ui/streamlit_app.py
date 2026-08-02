@@ -45,6 +45,7 @@ BRONZE_CUTOFF = datetime(2026, 5, 31, tzinfo=UTC)
 # Ordered to mirror the competition 提交清單; labels map each fixed filename to
 # the deliverable a judge is looking for.
 ARTIFACT_ORDER = (
+    "final_report.html",
     "final_report.md",
     "evidence_list.json",
     "evidence.json",
@@ -52,6 +53,7 @@ ARTIFACT_ORDER = (
     "run_config.json",
 )
 ARTIFACT_LABELS = {
+    "final_report.html": "① 完整 HTML 分析報告",
     "final_report.md": "① 分析報告 Final Report",
     "evidence_list.json": "② 證據清單 Evidence List",
     "evidence.json": "② 完整證據 Ledger(佐證)",
@@ -242,8 +244,12 @@ def _render_result(view: dict) -> None:
     # Report / Evidence / Execution Log as three tabs (spec §3.2 S3).
     tab_report, tab_evidence, tab_log = st.tabs(["📄 報告", "🧾 Evidence Ledger", "🪵 Execution Log"])
     with tab_report:
-        st.caption("deterministic Renderer;已過投資建議 lint")
-        st.markdown(view["report_markdown"] or "_(無)_")
+        st.caption("完整 HTML 報告 · deterministic Renderer · 已過投資建議 lint")
+        html_report = _artifact_text(view, "final_report.html")
+        if html_report:
+            st.components.v1.html(html_report, height=1100, scrolling=True)
+        else:
+            st.markdown(view["report_markdown"] or "_(無)_")
     with tab_evidence:
         raw = _artifact_text(view, "evidence.json")
         if raw:

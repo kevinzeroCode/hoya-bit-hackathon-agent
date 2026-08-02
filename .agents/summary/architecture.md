@@ -334,3 +334,7 @@ modes — live `official` (real Binance + Fear & Greed, Arbiter when Bedrock is
 configured via env/EC2 IAM role), offline `rehearsal` and offline `demo` over the
 organizer CSV. Pipeline `ExecutionEvent`s stream live into an `st.status` panel;
 the presenter derives a trust funnel (G3) from the run's own `evidence.json`.
+
+## 2026-08-02 P4 HTML report
+
+The deterministic reporting layer now has parallel Markdown and HTML projections over the same validated domain inputs. The HTML projection adds presentation only; it cannot call providers, Bedrock, or runtime network resources.

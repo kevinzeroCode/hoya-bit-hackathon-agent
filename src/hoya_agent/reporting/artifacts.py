@@ -32,6 +32,7 @@ EVIDENCE_LEDGER = "evidence.json"
 #: `evidence.json` ledger is retained alongside it for deep traceability.
 EVIDENCE_LIST = "evidence_list.json"
 FINAL_REPORT = "final_report.md"
+HTML_REPORT = "final_report.html"
 
 #: Write order is also the resilience order: config first, report last.
 ARTIFACT_NAMES: tuple[str, ...] = (
@@ -41,6 +42,10 @@ ARTIFACT_NAMES: tuple[str, ...] = (
     EVIDENCE_LIST,
     FINAL_REPORT,
 )
+# Keep the fixed submission artifacts intact while allowing the primary browser
+# report to share the same atomic writer and checksum path.
+WRITABLE_ARTIFACT_NAMES: tuple[str, ...] = (*ARTIFACT_NAMES, HTML_REPORT)
+DELIVERABLE_NAMES: tuple[str, ...] = WRITABLE_ARTIFACT_NAMES
 
 _TMP_PREFIX = ".tmp-"
 
@@ -138,9 +143,10 @@ class LocalArtifactStore:
         return True
 
     def _require_fixed_name(self, name: str) -> None:
-        if name not in ARTIFACT_NAMES:
+        if name not in WRITABLE_ARTIFACT_NAMES:
             raise ValueError(
-                f"{name!r} is not one of the fixed artifact filenames {ARTIFACT_NAMES}"
+                f"{name!r} is not one of the approved fixed artifact filenames "
+                f"{WRITABLE_ARTIFACT_NAMES}"
             )
 
     def _atomic_write(self, name: str, payload: bytes) -> bool:

@@ -247,3 +247,7 @@ See `s8-s9-s9b.md` for the canonical seam swap, deadline-aware H2-Lite orchestra
 - **New modules:** `adapters/live_sources.py`, `adapters/official.py`, `adapters/_errors.py`, `data/text_clean.py`, `data/types.py`, `reasoning/mapping.py`, `reasoning/schemas.py` (FROZEN package — documented only).
 - **Live data path:** real-time Binance + Fear & Greed (no key), Bedrock Arbiter over live evidence via `MappingArbiter`.
 - **Deployment:** Docker → ECR → single EC2 (IAM instance role) documented in `docs/deploy-ec2.md`.
+
+## 2026-08-02 P4 HTML report
+
+HTML report implementation details are recorded in `components.md`, its pure interface in `interfaces.md`, the finalize sequence in `workflows.md`, and its reporting-layer boundary in `architecture.md`.

@@ -170,6 +170,8 @@ Evidence 與 Claim 的關係遵循 [Evidence Contracts](../.kiro/steering/eviden
 
 四項 artifacts 是正常與可降級執行的交付契約，前提是 artifact volume 可寫。若儲存層不可寫，run 必須回報 `partial` 或 `failed`、記錄精確缺失路徑，不得宣稱四項均已產生。
 
+`final_report.html` 由同一 validated result/ledger deterministic 產生，是自包含、離線可開啟的主要人類可讀報告；既有固定提交 artifacts（含 `evidence_list.json`）維持不變。
+
 ## 8. High-Level Design
 
 ```mermaid
