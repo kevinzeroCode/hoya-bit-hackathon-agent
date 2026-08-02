@@ -180,7 +180,9 @@
 | `reporting/renderer.py` | ✅ | 繁中 11 段 deterministic 模板（402 行，S2）；**只讀 `AnalysisResult` + `EvidenceLedger`**，🚫 不加帳本外的新事實；insufficient-data 的 deterministic fallback 報告；R16 三個呈現區塊（regime headline、per-conclusion scorecard、量化 invalidation）；最後呼叫 `lint.py` | `models.AnalysisResult`、`EvidenceLedger`、`lint.py` |
 | `reporting/lint.py` | ○ (S3) | **禁語 lint（最後防線）**：純字串比對攔「建議買入／建議賣出／加倉／減倉／做多／做空／資產配置」等指示性投資用語；🚫 不依賴 `models.py`（所以可以先寫） | 被 `renderer.py` 在最後一步呼叫；lint 事件進 execution log |
 
-| `reporting/html_renderer.py` | ✅ | P4 完整 HTML 報告：沿用 `7-html-report-template` editorial tokens；純函式、全動態值 escape、自包含離線，支援 dark／print／mobile，產生主要瀏覽器交付物 `final_report.html` | `models.AnalysisResult`、`EvidenceLedger`、`advice_lint.py`；由 `application.py` 呼叫 |\n\n### 4.8 `ui/` 與入口
+| `reporting/html_renderer.py` | ✅ | P4 完整 HTML 報告：沿用 `7-html-report-template` editorial tokens；純函式、全動態值 escape、自包含離線，支援 dark／print／mobile，產生主要瀏覽器交付物 `final_report.html` | `models.AnalysisResult`、`EvidenceLedger`、`advice_lint.py`；由 `application.py` 呼叫 |
+
+### 4.8 `ui/` 與入口
 
 | 檔案 | 狀態 | 職責 | 互動對象 |
 |---|---|---|---|
