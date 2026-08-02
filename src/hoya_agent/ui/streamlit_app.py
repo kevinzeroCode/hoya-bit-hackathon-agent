@@ -215,12 +215,10 @@ def _render_result(view: dict) -> None:
     m2.metric("執行狀態", f"{view['terminal_icon']} {view['terminal_label']}")
     m3.metric("證據筆數", view["evidence_count"])
     m4.metric("信心", view["confidence"].upper())
-    st.caption(f"run_id: {view['run_id']}　·　artifact_dir: {view['artifact_dir']}")
-    # H3 multi-agent debate is out of Bronze scope; make that explicit in the UI.
-    st.caption("🚫 H3 多代理人辯論:未實作(Bronze 範圍外,Future Work)")
+    st.caption(f"分析編號：{view['run_id']}")
 
     if view["insufficient"]:
-        st.warning("此增量無 Arbiter,依規格輸出 deterministic「資料不足」報告(方向性結論待 P3)。", icon="⚠️")
+        st.warning("本次資料不足，以下內容僅呈現已驗證資訊，不形成方向性結論。", icon="⚠️")
 
     # Trust funnel: how scattered evidence distils into few independent voices.
     raw_ledger = _artifact_text(view, "evidence.json")
@@ -242,9 +240,9 @@ def _render_result(view: dict) -> None:
         )
 
     # Report / Evidence / Execution Log as three tabs (spec §3.2 S3).
-    tab_report, tab_evidence, tab_log = st.tabs(["📄 報告", "🧾 Evidence Ledger", "🪵 Execution Log"])
+    tab_report, tab_evidence, tab_log = st.tabs(["📄 報告", "🧾 證據來源", "🪵 執行紀錄"])
     with tab_report:
-        st.caption("完整 HTML 報告 · deterministic Renderer · 已過投資建議 lint")
+        st.caption("完整研究報告")
         html_report = _artifact_text(view, "final_report.html")
         if html_report:
             st.components.v1.html(html_report, height=1100, scrolling=True)
@@ -258,15 +256,15 @@ def _render_result(view: dict) -> None:
             if links_md:
                 st.markdown("**🔗 來源連結(點擊開新分頁,可追溯每筆證據)**")
                 st.markdown(links_md)
-            with st.expander("原始 evidence.json"):
+            with st.expander("檢視完整證據資料"):
                 st.json(ledger)
         else:
             st.write("_(無 evidence.json)_")
     with tab_log:
         raw = _artifact_text(view, "execution_log.jsonl")
-        st.code(raw or "(無 execution_log.jsonl)", language="json")
+        st.code(raw or "（目前沒有執行紀錄）", language="json")
 
-    st.subheader("交付 artifact(對應提交清單)")
+    st.subheader("下載研究資料")
     dl = st.columns(len(ARTIFACT_ORDER))
     for col, name in zip(dl, ARTIFACT_ORDER):
         label = ARTIFACT_LABELS.get(name, name)
@@ -276,12 +274,11 @@ def _render_result(view: dict) -> None:
         else:
             col.write(f"❌ {label}")
     if view["missing_artifacts"]:
-        st.error(f"缺少 artifact:{view['missing_artifacts']}")
+        st.error("部分研究資料未能完整建立，請重新執行分析。")
 
     if view["degradation_notes"]:
-        with st.expander(f"揭露(degradation) · {len(view['degradation_notes'])}"):
-            for note in view["degradation_notes"]:
-                st.write("•", note)
+        with st.expander("資料限制與處理說明"):
+            st.info("本次分析包含資料或處理限制，詳情請參閱報告中的「限制與資料缺口」。")
 
 
 # Editorial design tokens mirroring the P4 report prototype: serif display
@@ -326,7 +323,7 @@ def main() -> None:
     st.set_page_config(page_title="HOYA Market Agent", page_icon="🧾", layout="wide")
     st.markdown(_THEME_CSS, unsafe_allow_html=True)
     st.title("🧾 加密市場分析 Agent")
-    st.caption("多源資訊的信任提煉 · 研究導向,非投資建議 · 即時(交易所+情緒)或離線(官方 CSV)")
+    st.caption("多源資訊的信任提煉 · 研究導向 · 非投資建議")
 
     running = st.session_state.get("_run_in_flight", False)
     with st.form("req"):
@@ -372,11 +369,10 @@ def main() -> None:
         _render_result(last_view)
     elif not submitted:
         st.info(
-            "選幣種、輸入研究型題目,按「執行分析」。**即時**打交易所現價 + 恐懼貪婪指數(免金鑰);"
-            "**離線**只用官方 CSV。兩者皆產出四個固定 artifact。"
+            "選擇幣種並輸入研究型題目後，按「執行分析」。"
+            "即時模式使用交易所與市場情緒資料；離線模式使用官方 CSV。"
         )
 
 
 if __name__ == "__main__":
     main()
-

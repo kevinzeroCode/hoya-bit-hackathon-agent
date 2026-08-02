@@ -1393,3 +1393,14 @@ into the fallback disclosure. Regression coverage is in
 
 Verification: full non-live gate `1273 passed in 21.33s`; `ruff check .` → `All checks
 passed!`; targeted safety/render tests `34 passed`. Live Bedrock was not rerun here.
+## 2026-08-02 reviewer UI polish follow-up
+
+評審畫面已移除 H3 未實作提示，以及 H2-Lite、Arbiter、Planner、Renderer、artifact
+等內部實作術語；保留研究報告、證據來源、執行紀錄、限制揭露與下載按鈕。HTML
+與 Markdown 報告的可重現性、資料不足與安全降級文字也改為面向使用者的正式表述。
+
+本次驗證：`PYTHONPATH=src python -m pytest tests/unit/reporting
+tests/integration/test_streamlit_bronze.py tests/integration/test_report_safety_fallback.py -q`
+→ **53 passed**；`ruff check .` → **All checks passed!**。完整非 live gate 將於提交前再次執行。
+完整非 live gate 複跑結果：`PYTHONPATH=src python -m pytest tests/unit tests/contract tests/integration -q`
+→ **1267 passed in 63.64s**；`ruff check .` → **All checks passed!**。

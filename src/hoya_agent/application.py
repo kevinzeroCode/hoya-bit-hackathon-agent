@@ -581,7 +581,7 @@ class ApplicationService:
                 raise
             report_safety_degraded = True
             safety_reason = (
-                "Arbiter 輸出未通過報告安全檢查，已捨棄不合規文字並改用 deterministic fallback。"
+                "分析內容未通過報告安全檢查，已移除不合規文字並改用資料不足結果。"
             )
             result = build_insufficient_data_result(
                 run_id=context.run_id,
@@ -766,7 +766,24 @@ def _asset_mismatch_warnings(request: AnalysisRequest) -> list[str]:
 
 
 def _fallback_reason(degradation_notes: Sequence[str]) -> str:
-    return degradation_notes[0] if degradation_notes else "分析階段未產出可驗證結果"
+    if not degradation_notes:
+        return "分析階段未產出可驗證結果"
+    note = degradation_notes[0]
+    internal_markers = (
+        "Arbiter",
+        "AnalysisResult",
+        "deterministic",
+        "fallback",
+        "structural",
+        "claim",
+        "conclusion",
+        "no non-neutral",
+        "not present",
+        "cites numbers",
+    )
+    if any(marker.lower() in note.lower() for marker in internal_markers):
+        return "本次分析未形成可驗證的完整結論，僅保留已驗證的事實與來源。"
+    return note
 
 
 def _cancelled_outcome(context: RunContext, now: datetime) -> PipelineOutcome:

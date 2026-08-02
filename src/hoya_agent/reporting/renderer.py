@@ -45,7 +45,7 @@ _RUN_MODE_LABELS: dict[RunMode, str] = {
     # rehearsal permits deterministic fixtures *or* replayable real data with a
     # supplied cutoff, so the label must not assert which one was used.
     RunMode.rehearsal: "rehearsal（可重現資料與自訂 cutoff，非 live official 結果）",
-    RunMode.demo: "demo（可能包含 recorded fallback，非現場新分析）",
+    RunMode.demo: "demo（展示資料，非即時分析）",
 }
 
 _STANCE_LABELS: dict[Stance, str] = {
@@ -123,11 +123,11 @@ def build_insufficient_data_result(
         claim_evidence_links=[],
         confidence=Reliability.low,
         confidence_rationale=(
-            "資料或分析不足，依 deterministic 政策將整體信心設為 low，且不得升級。"
+            "資料或分析不足，整體信心標示為 low，且不升級。"
         ),
         limitations=[
             f"分析未完成：{reason_text}。",
-            "本報告為 deterministic insufficient-data fallback，不含經驗證的推論或結論。",
+            "本報告為資料不足結果，不含經驗證的推論或結論。",
         ],
         invalidation_conditions=[],
         watch_items=[],
@@ -155,7 +155,7 @@ def _render_header(result: AnalysisResult, ledger: EvidenceLedger) -> list[str]:
         f"| 整體信心 | {result.confidence.value} |",
         f"| 資料是否不足 | {'是' if result.insufficient_data else '否'} |",
         "",
-        "> 本報告由 deterministic renderer 依 `AnalysisResult` 與 Evidence Ledger 產生，"
+        "> 本報告依已驗證資料與來源紀錄產生，"
         "不含任何模型自行補寫的數值，也不提供投資建議。",
     ]
 
@@ -179,7 +179,7 @@ def _render_market_context(result: AnalysisResult) -> list[str]:
         regime = result.market_regime
         lines += [
             "",
-            "**Market Regime（deterministic）**",
+            "**Market Regime（依資料判定）**",
             f"- {regime.asset.value}: `{regime.label.value}`（截至 {regime.as_of}，"
             f"window={regime.window_days} 日，Evidence `{regime.evidence_id or _NONE}`）",
         ]

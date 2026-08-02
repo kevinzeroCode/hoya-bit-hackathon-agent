@@ -92,3 +92,7 @@ python scripts/verify_s8_s9_s9b.py
 3. S9/S9B 的「完成」只代表離線能力；S8 Silver 已過，S10 Gold、S11 deployment 各有獨立 gate。
 4. 每次合併後同步本檔、Implementation Plan 與 Kiro WIP；不得保留已刪檔案的現況描述。
 5. `src/calc/`、`src/skills/` 是平行工具套，不屬 agent pipeline；改動它們不需動 agent 狀態表。
+## 2026-08-02 reviewer UI polish
+
+正式評審畫面已移除 H3 未使用提示與內部實作術語，保留報告、證據來源、執行紀錄、
+限制揭露及下載功能。UI 與 HTML/Markdown 報告的文字已完成整理。

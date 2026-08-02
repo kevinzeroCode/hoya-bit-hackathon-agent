@@ -75,12 +75,12 @@ def render_html(
 </head>
 <body><div class="shell">
 <nav class="toolbar" aria-label="報告工具"><div class="brand"><span class="mark">H</span><span>HOYA MARKET AGENT</span></div><div class="tools"><button class="tool" id="theme" type="button">深色</button><button class="tool" id="print" type="button">列印／PDF</button></div></nav>
-<header class="hero"><div class="hero-grid"><div><p class="eyebrow">多源資訊的信任提煉 · H2-Lite</p><h1>{_e(result.question)}</h1><p class="standfirst">{_e(result.direct_answer)}</p></div>
-<aside class="status"><div class="row"><span class="chip {status_class}">{_e(_MODE_LABELS[ledger.run_mode])}</span><span class="runid">{_e(result.run_id)}</span></div><p class="verdict">{_e(result.confidence.value.upper())} confidence</p><p class="reason">{_e(result.confidence_rationale)}</p><dl class="meta"><div><dt>分析截點</dt><dd>{_iso(result.analysis_as_of)}</dd></div><div><dt>執行狀態</dt><dd>{_e(terminal_state)}</dd></div><div><dt>分析資產</dt><dd>{_e(' · '.join(a.value for a in result.assets))}</dd></div><div><dt>Agent 路徑</dt><dd>H2-Lite</dd></div></dl></aside></div>
-<div class="notice" role="note"><b>Run disclosure</b><span>{_e(disclosure)}</span></div>
-<div class="stats"><article class="stat"><small>Market Regime</small><strong>{_e(regime)}</strong><p>由 deterministic Market Worker 判定；無資料時顯示 unavailable。</p></article><article class="stat"><small>Conclusion Confidence</small><strong>{_e(result.confidence.value)}</strong><p>{len(support)} 個支持連結 · {len(oppose)} 個反方連結</p></article><article class="stat"><small>Evidence Coverage</small><strong>{len(ledger.items)}</strong><p>Evidence Processor 接受並去重後的證據筆數</p></article><article class="stat"><small>Source Diversity</small><strong>{len(source_types)} 類</strong><p>{len(groups)} 個獨立來源群組</p></article></div></header>
-<main><aside class="toc"><b>報告導覽</b><a href="#answer">01 直接回答</a><a href="#market">02 市場狀況</a><a href="#reasoning">03 推理鏈</a><a href="#evidence">04 正反證據</a><a href="#trust">05 信任評分</a><a href="#limits">06 限制與推翻條件</a><a href="#watch">07 後續觀察</a><a href="#ledger">08 Evidence Ledger</a><a href="#reproduce">09 可重現性</a></aside><div class="content">
-{_section('answer', '01 · Direct answer', '先回答題目，再展示推理', '<div class="answer"><p>'+_e(result.direct_answer)+'</p><div class="answer-foot"><span>CONFIDENCE · '+_e(result.confidence.value.upper())+'</span><span>SUPPORT · '+str(len(support))+'</span><span>OPPOSE · '+str(len(oppose))+'</span></div></div>')}
+<header class="hero"><div class="hero-grid"><div><p class="eyebrow">多源資訊的信任提煉</p><h1>{_e(result.question)}</h1><p class="standfirst">{_e(result.direct_answer)}</p></div>
+<aside class="status"><div class="row"><span class="chip {status_class}">{_e(_MODE_LABELS[ledger.run_mode])}</span><span class="runid">{_e(result.run_id)}</span></div><p class="verdict">{_e(result.confidence.value.upper())} confidence</p><p class="reason">{_e(result.confidence_rationale)}</p><dl class="meta"><div><dt>分析截點</dt><dd>{_iso(result.analysis_as_of)}</dd></div><div><dt>執行狀態</dt><dd>{_e(terminal_state)}</dd></div><div><dt>分析資產</dt><dd>{_e(' · '.join(a.value for a in result.assets))}</dd></div></dl></aside></div>
+<div class="notice" role="note"><b>資料說明</b><span>{_e(disclosure)}</span></div>
+<div class="stats"><article class="stat"><small>市場狀態</small><strong>{_e(regime)}</strong><p>依市場資料判定；無資料時明確標示。</p></article><article class="stat"><small>結論信心</small><strong>{_e(result.confidence.value)}</strong><p>{len(support)} 個支持證據 · {len(oppose)} 個反方證據</p></article><article class="stat"><small>證據筆數</small><strong>{len(ledger.items)}</strong><p>去重後保留的可追溯資料。</p></article><article class="stat"><small>來源多樣性</small><strong>{len(source_types)} 類</strong><p>{len(groups)} 個獨立來源群組</p></article></div></header>
+<main><aside class="toc"><b>報告導覽</b><a href="#answer">01 直接回答</a><a href="#market">02 市場狀況</a><a href="#reasoning">03 推理鏈</a><a href="#evidence">04 正反證據</a><a href="#trust">05 信任評分</a><a href="#limits">06 限制與推翻條件</a><a href="#watch">07 後續觀察</a><a href="#ledger">08 證據明細</a><a href="#reproduce">09 資料與檔案</a></aside><div class="content">
+{_section('answer', '01 · 直接回答', '先回答題目，再展示推理', '<div class="answer"><p>'+_e(result.direct_answer)+'</p><div class="answer-foot"><span>信心 · '+_e(result.confidence.value.upper())+'</span><span>支持 · '+str(len(support))+'</span><span>反方 · '+str(len(oppose))+'</span></div></div>')}
 {_market_section(result)}
 {_reasoning_section(result.claims, links_by_claim)}
 {_evidence_section(ledger, result)}
@@ -116,7 +116,7 @@ def _market_section(result: AnalysisResult) -> str:
             f'<p>{_e(r.asset.value)} · {r.window_days} 日視窗 · Evidence '
             f'<span class="cite">{_e(r.evidence_id or "unavailable")}</span></p></div>'
         )
-    return _section("market", "02 · Market context", "市場狀況與時間範圍", context)
+    return _section("market", "02 · 市場狀況", "市場狀況與時間範圍", context)
 
 
 def _reasoning_section(claims: list[Claim], links_by_claim: dict[str, list]) -> str:
@@ -132,7 +132,7 @@ def _reasoning_section(claims: list[Claim], links_by_claim: dict[str, list]) -> 
             f'<p>{_e(claim.text)}</p><div class="tags">{deps}{refs}</div></article>'
         )
     body = '<div class="chain">' + "".join(cards) + "</div>" if cards else '<p class="empty">本次 run 沒有經驗證的 claim；不得補寫推論。</p>'
-    return _section("reasoning", "03 · Reasoning trace", "事實 → 推論 → 結論", body)
+    return _section("reasoning", "03 · 推理脈絡", "事實 → 推論 → 結論", body)
 
 
 def _evidence_section(ledger: EvidenceLedger, result: AnalysisResult) -> str:
@@ -149,29 +149,29 @@ def _evidence_section(ledger: EvidenceLedger, result: AnalysisResult) -> str:
         content = "".join(rows) or '<li class="empty">沒有對應證據。</li>'
         return f'<article class="ecard {kind}"><p>{title} · {len(rows)}</p><ul>{content}</ul></article>'
     body = '<div class="egrid">' + card("support", "支持訊號", supporting) + card("oppose", "反方／矛盾訊號", opposing) + "</div>"
-    return _section("evidence", "04 · Evidence balance", "支持與反方證據並列", body)
+    return _section("evidence", "04 · 證據比較", "支持與反方證據並列", body)
 
 
 def _trust_section(result: AnalysisResult, ledger: EvidenceLedger, high: int, medium: int, stale: int) -> str:
     if result.trust_scorecards:
         card = result.trust_scorecards[0]
         values = [
-            ("獨立性", card.source_independence.level, f"{card.source_independence.distinct_groups} 個 independence groups"),
+            ("獨立性", card.source_independence.level, f"{card.source_independence.distinct_groups} 個獨立來源群組"),
             ("來源多樣性", card.source_diversity.level, f"{card.source_diversity.distinct_source_types} 類來源"),
             ("可信度組成", _mix_level(card.reliability_mix.high, card.reliability_mix.medium), f"high {card.reliability_mix.high} · medium {card.reliability_mix.medium} · low {card.reliability_mix.low}"),
             ("一致性", card.consistency.level, f"{card.consistency.opposing_count} 個反方訊號"),
-            ("時效性", card.freshness.level, "stale" if card.freshness.has_stale else "無 stale evidence"),
+            ("時效性", card.freshness.level, "含較舊資料" if card.freshness.has_stale else "資料具時效性"),
         ]
     else:
         values = [
             ("獨立性", TrustLevel.unavailable, "沒有 conclusion scorecard"),
             ("來源多樣性", TrustLevel.unavailable, f"Ledger 有 {len({i.source_type for i in ledger.items})} 類來源"),
             ("可信度組成", _mix_level(high, medium), f"high {high} · medium {medium}"),
-            ("一致性", TrustLevel.unavailable, f"{len(ledger.conflict_indicators)} 個 material conflict"),
-            ("時效性", TrustLevel.unavailable, f"{stale} 筆 stale evidence"),
+            ("一致性", TrustLevel.unavailable, f"{len(ledger.conflict_indicators)} 個矛盾訊號"),
+            ("時效性", TrustLevel.unavailable, f"{stale} 筆較舊資料"),
         ]
     cards = "".join(_score_card(*value) for value in values)
-    return _section("trust", "05 · Trust scorecard", "不用假精確百分比，直接說可信在哪裡", f'<div class="scores">{cards}</div>')
+    return _section("trust", "05 · 信任評分", "不用假精確百分比，直接說可信在哪裡", f'<div class="scores">{cards}</div>')
 
 
 def _limits_section(result: AnalysisResult, ledger: EvidenceLedger) -> str:
@@ -186,11 +186,11 @@ def _limits_section(result: AnalysisResult, ledger: EvidenceLedger) -> str:
         conditions.append(detail)
     right = _numbered_list(conditions, "本次 run 沒有經 Evidence 支持的量化推翻條件。")
     body = f'<div class="split"><article class="panel"><h3>已知限制與降級</h3>{left}</article><article class="panel"><h3>推翻條件</h3>{right}</article></div>'
-    return _section("limits", "06 · Limits & invalidation", "主動揭露資料缺口，以及什麼會推翻結論", body)
+    return _section("limits", "06 · 限制與推翻條件", "主動揭露資料缺口，以及什麼會推翻結論", body)
 
 
 def _watch_section(result: AnalysisResult) -> str:
-    return _section("watch", "07 · What to watch", "後續觀察重點", f'<div class="panel">{_numbered_list(result.watch_items, "目前沒有可驗證的後續觀察項目。")}</div>')
+    return _section("watch", "07 · 後續觀察", "後續觀察重點", f'<div class="panel">{_numbered_list(result.watch_items, "目前沒有可驗證的後續觀察項目。")}</div>')
 
 
 def _ledger_section(ledger: EvidenceLedger, result: AnalysisResult) -> str:
@@ -209,12 +209,12 @@ def _ledger_section(ledger: EvidenceLedger, result: AnalysisResult) -> str:
         )
     body = "".join(rows) or '<tr><td colspan="6">Ledger 為空；原因見限制與降級。</td></tr>'
     table = f'<details open><summary>檢視 Evidence List · {len(ledger.items)} 筆</summary><div class="tablewrap"><table><thead><tr><th>ID</th><th>來源</th><th>取得時間</th><th>內容參照</th><th>關聯主張</th><th>可信度</th></tr></thead><tbody>{body}</tbody></table></div></details>'
-    return _section("ledger", "08 · Evidence ledger", "每個關鍵結論都可回溯", table)
+    return _section("ledger", "08 · 證據明細", "每個關鍵結論都可回溯", table)
 
 
 def _reproducibility_section(result: AnalysisResult, ledger: EvidenceLedger, terminal_state: str, prompt_version: str, policy_version: str) -> str:
-    body = f'<div class="panel"><div class="panel-head"><div><h3>執行摘要</h3><p>Planner → Market + Research → Evidence Processor → Arbiter → Renderer</p></div><span class="chip warn">{_e(terminal_state)}</span></div><dl class="meta"><div><dt>Schema</dt><dd>{_e(ledger.schema_version)}</dd></div><div><dt>Prompt</dt><dd>{_e(prompt_version)}</dd></div><div><dt>Policy</dt><dd>{_e(policy_version)}</dd></div><div><dt>H3 debate</dt><dd>未實作／未執行</dd></div></dl></div><div class="downloads"><a class="download" href="final_report.md"><b>FINAL_REPORT.MD</b><small>稽核用文字版</small></a><a class="download" href="evidence.json"><b>EVIDENCE.JSON</b><small>Evidence Ledger</small></a><a class="download" href="execution_log.jsonl"><b>EXECUTION LOG</b><small>執行紀錄</small></a><a class="download" href="run_config.json"><b>RUN CONFIG</b><small>脫敏設定</small></a></div>'
-    return _section("reproduce", "09 · Reproducibility", "讓評審看見完整 Agent 執行痕跡", body)
+    body = f'<div class="panel"><div class="panel-head"><div><h3>資料與檔案</h3><p>本次分析的來源、證據與執行紀錄均保留，可供查閱。</p></div><span class="chip warn">{_e(terminal_state)}</span></div><dl class="meta"><div><dt>分析截點</dt><dd>{_iso(result.analysis_as_of)}</dd></div><div><dt>分析資產</dt><dd>{_e(" · ".join(a.value for a in result.assets))}</dd></div><div><dt>證據筆數</dt><dd>{len(ledger.items)}</dd></div><div><dt>來源群組</dt><dd>{len({item.independence_group for item in ledger.items})}</dd></div></dl></div><div class="downloads"><a class="download" href="final_report.md"><b>FINAL_REPORT.MD</b><small>文字版報告</small></a><a class="download" href="evidence.json"><b>EVIDENCE.JSON</b><small>完整證據</small></a><a class="download" href="execution_log.jsonl"><b>EXECUTION LOG</b><small>執行紀錄</small></a><a class="download" href="run_config.json"><b>RUN CONFIG</b><small>分析設定</small></a></div>'
+    return _section("reproduce", "09 · 資料與檔案", "保留完整來源與分析紀錄", body)
 
 
 def _section(section_id: str, kicker: str, title: str, body: str) -> str:
@@ -243,11 +243,11 @@ def _numbered_list(items: Sequence[str], empty: str) -> str:
 
 def _disclosure(result: AnalysisResult, ledger: EvidenceLedger) -> str:
     if ledger.run_mode is RunMode.official:
-        base = "本頁來自本次 official run 的 validated artifacts。"
+        base = "本頁內容來自本次即時資料分析。"
     elif ledger.run_mode is RunMode.rehearsal:
         base = "本頁為 rehearsal 可重現資料結果，不得標示為 live official。"
     else:
-        base = "本頁為 demo 結果，可能包含 recorded fallback，不代表現場新分析。"
+        base = "本頁為展示資料結果，不代表即時分析。"
     if result.insufficient_data:
         base += " 分析結果標記為資料不足；頁面不補寫方向性結論。"
     return base
