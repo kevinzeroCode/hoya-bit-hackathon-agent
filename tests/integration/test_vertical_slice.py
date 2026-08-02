@@ -29,6 +29,7 @@ from hoya_agent.orchestration.pipeline import AnalysisPipeline, EventEmitter, Pi
 from hoya_agent.reporting.artifacts import (
     ARTIFACT_NAMES,
     EVIDENCE_LEDGER,
+    EVIDENCE_LIST,
     EXECUTION_LOG,
     FINAL_REPORT,
     RUN_CONFIG,
@@ -162,7 +163,7 @@ def _rehearsal_request(assets=(Asset.BTC,), question: str = QUESTION):
     )
 
 
-async def test_offline_rehearsal_run_writes_four_parseable_artifacts(tmp_path) -> None:
+async def test_offline_rehearsal_run_writes_all_parseable_artifacts(tmp_path) -> None:
     progress = RecordingProgress()
     service = _service(tmp_path, FixturePipeline())
 
@@ -177,6 +178,13 @@ async def test_offline_rehearsal_run_writes_four_parseable_artifacts(tmp_path) -
     config = json.loads((run_dir / RUN_CONFIG).read_text(encoding="utf-8"))
     ledger = EvidenceLedger.model_validate_json((run_dir / EVIDENCE_LEDGER).read_text(encoding="utf-8"))
     report = (run_dir / FINAL_REPORT).read_text(encoding="utf-8")
+
+    # Evidence List (提交清單 ②): every row carries exactly the four required
+    # columns the competition mandates, one row per ledger evidence.
+    evidence_list = json.loads((run_dir / EVIDENCE_LIST).read_text(encoding="utf-8"))
+    assert len(evidence_list) == len(ledger.items)
+    for row in evidence_list:
+        assert set(row) == {"source", "fetched_at", "content_reference", "related_claim"}
     log_lines = [
         json.loads(line)
         for line in (run_dir / EXECUTION_LOG).read_text(encoding="utf-8").splitlines()
@@ -189,8 +197,13 @@ async def test_offline_rehearsal_run_writes_four_parseable_artifacts(tmp_path) -
 
     assert config["effective_run_mode"] == "rehearsal"
     assert config["terminal_status"] == "completed"
-    # run_config.json cannot checksum itself; the other three must all be recorded.
-    assert set(config["artifact_checksums"]) == {EXECUTION_LOG, EVIDENCE_LEDGER, FINAL_REPORT}
+    # run_config.json cannot checksum itself; every other artifact must be recorded.
+    assert set(config["artifact_checksums"]) == {
+        EXECUTION_LOG,
+        EVIDENCE_LEDGER,
+        EVIDENCE_LIST,
+        FINAL_REPORT,
+    }
     assert all(len(digest) == 64 for digest in config["artifact_checksums"].values())
     assert config["missing_artifacts"] == []
     assert report.count("\n## ") == 11
@@ -296,7 +309,7 @@ async def test_single_artifact_failure_is_disclosed_by_exact_filename(tmp_path) 
     assert FINAL_REPORT in (run_dir / EXECUTION_LOG).read_text(encoding="utf-8")
 
 
-async def test_unwritable_directory_discloses_all_four_filenames(tmp_path) -> None:
+async def test_unwritable_directory_discloses_all_filenames(tmp_path) -> None:
     stdout = io.StringIO()
     (tmp_path / "artifacts").write_text("this path is a file, not a directory", encoding="utf-8")
 

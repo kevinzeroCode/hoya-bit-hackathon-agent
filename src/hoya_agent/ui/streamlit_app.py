@@ -42,7 +42,22 @@ from hoya_agent.ui.presenter import summary_view, trust_funnel  # noqa: E402
 UTC = timezone.utc
 # Organizer CSV ends 2026-05-31; Bronze replays that frozen cutoff (offline).
 BRONZE_CUTOFF = datetime(2026, 5, 31, tzinfo=UTC)
-ARTIFACT_ORDER = ("final_report.md", "evidence.json", "execution_log.jsonl", "run_config.json")
+# Ordered to mirror the competition 提交清單; labels map each fixed filename to
+# the deliverable a judge is looking for.
+ARTIFACT_ORDER = (
+    "final_report.md",
+    "evidence_list.json",
+    "evidence.json",
+    "execution_log.jsonl",
+    "run_config.json",
+)
+ARTIFACT_LABELS = {
+    "final_report.md": "① 分析報告 Final Report",
+    "evidence_list.json": "② 證據清單 Evidence List",
+    "evidence.json": "② 完整證據 Ledger(佐證)",
+    "execution_log.jsonl": "③ 執行紀錄 Execution Log",
+    "run_config.json": "④ 執行配置 Run Config",
+}
 
 
 class _StreamlitProgress:
@@ -245,14 +260,15 @@ def _render_result(view: dict) -> None:
         raw = _artifact_text(view, "execution_log.jsonl")
         st.code(raw or "(無 execution_log.jsonl)", language="json")
 
-    st.subheader("四個固定 artifact")
+    st.subheader("交付 artifact(對應提交清單)")
     dl = st.columns(len(ARTIFACT_ORDER))
     for col, name in zip(dl, ARTIFACT_ORDER):
+        label = ARTIFACT_LABELS.get(name, name)
         raw = _artifact_text(view, name)
         if raw is not None:
-            col.download_button(f"⬇️ {name}", raw, file_name=name)
+            col.download_button(f"⬇️ {label}", raw, file_name=name, help=name)
         else:
-            col.write(f"❌ {name}")
+            col.write(f"❌ {label}")
     if view["missing_artifacts"]:
         st.error(f"缺少 artifact:{view['missing_artifacts']}")
 

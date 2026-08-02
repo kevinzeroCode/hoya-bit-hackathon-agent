@@ -26,10 +26,21 @@ from hoya_agent.models import ExecutionEvent, TerminalState
 RUN_CONFIG = "run_config.json"
 EXECUTION_LOG = "execution_log.jsonl"
 EVIDENCE_LEDGER = "evidence.json"
+#: The competition "Evidence List" deliverable: one row per evidence with exactly
+#: the four required columns (source / fetched_at / content_reference /
+#: related_claim). Projected from the full ledger + claim-evidence links; the rich
+#: `evidence.json` ledger is retained alongside it for deep traceability.
+EVIDENCE_LIST = "evidence_list.json"
 FINAL_REPORT = "final_report.md"
 
 #: Write order is also the resilience order: config first, report last.
-ARTIFACT_NAMES: tuple[str, ...] = (RUN_CONFIG, EXECUTION_LOG, EVIDENCE_LEDGER, FINAL_REPORT)
+ARTIFACT_NAMES: tuple[str, ...] = (
+    RUN_CONFIG,
+    EXECUTION_LOG,
+    EVIDENCE_LEDGER,
+    EVIDENCE_LIST,
+    FINAL_REPORT,
+)
 
 _TMP_PREFIX = ".tmp-"
 

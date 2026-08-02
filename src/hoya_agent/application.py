@@ -54,6 +54,7 @@ from hoya_agent.models import (
     RunSummary,
     SourceStatus,
     TerminalState,
+    project_evidence_list,
 )
 from hoya_agent.orchestration.pipeline import (
     AnalysisPipeline,
@@ -74,6 +75,7 @@ from hoya_agent.reasoning.research_extractor import ResearchExtraction
 from hoya_agent.reporting.advice_lint import advice_violations
 from hoya_agent.reporting.artifacts import (
     EVIDENCE_LEDGER,
+    EVIDENCE_LIST,
     FINAL_REPORT,
     RUN_CONFIG,
     LocalArtifactStore,
@@ -546,6 +548,25 @@ class ApplicationService:
                 analysis_as_of=context.analysis_as_of,
                 reason=_fallback_reason(outcome.degradation_notes),
             )
+        # evidence_list.json: the competition "Evidence List" deliverable — one row
+        # per evidence with exactly the four required columns (source / fetched_at
+        # / content_reference / related_claim, the last from this run's links).
+        evidence_list = project_evidence_list(
+            list(ledger.items), list(result.claim_evidence_links)
+        )
+        if store.write_json(
+            EVIDENCE_LIST, [row.model_dump(mode="json") for row in evidence_list]
+        ):
+            emit(
+                self._event(
+                    context,
+                    "artifact",
+                    "artifact_write",
+                    "ok",
+                    output_count=len(evidence_list),
+                    message=f"wrote {EVIDENCE_LIST}",
+                )
+            )
         report = render(result, ledger, lint=advice_violations)
         if store.write_text(FINAL_REPORT, report):
             emit(
@@ -734,7 +755,7 @@ def _cancelled_outcome(context: RunContext, now: datetime) -> PipelineOutcome:
 def _terminal_state(pipeline_state: TerminalState, store: LocalArtifactStore) -> TerminalState:
     """Artifact delivery is part of run honesty, so missing files degrade the state."""
     missing = store.missing_artifacts()
-    if len(missing) == 4:
+    if not store.artifact_paths():  # nothing was written at all → total failure
         return TerminalState.failed
     if missing and pipeline_state is TerminalState.completed:
         return TerminalState.degraded

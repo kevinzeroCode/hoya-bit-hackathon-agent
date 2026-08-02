@@ -18,6 +18,7 @@ from hoya_agent.models import ExecutionEvent, RunMode, TerminalState
 from hoya_agent.reporting.artifacts import (
     ARTIFACT_NAMES,
     EVIDENCE_LEDGER,
+    EVIDENCE_LIST,
     EXECUTION_LOG,
     FINAL_REPORT,
     RUN_CONFIG,
@@ -39,12 +40,19 @@ def _event(event_type: str = "stage_start") -> ExecutionEvent:
     )
 
 
-def test_artifact_names_are_the_four_fixed_names() -> None:
-    assert ARTIFACT_NAMES == (RUN_CONFIG, EXECUTION_LOG, EVIDENCE_LEDGER, FINAL_REPORT)
+def test_artifact_names_are_the_fixed_deliverable_names() -> None:
+    assert ARTIFACT_NAMES == (
+        RUN_CONFIG,
+        EXECUTION_LOG,
+        EVIDENCE_LEDGER,
+        EVIDENCE_LIST,
+        FINAL_REPORT,
+    )
     assert ARTIFACT_NAMES == (
         "run_config.json",
         "execution_log.jsonl",
         "evidence.json",
+        "evidence_list.json",
         "final_report.md",
     )
 
@@ -109,6 +117,7 @@ def test_checksums_cover_every_written_artifact(tmp_path) -> None:
     store.write_json(RUN_CONFIG, {"run_id": RUN_ID})
     store.append_event(_event())
     store.write_json(EVIDENCE_LEDGER, {"items": []})
+    store.write_json(EVIDENCE_LIST, [])
     store.write_text(FINAL_REPORT, "# 報告\n")
 
     checksums = store.checksums()
@@ -128,7 +137,7 @@ def test_single_write_failure_names_the_exact_file_in_stdout_and_log(tmp_path) -
 
     assert EVIDENCE_LEDGER in stdout.getvalue()
     assert "artifact write failed" in stdout.getvalue().lower()
-    assert store.missing_artifacts() == [EVIDENCE_LEDGER, FINAL_REPORT]
+    assert store.missing_artifacts() == [EVIDENCE_LEDGER, EVIDENCE_LIST, FINAL_REPORT]
     assert [f.name for f in store.failures] == [EVIDENCE_LEDGER]
 
     log_text = (store.run_dir / EXECUTION_LOG).read_text(encoding="utf-8")

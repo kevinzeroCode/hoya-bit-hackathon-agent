@@ -59,7 +59,7 @@ Agent 的決策邊界、信任邊界與 LLM／deterministic 分區見 [Agent Arc
 - 市場數值只由 Python 計算；LLM 不得補寫價格、報酬、波動或量能。
 - Evidence Processor 驗證、exact dedup、靜態 reliability、來源獨立性與 material conflict。
 - Arbiter 只根據 Evidence 產生 fact -> inference -> conclusion；無證據則標示 insufficient data。
-- Artifact volume 可寫時，每次 run 交付 `run_config.json`、`execution_log.jsonl`、`evidence.json`、`final_report.md`。
+- Artifact volume 可寫時，每次 run 交付 `run_config.json`、`execution_log.jsonl`、`evidence.json`（完整 ledger）、`evidence_list.json`（提交清單「證據清單」：每筆含 source / fetched_at / content_reference / related_claim 四欄）、`final_report.md`。
 - 外部 API 或 Bedrock 失敗時保留 partial results，並以 deterministic fallback 完成可交付報告。
 
 ### Non-functional targets
