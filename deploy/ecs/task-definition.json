@@ -1,0 +1,42 @@
+{
+  "family": "hoya-agent",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "1024",
+  "memory": "2048",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/hoya-agent-ecs-execution",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/hoya-agent-ecs-task",
+  "containerDefinitions": [
+    {
+      "name": "hoya-agent",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/hoya-agent:<TAG>",
+      "essential": true,
+      "portMappings": [{ "containerPort": 8501, "protocol": "tcp" }],
+      "environment": [
+        { "name": "HOYA_DATA_DIR", "value": "/app/HOYA_BIT_crypto_market_dataset/data" },
+        { "name": "AWS_REGION", "value": "<AWS_REGION>" },
+        { "name": "BEDROCK_PRIMARY_MODEL_ID", "value": "<BEDROCK_PRIMARY_MODEL_ID>" },
+        { "name": "BEDROCK_FALLBACK_MODEL_ID", "value": "<BEDROCK_FALLBACK_MODEL_ID>" }
+      ],
+      "secrets": [],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health')\" || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 5,
+        "startPeriod": 20,
+        "retries": 3
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/hoya-agent",
+          "awslogs-region": "<AWS_REGION>",
+          "awslogs-stream-prefix": "hoya-agent"
+        }
+      }
+    }
+  ]
+}

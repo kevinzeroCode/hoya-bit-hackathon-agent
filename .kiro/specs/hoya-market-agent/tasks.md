@@ -602,18 +602,22 @@ below, now formally in scope. None of these are subject to the Task 0-12 Feature
   - **Acceptance:** **Met, both halves.** PDF is deterministic (same Markdown source every time) and additive. The radar chart is deterministic, derived only from existing `TrustScorecard` fields, renders once per conclusion, and degrades to the pre-existing text-only summary rather than fabricating a chart when no scorecard exists.
   - **Commit:** `feat: add deterministic PDF export with CJK font support`
 
-- [ ] **21. Platinum infrastructure: S3 artifact mirroring, CloudWatch, ECS**
+- [x] **21. Platinum infrastructure: S3 artifact mirroring, CloudWatch, ECS** (application code done 2026-08-03, locally verified only; nothing applied to real AWS)
   - **Owner:** P1/P4-equivalent deployment lane
   - **Wave / dependency:** independent; touches deployment, coordinate timing with any active EC2 demo use
   - **Spec:** former "Future Reference 12" below
-  - **Files:**
-    - Modify: `docs/deployment.md`
-    - Create: infrastructure-as-code or scripted setup for S3 mirroring and CloudWatch (match whatever tooling `docs/deployment.md` already uses for EC2 — do not introduce a second deployment mechanism)
-  - [ ] Mirror each run's four artifacts to S3 after local write succeeds — mirroring must never become a dependency of artifact completion; a run still succeeds locally if S3 is unreachable, with the gap disclosed.
-  - [ ] Add CloudWatch for the existing EC2 host's logs/health, not a new metrics contract.
-  - [ ] Evaluate ECS as a deployment target; if adopted, keep the single immutable commit-SHA tag promotion Task 10 already established — do not weaken that guarantee.
-  - [ ] No secret enters any of this — reuse the existing IAM-role-based, no-static-keys pattern `docs/deployment.md` already documents for EC2.
-  - **Acceptance:** S3 mirroring and CloudWatch are additive and non-blocking; if ECS is adopted, the immutable-tag deployment guarantee from Task 10 still holds; no new secret-handling path is introduced.
+  - **Context this task landed in:** the Workshop Studio AWS grant this project used throughout (`docs/deployment.md` §"Known operational conditions" already documented it as temporary and reclaimed on event end) was unavailable in this session. The user's explicit instruction was to build this in a form ready to deploy later, verified locally only — not to provision real S3/CloudWatch/ECS resources.
+  - **Files (as actually touched):**
+    - Created: `src/hoya_agent/adapters/s3_mirror.py` — `mirror_artifacts(run_dir, *, bucket, prefix, client=None)`. Same client-injection pattern as `adapters/bedrock.py::BedrockLLMClient` (lazily constructs `boto3.client("s3")` only if no client is injected), so `tests/unit/data_evidence/test_s3_mirror.py` (5 tests) needs no AWS credentials — a fake client records/fails uploads, and one test fakes `boto3.client()` itself raising (the no-credentials case) via `sys.modules` injection.
+    - Created: `src/hoya_agent/adapters/cloudwatch_metrics.py` — `emit_run_metrics(*, terminal_state, duration_seconds, evidence_count, client=None)`, publishing `RunCompleted`/`RunDurationSeconds`/`EvidenceCount` to a `HoyaAgent` namespace. Same pattern, same test approach (`tests/unit/data_evidence/test_cloudwatch_metrics.py`, 4 tests).
+    - Created: `deploy/ecs/task-definition.json` + `deploy/ecs/README.md` — a Fargate task definition consistent with the current `Dockerfile`/`compose.yaml` (same port, same env var names, same healthcheck), plus a written evaluation of why ECS was not adopted now (a single EC2 host already satisfies the one deployment guarantee — immutable-tag promotion — this project needs) and exactly what steps 3-5 would need real AWS access to complete. Verified for JSON syntax only.
+    - Modified: `docs/deployment.md` — new §7 "Optional cloud extensions" pointing at all three of the above with the same "not yet wired, not yet applied" disclosure.
+  - [x] S3 mirroring never becomes a dependency of artifact completion: `mirror_artifacts()` only ever operates on a `run_dir` that already has its files written, and every failure mode (missing directory, one file failing, no client available) returns a disclosed `MirrorResult` rather than raising.
+  - [x] CloudWatch: implemented as application-level run metrics (`emit_run_metrics`) rather than EC2-host log/agent configuration — the latter is deployment-host configuration that would need to be verified against the actual running instance, which this session could not do; the former is testable application code, consistent with everything else built this session.
+  - [x] Evaluated ECS as a deployment target; **not adopted** — documented reasoning in `deploy/ecs/README.md`. The task definition preserves the immutable-tag guarantee (image reference is `<ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/hoya-agent:<TAG>`, the same tag discipline `docs/deployment.md` §4 already establishes) but nothing was registered or run.
+  - [x] No secret anywhere: `task-definition.json` uses placeholder values only (`<ACCOUNT_ID>`, `<TAG>`, model id placeholders); `executionRoleArn`/`taskRoleArn` are meant to mirror the existing EC2 instance role's policies, not new ones with different permissions.
+  - [x] Ran `python -m pytest tests/unit/data_evidence/test_s3_mirror.py tests/unit/data_evidence/test_cloudwatch_metrics.py -q` (9 passed) then the full non-live suite (1366 passed, up from 1357) and `ruff check .` (All checks passed); validated `task-definition.json` as syntactically valid JSON.
+  - **Acceptance:** **Met at the scope this session could actually verify.** S3 mirroring and CloudWatch metrics are additive, non-blocking, and fully unit-tested without any AWS access; the immutable-tag deployment guarantee is preserved in the (unregistered, unrun) ECS template; no new secret-handling path exists anywhere. Actually deploying any of this — registering the task definition, creating the bucket/log group, wiring the two adapters into `application.py` — is explicitly left for whenever real AWS access returns.
   - **Commit:** `feat: add S3 artifact mirroring and CloudWatch for the EC2 deployment`
 
 ## Historical Future Work Notes (superseded by Tasks 17-21 above)

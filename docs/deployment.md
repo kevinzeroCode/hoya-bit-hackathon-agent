@@ -217,6 +217,34 @@ Rollback stays a manual, deliberate action (§5's rollback section) — the
 pipeline does not automatically roll back a failed deploy, it just refuses to
 report success.
 
+## 7. Optional cloud extensions (Task 21, added 2026-08-03)
+
+Written when the Workshop Studio grant above was believed reclaimed and no live
+AWS access was available to verify any of it end to end — see
+`docs/Implementation-Plan.md` §9 Task 21. Each piece below is additive and
+off by default; none of it is wired into `application.py` or the running
+deployment.
+
+- **S3 artifact mirroring** — `src/hoya_agent/adapters/s3_mirror.py::mirror_artifacts()`.
+  Copies a completed run's already-written artifacts to S3 after the local
+  write succeeds; never a dependency of artifact completion. Client is
+  injectable (same pattern as `adapters/bedrock.py`), so it is fully unit
+  tested (`tests/unit/data_evidence/test_s3_mirror.py`) without any AWS
+  access. Not called from `application.py` — a future wiring would call it
+  once `ApplicationService.run()` finishes and the run directory exists.
+- **CloudWatch run metrics** — `src/hoya_agent/adapters/cloudwatch_metrics.py::emit_run_metrics()`.
+  Publishes `RunCompleted` (dimensioned by terminal state), `RunDurationSeconds`
+  and `EvidenceCount` to a `HoyaAgent` namespace. Same injectable-client
+  pattern, same "never blocks the run it describes" guarantee, same
+  not-yet-wired status.
+- **ECS** — evaluated, not adopted. `deploy/ecs/task-definition.json` +
+  `deploy/ecs/README.md` explain why (a single EC2 host already satisfies
+  the one deployment guarantee this project actually needs) and give a
+  ready-to-register Fargate task definition, consistent with the current
+  `Dockerfile`/`compose.yaml`, for whenever migrating is actually decided.
+  Verified for JSON syntax only — registering and running it needs real AWS
+  access this session did not have.
+
 ## Known operational conditions
 
 ### ✅ Bedrock is enabled on account `411451203311`
