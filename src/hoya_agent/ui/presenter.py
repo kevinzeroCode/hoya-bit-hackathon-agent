@@ -8,7 +8,13 @@ Run-mode and terminal-state each map to a distinct visual token so `official`,
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
+
+from hoya_agent.data.price_analysis import anomaly_days
+from hoya_agent.data.types import MarketBar
+from hoya_agent.evidence.triangulation import triangulate
+from hoya_agent.models import EvidenceItem
 
 # official / rehearsal / demo must be visually distinct (Req 2).
 RUN_MODE_STYLE: dict[str, tuple[str, str]] = {
@@ -62,6 +68,54 @@ def trust_funnel(evidence_ledger: dict[str, Any]) -> dict[str, Any]:
         "reliability_mix": mix,
         "conflict_count": conflicts,
     }
+
+
+def triangulation_view(
+    evidence_ledger: dict[str, Any],
+    bars_by_asset: dict[str, Sequence[MarketBar]],
+    *,
+    sigma: float = 3.0,
+    min_history: int = 365,
+    window_days: int = 1,
+) -> dict[str, Any]:
+    """Cross-source triangulation (Gold-Plan G2): does a market anomaly day line
+    up with independent research evidence gathered around the same day?
+
+    Pure and framework-free, same shape as `trust_funnel`: computed post-run from
+    the run's own `evidence.json` items plus the bars the run already loaded
+    (`OrganizerCsvPipeline.last_bars_by_asset` or the live pipeline's equivalent).
+    No schema or pipeline change, no second network fetch, no LLM. `bars_by_asset`
+    with too little history for a stable sigma (see `data.price_analysis.anomaly_days`)
+    degrades that asset to `available=False` with a reason instead of guessing.
+    `sigma`/`min_history` default to `anomaly_days`'s own defaults; tests may
+    override `min_history` to work with a small hand-computable fixture.
+    """
+    items = [EvidenceItem.model_validate(raw) for raw in evidence_ledger.get("items", []) or []]
+    result: dict[str, Any] = {}
+    for asset, bars in bars_by_asset.items():
+        try:
+            anomalies = anomaly_days(bars, sigma=sigma, min_history=min_history)
+        except ValueError as exc:
+            result[asset] = {"available": False, "reason": str(exc), "events": []}
+            continue
+        events = triangulate(anomalies, items, asset=asset, window_days=window_days)
+        result[asset] = {
+            "available": True,
+            "events": [
+                {
+                    "day": event.day.isoformat(),
+                    "simple_return": event.simple_return,
+                    "z": event.z,
+                    "strength": event.strength,
+                    "corroborating_evidence_ids": list(event.corroborating_evidence_ids),
+                    "source_types": list(event.source_types),
+                    "independence_groups": list(event.independence_groups),
+                    "note": event.note,
+                }
+                for event in events
+            ],
+        }
+    return result
 
 
 def summary_view(summary: Any) -> dict[str, Any]:

@@ -13,14 +13,14 @@ import pytest
 
 from hoya_agent.models import Asset, RunMode
 from hoya_agent.reporting.advice_lint import advice_violations
-from hoya_agent.ui.presenter import summary_view
+from hoya_agent.ui.presenter import summary_view, triangulation_view
 from hoya_agent.ui.streamlit_app import ARTIFACT_ORDER, _run_offline
 
 pytestmark = pytest.mark.integration
 
 
 def test_bronze_offline_run_produces_four_artifacts_and_view():
-    summary = _run_offline([Asset.BTC], "BTC 過去兩週表現?", RunMode.rehearsal)
+    summary, _bars = _run_offline([Asset.BTC], "BTC 過去兩週表現?", RunMode.rehearsal)
     view = summary_view(summary)
 
     # four fixed artifacts exist on disk
@@ -35,8 +35,30 @@ def test_bronze_offline_run_produces_four_artifacts_and_view():
     assert not view["missing_artifacts"]
 
 
+def test_bronze_offline_run_exposes_bars_for_triangulation():
+    """Task 14 / G2: the UI's offline pipeline must expose the bars it already
+    loaded so `ui.presenter.triangulation_view` can run without a second fetch.
+
+    Only checks the wiring reaches end to end (real bars in, no crash) — the
+    triangulation math itself is covered by `tests/unit/evidence/test_triangulation.py`
+    and `tests/unit/ui/test_presenter.py`'s hand-computable golden fixtures.
+    """
+    import json
+    from pathlib import Path
+
+    summary, bars_by_asset = _run_offline([Asset.BTC], "BTC 過去兩週表現?", RunMode.rehearsal)
+    assert bars_by_asset, "the offline pipeline must expose the bars it loaded"
+    assert "BTC" in bars_by_asset
+    assert len(bars_by_asset["BTC"]) > 0
+
+    view = summary_view(summary)
+    raw_ledger = json.loads(Path(view["artifact_dir"], "evidence.json").read_text(encoding="utf-8"))
+    tri = triangulation_view(raw_ledger, bars_by_asset)
+    assert "BTC" in tri  # never raises even if the organizer dataset is short of a year
+
+
 def test_bronze_is_coin_agnostic():
-    summary = _run_offline([Asset.XRP], "XRP?", RunMode.demo)
+    summary, _bars = _run_offline([Asset.XRP], "XRP?", RunMode.demo)
     view = summary_view(summary)
     assert view["run_mode_label"] == "DEMO"
     assert view["evidence_count"] > 0
@@ -49,7 +71,8 @@ def test_bronze_ui_output_contains_no_investment_advice():
     surface that nothing prescriptive reaches the judge for every asset.
     """
     for asset in (Asset.BTC, Asset.ETH, Asset.SOL, Asset.BNB, Asset.XRP):
-        view = summary_view(_run_offline([asset], "市場狀況?", RunMode.rehearsal))
+        summary, _bars = _run_offline([asset], "市場狀況?", RunMode.rehearsal)
+        view = summary_view(summary)
         report = view["report_markdown"]
         assert report
         violations = advice_violations(report)

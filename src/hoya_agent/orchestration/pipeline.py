@@ -150,6 +150,17 @@ class DeadlineAwarePipeline:
         self._optional_operations = frozenset(optional_operations)
         self._counter_signal_operations = frozenset(counter_signal_operations)
 
+    @property
+    def last_bars_by_asset(self) -> dict[str, Sequence[MarketBar]]:
+        """Forward to the wrapped market pipeline's bars, if it tracks any.
+
+        Lets a caller holding a `DeadlineAwarePipeline` (the live/Bedrock path)
+        reuse the same bars the run already loaded, same as a caller holding a
+        bare `OrganizerCsvPipeline` directly (the offline path) — see Task 14 /
+        G2 triangulation wiring in `ui/presenter.py`.
+        """
+        return getattr(self._market, "last_bars_by_asset", {})
+
     async def execute(self, context: RunContext, emit: EventEmitter) -> PipelineOutcome:
         deadline = DeadlineManager.for_run(context, self._clock)
         state = RunStateMachine(context=context, clock=self._clock, emit=emit)
@@ -599,6 +610,12 @@ class OrganizerCsvPipeline:
         if market_source_url is not None:
             self._market_source["source_url"] = market_source_url
         self.last_metric_index: dict[str, MetricValue] = {}
+        # Stashed the same way as `last_metric_index`: the caller already holds this
+        # pipeline instance, so re-exposing what `execute()` already loaded costs
+        # nothing extra and lets the UI layer (Task 14 / G2 triangulation) reuse the
+        # exact bars a run used instead of re-fetching. Never read by anything inside
+        # this module — a pure post-run convenience for callers.
+        self.last_bars_by_asset: dict[str, Sequence[MarketBar]] = {}
 
     async def execute(self, context: RunContext, emit: EventEmitter) -> PipelineOutcome:
         as_of = self._analysis_date or context.analysis_as_of.date()
@@ -630,6 +647,8 @@ class OrganizerCsvPipeline:
                     message=f"{asset.value} market evidence {status}",
                 )
             )
+
+        self.last_bars_by_asset = {asset.value: bars for asset, bars in bars_by_asset.items()}
 
         if len(context.assets) == 2:
             left, right = context.assets

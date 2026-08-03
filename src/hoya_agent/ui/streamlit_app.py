@@ -37,7 +37,7 @@ from hoya_agent.application import ApplicationService, build_request  # noqa: E4
 from hoya_agent.clock import SystemClock  # noqa: E402
 from hoya_agent.models import Asset, RunMode  # noqa: E402
 from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline  # noqa: E402
-from hoya_agent.ui.presenter import summary_view, trust_funnel  # noqa: E402
+from hoya_agent.ui.presenter import summary_view, triangulation_view, trust_funnel  # noqa: E402
 
 UTC = timezone.utc
 # Organizer CSV ends 2026-05-31; Bronze replays that frozen cutoff (offline).
@@ -84,7 +84,7 @@ class _StreamlitProgress:
         self._status.write(f"`{self._n:02d}` {line}")
 
 
-def _run_offline(assets: list[Asset], question: str, run_mode: RunMode, progress=None) -> object:
+def _run_offline(assets: list[Asset], question: str, run_mode: RunMode, progress=None) -> tuple:
     now = datetime.now(UTC)
     request = build_request(
         question=question or "市場狀況與資料整合",
@@ -94,13 +94,15 @@ def _run_offline(assets: list[Asset], question: str, run_mode: RunMode, progress
         run_id_suffix="ui",
         analysis_as_of=BRONZE_CUTOFF,
     )
+    pipeline = OrganizerCsvPipeline(analysis_date=BRONZE_CUTOFF.date())
     service = ApplicationService(
         artifact_root=Path(tempfile.mkdtemp(prefix="hoya-ui-")),
         clock=SystemClock(),
-        pipeline=OrganizerCsvPipeline(analysis_date=BRONZE_CUTOFF.date()),
+        pipeline=pipeline,
         configured_sources=["public_market_data"],
     )
-    return asyncio.run(service.run(request, progress=progress))
+    summary = asyncio.run(service.run(request, progress=progress))
+    return summary, getattr(pipeline, "last_bars_by_asset", {})
 
 
 def _bedrock_env() -> tuple[str, str] | None:
@@ -154,7 +156,7 @@ def _live_pipeline(now, assets, question):
     )
 
 
-def _run_live(assets: list[Asset], question: str, progress=None) -> object:
+def _run_live(assets: list[Asset], question: str, progress=None) -> tuple:
     """Real-time run: live Binance market + Fear & Greed; Arbiter reasons when
     Bedrock is configured (EC2 IAM role / env), otherwise deterministic evidence."""
     now = datetime.now(UTC)
@@ -173,7 +175,8 @@ def _run_live(assets: list[Asset], question: str, progress=None) -> object:
         pipeline=pipeline,
         configured_sources=sources,
     )
-    return asyncio.run(service.run(request, progress=progress))
+    summary = asyncio.run(service.run(request, progress=progress))
+    return summary, getattr(pipeline, "last_bars_by_asset", {})
 
 
 def _artifact_text(view: dict, name: str) -> str | None:
@@ -295,7 +298,7 @@ def _source_links_markdown(items: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _render_result(view: dict) -> None:
+def _render_result(view: dict, bars_by_asset: dict | None = None) -> None:
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Run mode", f"{view['run_mode_icon']} {view['run_mode_label']}")
     m2.metric("執行狀態", f"{view['terminal_icon']} {view['terminal_label']}")
@@ -324,6 +327,30 @@ def _render_result(view: dict) -> None:
             (f["independence_group_count"] / f["evidence_count"]) if f["evidence_count"] else 0.0,
             text="獨立性:獨立來源群 / 證據筆數(越高代表越不是轉載堆疊)",
         )
+
+        # Cross-source triangulation (Gold-Plan G2): market anomaly days that
+        # independent research evidence corroborates around the same date.
+        # Needs the run's own bars (not just evidence.json), so it silently
+        # skips rather than errors when bars_by_asset is empty (e.g. a run
+        # whose pipeline never exposed last_bars_by_asset).
+        if bars_by_asset:
+            tri = triangulation_view(json.loads(raw_ledger), bars_by_asset)
+            any_available = any(a["available"] for a in tri.values())
+            if any_available:
+                st.subheader("跨源三角驗證(市場異動 × 獨立研究)")
+                for asset, asset_view in tri.items():
+                    if not asset_view["available"]:
+                        st.caption(f"{asset}：歷史資料不足，無法計算異動日（{asset_view['reason']}）")
+                        continue
+                    events = asset_view["events"]
+                    if not events:
+                        st.caption(f"{asset}：本次分析期間無顯著市場異動日。")
+                        continue
+                    for event in events[:5]:
+                        icon = "🟢" if event["strength"] >= 2 else "⚪"
+                        st.markdown(f"{icon} **{asset} {event['day']}** — {event['note']}")
+                        if event["corroborating_evidence_ids"]:
+                            st.caption("佐證：" + "、".join(f"`{eid}`" for eid in event["corroborating_evidence_ids"]))
 
     # Report / Evidence / Execution Log as three tabs (spec §3.2 S3).
     tab_report, tab_evidence, tab_log = st.tabs(["📄 報告", "🧾 證據來源", "🪵 執行紀錄"])
@@ -437,10 +464,10 @@ def main() -> None:
             with st.status(label, expanded=True) as status:
                 sink = _StreamlitProgress(status)
                 if is_live:
-                    summary = _run_live(assets, question, progress=sink)
+                    summary, bars_by_asset = _run_live(assets, question, progress=sink)
                 else:
                     run_mode = RunMode.demo if mode == _MODE_OFFLINE_DEMO else RunMode.rehearsal
-                    summary = _run_offline(assets, question, run_mode, progress=sink)
+                    summary, bars_by_asset = _run_offline(assets, question, run_mode, progress=sink)
                 status.update(label="分析完成", state="complete", expanded=False)
         finally:
             st.session_state["_run_in_flight"] = False
@@ -449,10 +476,11 @@ def main() -> None:
         # vanish back to the initial screen. Rendering from session_state keeps the
         # same page (and its four download buttons) alive across download clicks.
         st.session_state["_last_view"] = summary_view(summary)
+        st.session_state["_last_bars"] = bars_by_asset
 
     last_view = st.session_state.get("_last_view")
     if last_view is not None:
-        _render_result(last_view)
+        _render_result(last_view, st.session_state.get("_last_bars") or {})
     elif not submitted:
         st.info(
             "選擇幣種並輸入研究型題目後，按「執行分析」。"

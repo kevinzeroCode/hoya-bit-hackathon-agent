@@ -1449,7 +1449,7 @@ H3 三處都標示未實作；secret scan 通過。
 | Task | 一句話 | 狀態 | 備註 |
 |---|---|---|---|
 | **13** 刪除 `p2-etl-mvp/` | 移除 71 個檔的重複原型樹 | ✅ 已完成（2026-08-03，`69c019f`） | 見 §8 項目 8 |
-| **14** 接上跨源三角驗證（G2） | `evidence/triangulation.py` 已寫好、有測試，但沒接進 pipeline | 🔴 未開始 | `docs/Gold-Plan.md` §G2；建議走 Task 11（G3 信任漏斗）用過的同一種模式——UI 端從 `evidence.json` 算，不碰契約 |
+| **14** 接上跨源三角驗證（G2） | `evidence/triangulation.py` 已寫好、有測試，但沒接進 pipeline | ✅ 已完成（2026-08-03） | 實作時發現原規劃有誤：`triangulate()` 需要 `anomaly_days(bars)`，而 `bars`（原始 OHLCV）不在 `evidence.json` 裡，純 UI 端算不出來——G3 的「只讀 evidence.json」模式不適用。改為讓 `OrganizerCsvPipeline`／`DeadlineAwarePipeline` 在 `execute()` 後暴露 `last_bars_by_asset`（沿用既有 `last_metric_index` 的寫法），UI 直接複用 run 已經載入的 bars,不重抓、不碰契約。全部測試綠、`ruff` 乾淨 |
 | **15** agent 判斷可視化（G4） | Planner 其實已經依題目挑不同 operation，但選擇本身與理由從未呈現給評審 | 🔴 未開始 | `docs/Gold-Plan.md` §G4；純呈現層工作，不改推理邏輯 |
 | **16** G1 語意複核 | 純質性事實的語意層複核（走 `LLMClient`），確定性硬原子比對已完成 | 🔴 未開始 | 新檔案，🚫 不動 `evidence/grounding.py`（規定維持 LLM-free）或凍結的 `reasoning/arbiter.py` |
 | **17** H3 條件式辯論 | 真正實作 Bull/Bear/Judge，`enable_conditional_debate` opt-in | 🔴 未開始 | 觸碰目前唯一的凍結元件 `DisabledConflictExtension`，需 owner 同意 |

@@ -467,20 +467,23 @@ below, now formally in scope. None of these are subject to the Task 0-12 Feature
   - **Acceptance:** `p2-etl-mvp/` no longer exists in the tree; full non-live suite and `ruff check .` are unchanged (still green); nothing else changes behavior. **Met.**
   - **Commit:** `chore: remove the superseded p2-etl-mvp prototype tree`
 
-- [ ] **14. Wire cross-source triangulation (G2) into the live pipeline**
+- [x] **14. Wire cross-source triangulation (G2) into the live pipeline** (done 2026-08-03)
   - **Owner:** data/evidence lane
   - **Wave / dependency:** none — independent of 13, 15, 16
   - **Spec:** `docs/Gold-Plan.md` §G2 (the differentiator plan written 2026-08-01; not a formal Requirement)
-  - **Files:**
-    - Modify: `src/hoya_agent/ui/presenter.py` (or wherever the trust funnel in Task 11/G3 is computed — follow that same pattern: derive from `evidence.json` + market bars, no contract change)
-    - Modify: `src/hoya_agent/ui/streamlit_app.py` (render alongside the existing trust funnel)
-    - Create: `tests/unit/evidence/test_triangulation_integration.py` (or extend the existing `tests/unit/evidence/test_triangulation.py` if one exists — `evidence/triangulation.py` and its `triangulate()` function already exist and are unit-tested in isolation; **only the wiring is missing**, confirmed by `grep -ri triangulat src/` returning exactly one file)
-  - [ ] Call `triangulate(anomalies, evidence_items, asset=...)` for each run asset from the presenter layer, the same way the Task 11 trust funnel reads `evidence.json` without touching `models.py` or the frozen `reasoning/` path — this stays a derived UI view, not a new Evidence/Claim field.
-  - [ ] Render each `TriangulatedEvent` (day, return, z-score, corroborating evidence IDs, source types, independence groups, strength) so a judge can see "N distinct source types independently point at the same day" — this is the single highest-ROI trust story per `docs/Gold-Plan.md` §0.
-  - [ ] Degrade explicitly: no anomaly days (flat market) or no market data → show an empty/`unavailable` state, never fabricate an event.
-  - [ ] **Stretch, not required:** feeding `TriangulatedEvent`s into the Arbiter payload as extra context. `reasoning/arbiter.py` is a frozen path — do not touch it without the reasoning-lane owner's explicit sign-off, same rule Task 12 already used for the per-asset quota change.
-  - [ ] Run `python -m pytest tests/unit/evidence tests/unit/ui -q` and `ruff check .`; confirm the full non-live suite is still green.
-  - **Acceptance:** A run with at least one market anomaly day and nearby research evidence shows a rendered triangulation view backed only by already-collected, already-grounded Evidence IDs; no LLM call, no network call, no new `EvidenceItem`/`Claim` field; degrades to an explicit empty state rather than fabricating corroboration.
+  - **Design correction found while implementing:** the original brief above assumed triangulation could read `evidence.json` alone, mirroring Task 11's trust funnel exactly. It cannot: `triangulate()` needs `anomaly_days(bars)`, which needs >= `min_history` (default 365) raw `MarketBar`s — data that never lands in `evidence.json`. Fix: `OrganizerCsvPipeline` (and `DeadlineAwarePipeline` via a forwarding property) now stash `last_bars_by_asset` after `execute()`, the same pattern already used for `last_metric_index`; the UI passes those already-loaded bars into the new view function instead of re-fetching or inventing a bars artifact.
+  - **Files (as actually touched):**
+    - Modified: `src/hoya_agent/orchestration/pipeline.py` — `OrganizerCsvPipeline.last_bars_by_asset` (set at the end of `execute()`) and `DeadlineAwarePipeline.last_bars_by_asset` (forwards to `self._market`, so both the offline and live/Bedrock composition roots expose the same attribute).
+    - Modified: `src/hoya_agent/ui/presenter.py` — added `triangulation_view(evidence_ledger, bars_by_asset, *, sigma=3.0, min_history=365, window_days=1)`, same pure/framework-free shape as `trust_funnel`.
+    - Modified: `src/hoya_agent/ui/streamlit_app.py` — `_run_offline`/`_run_live` now return `(summary, bars_by_asset)`; both call sites and `st.session_state["_last_bars"]` updated; `_render_result` renders a "跨源三角驗證" section under the trust funnel when triangulation is available.
+    - Modified (return-signature fix): `tests/integration/test_streamlit_bronze.py` — the three existing Bronze tests unpack the new tuple; added `test_bronze_offline_run_exposes_bars_for_triangulation`.
+    - Modified: `tests/unit/ui/test_presenter.py` — 3 new tests (`sigma`/`min_history` overridden to keep fixtures hand-computable, following the existing `tests/unit/data_evidence/test_price_analysis.py` pattern).
+  - [x] Call `triangulate(anomalies, evidence_items, asset=...)` for each run asset from the presenter layer; no contract change (`models.py`, `EvidenceItem`, frozen `reasoning/` all untouched).
+  - [x] Render each `TriangulatedEvent` (day, return, z-score, corroborating evidence IDs, source types, independence groups, strength).
+  - [x] Degrade explicitly: too little bar history → `available=False` + a human-readable reason, never a guess; no anomaly days → an explicit "no significant move" caption; both proved by tests.
+  - [ ] **Stretch, not required, not done:** feeding `TriangulatedEvent`s into the Arbiter payload. Still needs reasoning-lane owner sign-off; the UI-only wiring above already delivers the Gold-Plan §0 trust story without it.
+  - [x] Ran `python -m pytest tests/integration/test_streamlit_bronze.py tests/unit/ui tests/unit/orchestration -q` (86 passed) then the full non-live suite (1311 passed, up from 1307) and `ruff check .` (All checks passed); `docker compose config` valid; confirmed no new `boto3`/`httpx` import crossed into `ui/`, `data/` or `evidence/`.
+  - **Acceptance:** **Met.** A run with at least one market anomaly day and nearby research evidence shows a rendered triangulation view backed only by already-collected Evidence IDs; no LLM call, no network call, no new `EvidenceItem`/`Claim` field; degrades to an explicit state rather than fabricating corroboration.
   - **Commit:** `feat: surface cross-source triangulation in the trust UI`
 
 - [ ] **15. Agent judgment visualization (G4)**
