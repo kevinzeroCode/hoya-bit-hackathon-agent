@@ -9,6 +9,7 @@ analytics, or model-generated markup, so the artifact remains portable offline.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from html import escape
@@ -22,6 +23,7 @@ from hoya_agent.models import (
     RunMode,
     Stance,
     TrustLevel,
+    TrustScorecard,
 )
 
 LintHook = Callable[[str], Sequence[str]]
@@ -154,14 +156,22 @@ def _evidence_section(ledger: EvidenceLedger, result: AnalysisResult) -> str:
 
 def _trust_section(result: AnalysisResult, ledger: EvidenceLedger, high: int, medium: int, stale: int) -> str:
     if result.trust_scorecards:
-        card = result.trust_scorecards[0]
-        values = [
-            ("獨立性", card.source_independence.level, f"{card.source_independence.distinct_groups} 個獨立來源群組"),
-            ("來源多樣性", card.source_diversity.level, f"{card.source_diversity.distinct_source_types} 類來源"),
-            ("可信度組成", _mix_level(card.reliability_mix.high, card.reliability_mix.medium), f"high {card.reliability_mix.high} · medium {card.reliability_mix.medium} · low {card.reliability_mix.low}"),
-            ("一致性", card.consistency.level, f"{card.consistency.opposing_count} 個反方訊號"),
-            ("時效性", card.freshness.level, "含較舊資料" if card.freshness.has_stale else "資料具時效性"),
-        ]
+        blocks = []
+        for card in result.trust_scorecards:
+            values = [
+                ("獨立性", card.source_independence.level, f"{card.source_independence.distinct_groups} 個獨立來源群組"),
+                ("來源多樣性", card.source_diversity.level, f"{card.source_diversity.distinct_source_types} 類來源"),
+                ("可信度組成", _mix_level(card.reliability_mix.high, card.reliability_mix.medium), f"high {card.reliability_mix.high} · medium {card.reliability_mix.medium} · low {card.reliability_mix.low}"),
+                ("一致性", card.consistency.level, f"{card.consistency.opposing_count} 個反方訊號"),
+                ("時效性", card.freshness.level, "含較舊資料" if card.freshness.has_stale else "資料具時效性"),
+            ]
+            cards = "".join(_score_card(*value) for value in values)
+            radar = _trust_radar_svg(card)
+            blocks.append(
+                f'<div class="scorecard-block"><h3>結論 <code>{_e(card.claim_id)}</code></h3>'
+                f'<div class="scorecard-row">{radar}<div class="scores">{cards}</div></div></div>'
+            )
+        body = "".join(blocks)
     else:
         values = [
             ("獨立性", TrustLevel.unavailable, "沒有 conclusion scorecard"),
@@ -170,8 +180,9 @@ def _trust_section(result: AnalysisResult, ledger: EvidenceLedger, high: int, me
             ("一致性", TrustLevel.unavailable, f"{len(ledger.conflict_indicators)} 個矛盾訊號"),
             ("時效性", TrustLevel.unavailable, f"{stale} 筆較舊資料"),
         ]
-    cards = "".join(_score_card(*value) for value in values)
-    return _section("trust", "05 · 信任評分", "不用假精確百分比，直接說可信在哪裡", f'<div class="scores">{cards}</div>')
+        cards = "".join(_score_card(*value) for value in values)
+        body = f'<div class="scores">{cards}</div>'
+    return _section("trust", "05 · 信任評分", "不用假精確百分比，直接說可信在哪裡", body)
 
 
 def _limits_section(result: AnalysisResult, ledger: EvidenceLedger) -> str:
@@ -219,6 +230,67 @@ def _reproducibility_section(result: AnalysisResult, ledger: EvidenceLedger, ter
 
 def _section(section_id: str, kicker: str, title: str, body: str) -> str:
     return f'<section id="{section_id}"><span class="kicker">{kicker}</span><h2>{title}</h2>{body}</section>'
+
+
+_RADAR_AXES = ("獨立性", "多樣性", "可信度", "一致性", "時效性")
+
+
+def _radar_point(cx: float, cy: float, radius: float, index: int, total: int) -> tuple[float, float]:
+    angle = -math.pi / 2 + (2 * math.pi * index / total)
+    return cx + radius * math.cos(angle), cy + radius * math.sin(angle)
+
+
+def _trust_radar_svg(card: TrustScorecard) -> str:
+    """Deterministic inline SVG radar chart for one conclusion's Trust Scorecard
+    (Task 20 additional visualization). No new data source: every point plotted
+    is already a field on `card`, mapped through the same 0-3 ordinal pip scale
+    `_score_card` already uses — never a synthetic single percentage.
+    """
+    levels = [
+        card.source_independence.level,
+        card.source_diversity.level,
+        _mix_level(card.reliability_mix.high, card.reliability_mix.medium),
+        card.consistency.level,
+        card.freshness.level,
+    ]
+    cx, cy, max_r = 120.0, 115.0, 62.0
+    n = len(_RADAR_AXES)
+
+    grid = "".join(
+        '<polygon points="'
+        + " ".join(
+            f"{x:.1f},{y:.1f}"
+            for x, y in (_radar_point(cx, cy, max_r * ring / 3, i, n) for i in range(n))
+        )
+        + '" fill="none" stroke="#d8d8cf" stroke-width="1"/>'
+        for ring in (1, 2, 3)
+    )
+    axes = "".join(
+        f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{x:.1f}" y2="{y:.1f}" '
+        f'stroke="#d8d8cf" stroke-width="1"/>'
+        for x, y in (_radar_point(cx, cy, max_r, i, n) for i in range(n))
+    )
+    labels = "".join(
+        f'<text x="{x:.1f}" y="{y:.1f}" font-size="10" fill="#4e544e" text-anchor="middle">'
+        f"{escape(axis)}</text>"
+        for axis, (x, y) in zip(
+            _RADAR_AXES, (_radar_point(cx, cy, max_r + 20, i, n) for i in range(n)), strict=True
+        )
+    )
+    data_points = [
+        _radar_point(cx, cy, max_r * _LEVEL_PIPS[level] / 3, i, n) for i, level in enumerate(levels)
+    ]
+    polygon = " ".join(f"{x:.1f},{y:.1f}" for x, y in data_points)
+    dots = "".join(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="2.5" fill="#087f5b"/>' for x, y in data_points)
+    return (
+        '<svg viewBox="0 0 240 240" width="200" height="200" role="img" '
+        f'aria-label="Trust Scorecard radar for {escape(card.claim_id)}">'
+        f"{grid}{axes}"
+        f'<polygon points="{polygon}" fill="#087f5b" fill-opacity="0.22" '
+        f'stroke="#087f5b" stroke-width="2"/>'
+        f"{dots}{labels}"
+        "</svg>"
+    )
 
 
 def _score_card(label: str, level: TrustLevel, detail: str) -> str:
@@ -271,7 +343,7 @@ def _iso(value: datetime) -> str:
 _CSS = r"""
 :root{color-scheme:light;--page:#f5f4ef;--paper:#fffefa;--ink:#151815;--ink2:#4e544e;--muted:#767d75;--line:#d8d8cf;--green:#087f5b;--green2:#dff3ea;--amber:#a55f00;--amber2:#fff0cf;--red:#b23a32;--red2:#fbe6e3;--blue:#2867b2;--blue2:#e2edf9;--mono:ui-monospace,"Cascadia Mono",Consolas,monospace;--sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--serif:"Noto Serif TC","Source Han Serif TC",Georgia,serif;--shadow:0 14px 40px rgba(22,25,22,.07)}
 :root[data-theme="dark"]{color-scheme:dark;--page:#101310;--paper:#171b17;--ink:#f3f5ef;--ink2:#c4c9c1;--muted:#969d94;--line:#353b35;--green:#5ed4a3;--green2:#173b2e;--amber:#f3bc5b;--amber2:#493514;--red:#ff8a80;--red2:#48221f;--blue:#84b7ee;--blue2:#1d3550;--shadow:0 14px 40px rgba(0,0,0,.28)}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 78% -10%,rgba(8,127,91,.12),transparent 36rem),var(--page);color:var(--ink);font:16px/1.68 var(--sans);-webkit-font-smoothing:antialiased}a{color:var(--blue);text-underline-offset:3px}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--blue);outline-offset:3px}.shell{max-width:1160px;margin:auto;padding:0 28px 90px}.toolbar{min-height:64px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);font:12px var(--mono)}.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.08em}.mark{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--paper);font:700 15px var(--serif)}.tools{display:flex;gap:8px}.tool{padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink2);cursor:pointer}.hero{padding:70px 0 44px;border-bottom:1px solid var(--line)}.hero-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(270px,.7fr);gap:54px}.eyebrow,.kicker{color:var(--green);font:700 11px var(--mono);letter-spacing:.1em;text-transform:uppercase}h1{margin:0 0 20px;font:650 clamp(38px,5.7vw,66px)/1.08 var(--serif);letter-spacing:-.03em}h2{max-width:27ch;margin:0 0 18px;font:650 clamp(28px,4vw,42px)/1.15 var(--serif)}h3{margin:0 0 8px}.standfirst,.lead{color:var(--ink2);font-size:18px}.status,.panel,.ecard,.score,.answer,details{background:var(--paper);border:1px solid var(--line);border-radius:14px}.status{align-self:end;padding:24px;box-shadow:var(--shadow)}.row,.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.chip{padding:5px 10px;border-radius:999px;font:700 11px var(--mono);letter-spacing:.06em}.chip.ok{color:var(--green);background:var(--green2)}.chip.warn{color:var(--amber);background:var(--amber2)}.runid{color:var(--muted);font:11px var(--mono)}.verdict{margin:24px 0 5px;font:28px/1.25 var(--serif)}.reason{margin:0;color:var(--ink2);font-size:14px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}.meta dt{color:var(--muted);font:10px var(--mono);text-transform:uppercase}.meta dd{margin:2px 0;font-size:13px;font-weight:650}.notice{display:grid;grid-template-columns:auto 1fr;gap:14px;margin-top:28px;padding:15px 18px;border:1px solid var(--line);border-radius:12px;background:var(--amber2);font-size:14px}.notice b{font:700 11px var(--mono)}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:34px;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--line)}.stat{min-height:145px;padding:22px;background:var(--paper)}.stat small,.score small{color:var(--muted);font:10px var(--mono);text-transform:uppercase}.stat strong{display:block;margin-top:15px;font:31px var(--serif)}.stat p,.score p{color:var(--ink2);font-size:13px}main{display:grid;grid-template-columns:185px minmax(0,1fr);gap:58px}.toc{position:sticky;top:22px;align-self:start;padding-top:58px}.toc b{display:block;margin-bottom:13px;color:var(--muted);font:10px var(--mono)}.toc a{display:block;padding:5px 0;color:var(--muted);font-size:13px;text-decoration:none}.content{min-width:0}section{padding-top:64px;scroll-margin-top:20px}.kicker{display:block;margin-bottom:12px}.answer{margin-top:28px;padding:28px 30px;border-left:5px solid var(--green);box-shadow:var(--shadow)}.answer p{margin:0;font:23px/1.55 var(--serif)}.answer-foot{display:flex;flex-wrap:wrap;gap:18px;margin-top:18px;color:var(--muted);font:11px var(--mono)}.panel{margin-top:18px;padding:24px}.chain{display:grid;gap:14px;margin-top:28px}.claim{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(300px,1.2fr);grid-template-rows:auto 1fr;gap:10px 24px;padding:20px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}.ctype{grid-column:1;grid-row:1;color:var(--green);font:700 11px var(--mono);text-transform:uppercase}.claim p{grid-column:1;grid-row:2;margin:0;color:var(--ink2);font-size:18px;line-height:1.6}.tags{grid-column:2;grid-row:1 / span 2;display:flex;flex-wrap:wrap;gap:8px;align-content:start;align-items:flex-start;justify-content:flex-start;padding-top:2px}.tag{padding:5px 9px;border:1px solid var(--line);border-radius:5px;color:var(--blue);background:var(--blue2);font:10px var(--mono);white-space:normal;overflow-wrap:anywhere}.egrid,.split{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:28px}.ecard{padding:22px}.ecard.support{border-top:4px solid var(--green)}.ecard.oppose{border-top:4px solid var(--red)}.ecard>p{font:700 11px var(--mono);text-transform:uppercase}.ecard li+li{margin-top:12px}.ecard small{display:block;color:var(--muted)}.scores{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:28px}.score{min-height:150px;padding:18px}.score strong{display:block;margin:18px 0 6px;font:22px var(--serif)}.pips{display:flex;gap:4px;margin-top:13px}.pip{width:18px;height:5px;border-radius:4px;background:var(--line)}.pip.on{background:var(--green)}.clean{margin:0;padding:0;list-style:none}.clean li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:14px 0;border-bottom:1px solid var(--line)}.idx{color:var(--muted);font:11px var(--mono)}.clean p{margin:0}.empty{color:var(--muted)}details{margin-top:24px}summary{padding:16px 20px;cursor:pointer;font-weight:700}.tablewrap{overflow:auto;padding:0 20px 20px}table{width:100%;min-width:780px;border-collapse:collapse;font-size:13px}th,td{padding:12px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--muted);font:10px var(--mono);text-transform:uppercase}td:first-child,.cite{color:var(--blue);font:11px var(--mono)}.high{color:var(--green);font-weight:700}.medium{color:var(--amber);font-weight:700}.low{color:var(--red);font-weight:700}.downloads{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:24px}.download{display:block;padding:15px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);text-decoration:none}.download b{display:block;font:11px var(--mono)}.download small{color:var(--muted)}footer{margin-top:72px;padding-top:28px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}.foot{display:grid;grid-template-columns:1fr auto;gap:24px}.footmark{font-family:var(--mono);text-align:right}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 78% -10%,rgba(8,127,91,.12),transparent 36rem),var(--page);color:var(--ink);font:16px/1.68 var(--sans);-webkit-font-smoothing:antialiased}a{color:var(--blue);text-underline-offset:3px}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--blue);outline-offset:3px}.shell{max-width:1160px;margin:auto;padding:0 28px 90px}.toolbar{min-height:64px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);font:12px var(--mono)}.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.08em}.mark{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--paper);font:700 15px var(--serif)}.tools{display:flex;gap:8px}.tool{padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink2);cursor:pointer}.hero{padding:70px 0 44px;border-bottom:1px solid var(--line)}.hero-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(270px,.7fr);gap:54px}.eyebrow,.kicker{color:var(--green);font:700 11px var(--mono);letter-spacing:.1em;text-transform:uppercase}h1{margin:0 0 20px;font:650 clamp(38px,5.7vw,66px)/1.08 var(--serif);letter-spacing:-.03em}h2{max-width:27ch;margin:0 0 18px;font:650 clamp(28px,4vw,42px)/1.15 var(--serif)}h3{margin:0 0 8px}.standfirst,.lead{color:var(--ink2);font-size:18px}.status,.panel,.ecard,.score,.answer,details{background:var(--paper);border:1px solid var(--line);border-radius:14px}.status{align-self:end;padding:24px;box-shadow:var(--shadow)}.row,.panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.chip{padding:5px 10px;border-radius:999px;font:700 11px var(--mono);letter-spacing:.06em}.chip.ok{color:var(--green);background:var(--green2)}.chip.warn{color:var(--amber);background:var(--amber2)}.runid{color:var(--muted);font:11px var(--mono)}.verdict{margin:24px 0 5px;font:28px/1.25 var(--serif)}.reason{margin:0;color:var(--ink2);font-size:14px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px}.meta dt{color:var(--muted);font:10px var(--mono);text-transform:uppercase}.meta dd{margin:2px 0;font-size:13px;font-weight:650}.notice{display:grid;grid-template-columns:auto 1fr;gap:14px;margin-top:28px;padding:15px 18px;border:1px solid var(--line);border-radius:12px;background:var(--amber2);font-size:14px}.notice b{font:700 11px var(--mono)}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin-top:34px;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--line)}.stat{min-height:145px;padding:22px;background:var(--paper)}.stat small,.score small{color:var(--muted);font:10px var(--mono);text-transform:uppercase}.stat strong{display:block;margin-top:15px;font:31px var(--serif)}.stat p,.score p{color:var(--ink2);font-size:13px}main{display:grid;grid-template-columns:185px minmax(0,1fr);gap:58px}.toc{position:sticky;top:22px;align-self:start;padding-top:58px}.toc b{display:block;margin-bottom:13px;color:var(--muted);font:10px var(--mono)}.toc a{display:block;padding:5px 0;color:var(--muted);font-size:13px;text-decoration:none}.content{min-width:0}section{padding-top:64px;scroll-margin-top:20px}.kicker{display:block;margin-bottom:12px}.answer{margin-top:28px;padding:28px 30px;border-left:5px solid var(--green);box-shadow:var(--shadow)}.answer p{margin:0;font:23px/1.55 var(--serif)}.answer-foot{display:flex;flex-wrap:wrap;gap:18px;margin-top:18px;color:var(--muted);font:11px var(--mono)}.panel{margin-top:18px;padding:24px}.chain{display:grid;gap:14px;margin-top:28px}.claim{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(300px,1.2fr);grid-template-rows:auto 1fr;gap:10px 24px;padding:20px;border:1px solid var(--line);border-radius:12px;background:var(--paper)}.ctype{grid-column:1;grid-row:1;color:var(--green);font:700 11px var(--mono);text-transform:uppercase}.claim p{grid-column:1;grid-row:2;margin:0;color:var(--ink2);font-size:18px;line-height:1.6}.tags{grid-column:2;grid-row:1 / span 2;display:flex;flex-wrap:wrap;gap:8px;align-content:start;align-items:flex-start;justify-content:flex-start;padding-top:2px}.tag{padding:5px 9px;border:1px solid var(--line);border-radius:5px;color:var(--blue);background:var(--blue2);font:10px var(--mono);white-space:normal;overflow-wrap:anywhere}.egrid,.split{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:28px}.ecard{padding:22px}.ecard.support{border-top:4px solid var(--green)}.ecard.oppose{border-top:4px solid var(--red)}.ecard>p{font:700 11px var(--mono);text-transform:uppercase}.ecard li+li{margin-top:12px}.ecard small{display:block;color:var(--muted)}.scorecard-block{margin-top:28px}.scorecard-block h3{font:700 13px var(--mono);text-transform:uppercase;color:var(--muted)}.scorecard-row{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}.scorecard-row svg{flex:none}.scores{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:28px;flex:1;min-width:280px}.scorecard-row .scores{margin-top:0}.score{min-height:150px;padding:18px}.score strong{display:block;margin:18px 0 6px;font:22px var(--serif)}.pips{display:flex;gap:4px;margin-top:13px}.pip{width:18px;height:5px;border-radius:4px;background:var(--line)}.pip.on{background:var(--green)}.clean{margin:0;padding:0;list-style:none}.clean li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:14px 0;border-bottom:1px solid var(--line)}.idx{color:var(--muted);font:11px var(--mono)}.clean p{margin:0}.empty{color:var(--muted)}details{margin-top:24px}summary{padding:16px 20px;cursor:pointer;font-weight:700}.tablewrap{overflow:auto;padding:0 20px 20px}table{width:100%;min-width:780px;border-collapse:collapse;font-size:13px}th,td{padding:12px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--muted);font:10px var(--mono);text-transform:uppercase}td:first-child,.cite{color:var(--blue);font:11px var(--mono)}.high{color:var(--green);font-weight:700}.medium{color:var(--amber);font-weight:700}.low{color:var(--red);font-weight:700}.downloads{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:24px}.download{display:block;padding:15px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink);text-decoration:none}.download b{display:block;font:11px var(--mono)}.download small{color:var(--muted)}footer{margin-top:72px;padding-top:28px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}.foot{display:grid;grid-template-columns:1fr auto;gap:24px}.footmark{font-family:var(--mono);text-align:right}
 @media(max-width:900px){.hero-grid{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}main{grid-template-columns:1fr}.toc{display:none}.scores{grid-template-columns:repeat(2,1fr)}.downloads{grid-template-columns:1fr 1fr}}@media(max-width:620px){.shell{padding:0 18px 64px}.hero{padding-top:48px}.stats,.egrid,.split,.scores,.downloads{grid-template-columns:1fr}.claim{grid-template-columns:1fr}.tags{justify-content:start}.panel-head,.foot{display:block}.footmark{text-align:left}}@media print{body{background:#fff;color:#111;font-size:11pt}.shell{max-width:none;padding:0 12mm 15mm}.toolbar,.toc{display:none!important}.hero{padding-top:18mm}main{display:block}section{break-inside:avoid;padding-top:12mm}.panel,.claim,.ecard,.score,details{box-shadow:none;break-inside:avoid}.downloads{display:none}details>*{display:block!important}a{color:inherit;text-decoration:none}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
 """
 

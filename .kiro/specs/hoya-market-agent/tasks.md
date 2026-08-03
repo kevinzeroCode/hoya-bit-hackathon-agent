@@ -577,7 +577,7 @@ below, now formally in scope. None of these are subject to the Task 0-12 Feature
   - **Acceptance:** All five assets pass the same artifact/provenance contract Task 9 established for two; the one asset-specific fact worth disclosing (offline runs are honestly `degraded`, not a hidden gap) is recorded in `run-log.md`; a static check guards against a future per-coin branch being added to make this pass.
   - **Commit:** `test: complete the five-asset validation matrix`
 
-- [x] **20. Platinum reporting: PDF export** (PDF done 2026-08-03; additional visualization not done — see below)
+- [x] **20. Platinum reporting: PDF export and additional visualization** (both halves done 2026-08-03)
   - **Owner:** UI/reporting lane
   - **Wave / dependency:** independent
   - **Spec:** former "Future Reference 12" below
@@ -591,12 +591,14 @@ below, now formally in scope. None of these are subject to the Task 0-12 Feature
     - Created: `src/hoya_agent/reporting/pdf_renderer.py` — `markdown_to_pdf_html()` (a special-purpose Markdown→HTML converter scoped to exactly the patterns `renderer.py` emits: `#`/`##` headings, GFM tables, one-level bullets, blockquotes, inline bold/code/links — not a general CommonMark implementation) and `render_pdf(markdown_text) -> bytes`.
     - Created: `tests/unit/reporting/test_pdf_renderer.py` — 5 tests, including one that runs the exact `renderer.py` output through the exact PDF path and asserts every Evidence ID and Claim ID from the Markdown survives into the PDF's extracted text layer.
     - Modified: `src/hoya_agent/ui/streamlit_app.py` — a PDF download button, generated on demand from `view["report_markdown"]` (not written to the run directory, not a fifth required artifact); any rendering failure is caught and shown as a caption rather than breaking the page.
+    - Modified: `src/hoya_agent/reporting/html_renderer.py` — `_trust_radar_svg(card)`, a deterministic inline SVG radar chart (5-axis pentagon: independence, diversity, reliability mix, consistency, freshness), plotted through the exact same 0-3 ordinal pip scale `_score_card` already uses (not a new synthetic score). `_trust_section` now renders one radar + score-card row **per conclusion's Trust Scorecard** (previously only `trust_scorecards[0]` was shown at all, text-only); a run with no scorecard still degrades to the pre-existing text-only summary, never a fabricated chart.
+    - Modified: `tests/unit/reporting/test_html_renderer.py` — 3 new tests (radar renders with the five axis labels and no `src=`/new script surface when a scorecard exists; degrades to no `<svg>` when none exists; one `<svg>` per scorecard when there are several).
   - [x] Confirmed what PR #29's HTML report already covers before adding anything.
   - [x] PDF export derived deterministically from the same rendered Markdown content; no second source of truth for facts/numbers, no LLM call.
-  - [ ] **Not done:** additional chart/visualization. Deferred — PDF export alone was already a multi-step empirical investigation (two real rendering bugs found and fixed); a chart is a separate, smaller follow-up (e.g. an inline SVG of the Trust Scorecard's ordinal pips, already plain data on `AnalysisResult.trust_scorecards`, zero new dependencies) left for whoever picks this up next.
-  - [x] The four/five required artifact filenames and their contract are unchanged — PDF is generated on demand in the UI process, never written to the run directory, never counted among `ARTIFACT_NAMES`.
-  - [x] Ran `python -m pytest tests/unit/reporting/test_pdf_renderer.py -q` (5 passed) then the full non-live suite (1339 passed, up from 1334) and `ruff check .` (All checks passed); confirmed `streamlit_app.py` still imports cleanly.
-  - **Acceptance:** **PDF export met; visualization not attempted this pass.** PDF is deterministic (same Markdown source every time), derived only from existing report text, and additive — it does not replace or alter the four required artifacts.
+  - [x] Additional visualization: the Trust Scorecard radar chart, generated only from fields already on `AnalysisResult.trust_scorecards` — no new data source, no new claim, no new dependency (pure inline SVG via string formatting + `math`, same technique already used nowhere else in this codebase but adding none).
+  - [x] The four/five required artifact filenames and their contract are unchanged — PDF is generated on demand in the UI process, never written to the run directory, never counted among `ARTIFACT_NAMES`; the radar is inline SVG inside the existing `final_report.html`, not a new artifact.
+  - [x] Ran `python -m pytest tests/unit/reporting -q` (59 passed) then the full non-live suite (1347 passed, up from 1339) and `ruff check .` (All checks passed); confirmed `streamlit_app.py` still imports cleanly.
+  - **Acceptance:** **Met, both halves.** PDF is deterministic (same Markdown source every time) and additive. The radar chart is deterministic, derived only from existing `TrustScorecard` fields, renders once per conclusion, and degrades to the pre-existing text-only summary rather than fabricating a chart when no scorecard exists.
   - **Commit:** `feat: add deterministic PDF export with CJK font support`
 
 - [ ] **21. Platinum infrastructure: S3 artifact mirroring, CloudWatch, ECS**
