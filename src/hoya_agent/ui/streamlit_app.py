@@ -37,7 +37,12 @@ from hoya_agent.application import ApplicationService, build_request  # noqa: E4
 from hoya_agent.clock import SystemClock  # noqa: E402
 from hoya_agent.models import Asset, RunMode  # noqa: E402
 from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline  # noqa: E402
-from hoya_agent.ui.presenter import summary_view, triangulation_view, trust_funnel  # noqa: E402
+from hoya_agent.ui.presenter import (  # noqa: E402
+    agent_judgment_view,
+    summary_view,
+    triangulation_view,
+    trust_funnel,
+)
 
 UTC = timezone.utc
 # Organizer CSV ends 2026-05-31; Bronze replays that frozen cutoff (offline).
@@ -375,6 +380,19 @@ def _render_result(view: dict, bars_by_asset: dict | None = None) -> None:
             st.write("_(無 evidence.json)_")
     with tab_log:
         raw = _artifact_text(view, "execution_log.jsonl")
+        raw_ledger_text = _artifact_text(view, "evidence.json")
+        if raw:
+            judgment = agent_judgment_view(raw, json.loads(raw_ledger_text) if raw_ledger_text else {})
+            if judgment["plan_decision"] or judgment["degradation_count"]:
+                st.subheader("Agent 判斷(這次為什麼跑這些來源)")
+                if judgment["plan_decision"]:
+                    st.markdown(f"🧭 {judgment['plan_decision']}")
+                if judgment["degradation_messages"]:
+                    with st.expander(f"降級/資料缺口揭露({judgment['degradation_count']})"):
+                        for msg in judgment["degradation_messages"]:
+                            st.caption(f"- {msg}")
+                if judgment["conflict_count"]:
+                    st.caption(f"⚠️ 偵測到 {judgment['conflict_count']} 筆矛盾證據，詳見報告第 5 段。")
         st.code(raw or "（目前沒有執行紀錄）", language="json")
 
     st.subheader("下載研究資料")

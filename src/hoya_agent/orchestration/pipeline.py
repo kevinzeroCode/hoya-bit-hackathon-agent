@@ -193,6 +193,30 @@ class DeadlineAwarePipeline:
                 notes.append(f"Planner 失敗（{type(exc).__name__}），研究分支略過。")
                 state.settle(STAGE_PLANNER, StageState.degraded, message=notes[-1])
 
+            if plan is not None:
+                # Surfaces an existing decision (Task 15 / G4): the Planner
+                # already chooses per-question which allowlisted operations to
+                # run (Research Agent only executes `plan.planned_steps`), but
+                # that choice and its reasoning were never logged as their own
+                # event — only visible by diffing the ledger afterward. Kept
+                # outside the try/except above: this must never turn a
+                # successful plan into a settle-twice failure, and a test
+                # double's `Planner` need not implement `allowed_operations()`.
+                allowed_fn = getattr(self._planner, "allowed_operations", None)
+                allowed = allowed_fn() if callable(allowed_fn) else ()
+                emit(
+                    ExecutionEvent(
+                        timestamp=self._clock.now_utc(),
+                        run_id=context.run_id,
+                        run_mode=context.run_mode,
+                        stage=STAGE_PLANNER,
+                        event_type="plan_decision",
+                        status="ok",
+                        output_count=len(list(getattr(plan, "planned_steps", None) or ())),
+                        message=_plan_decision_message(plan, allowed),
+                    )
+                )
+
         # Optional work is surrendered in the fixed order before the branches
         # start, and enforced by trimming the plan the Research Agent receives.
         research_plan = plan
@@ -866,6 +890,31 @@ def _reasoning_request(context: RunContext) -> ReasoningRequest:
 def _enum_value(value: Any) -> str:
     raw = getattr(value, "value", value)
     return str(raw)
+
+
+def _plan_decision_message(plan: Any, allowed_operations: Sequence[str]) -> str:
+    """Human-readable summary of which operations the Planner chose, skipped,
+    and (when the model gave one) why — surfaces an existing decision for the
+    `plan_decision` execution-log event (Task 15 / G4). Computes nothing new:
+    every value here already exists on `plan` or the tool registry.
+    """
+    steps = list(getattr(plan, "planned_steps", None) or ())
+    chosen = [str(getattr(step, "tool_operation", "")) for step in steps]
+    skipped = [op for op in allowed_operations if op not in chosen]
+    parts = [
+        f"Planner 選用 {len(chosen)}/{len(allowed_operations)} 個可用操作："
+        f"{'、'.join(chosen) if chosen else '（無）'}"
+    ]
+    if skipped:
+        parts.append(f"略過：{'、'.join(skipped)}")
+    rationales = [
+        f"{getattr(step, 'tool_operation', '')}（{rationale}）"
+        for step in steps
+        if (rationale := str(getattr(step, "rationale", "") or "").strip())
+    ]
+    if rationales:
+        parts.append("理由：" + "；".join(rationales))
+    return "；".join(parts)
 
 
 def _empty_ledger(context: RunContext, message: str, now: datetime) -> EvidenceLedger:

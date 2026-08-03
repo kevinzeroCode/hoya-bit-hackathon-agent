@@ -8,6 +8,7 @@ Run-mode and terminal-state each map to a distinct visual token so `official`,
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -116,6 +117,42 @@ def triangulation_view(
             ],
         }
     return result
+
+
+def agent_judgment_view(execution_log_jsonl: str, evidence_ledger: dict[str, Any]) -> dict[str, Any]:
+    """Surface the Planner's per-question operation choice and the pipeline's
+    own grounding/conflict disclosures in one judge-legible view (Task 15 / G4).
+
+    Pure and framework-free, same shape as `trust_funnel`. Computes nothing new:
+    the Planner's decision is read from the `plan_decision` execution-log event
+    `orchestration/pipeline.py` already emits, and the degradation/conflict
+    counts are read from the run's own `evidence.json` ledger — both already
+    exist, this only collects them into one place instead of leaving a judge to
+    diff the raw JSON.
+    """
+    plan_message = ""
+    for line in (execution_log_jsonl or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if event.get("event_type") == "plan_decision":
+            plan_message = event.get("message", "")
+            break
+
+    degradation_events = evidence_ledger.get("degradation_events", []) or []
+    conflicts = evidence_ledger.get("conflict_indicators", []) or []
+    return {
+        "plan_decision": plan_message,
+        "degradation_count": len(degradation_events),
+        "degradation_messages": [
+            e.get("message", "") for e in degradation_events if e.get("message")
+        ],
+        "conflict_count": len(conflicts),
+    }
 
 
 def summary_view(summary: Any) -> dict[str, Any]:

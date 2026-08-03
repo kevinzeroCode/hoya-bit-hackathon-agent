@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from hoya_agent.data.types import MarketBar
 from hoya_agent.models import Reliability, RunMode
 from hoya_agent.ui.presenter import (
+    agent_judgment_view,
     run_mode_badge,
     summary_view,
     terminal_badge,
@@ -139,3 +140,41 @@ def test_triangulation_view_reports_unexplained_moves_without_fabricating_a_sour
     assert len(events) == 1
     assert events[0]["strength"] == 1
     assert events[0]["corroborating_evidence_ids"] == []
+
+
+def test_agent_judgment_view_surfaces_the_plan_decision_and_degradation():
+    log = "\n".join(
+        [
+            '{"event_type": "stage_start", "stage": "planner", "message": "planner running"}',
+            '{"event_type": "plan_decision", "stage": "planner", '
+            '"message": "Planner \\u9078\\u7528 1/3 \\u500b\\u53ef\\u7528\\u64cd\\u4f5c\\uff1abinance.klines"}',
+            '{"event_type": "stage_end", "stage": "planner", "message": "planner completed"}',
+        ]
+    )
+    ledger = {
+        "degradation_events": [
+            {"message": "CryptoPanic 未取得 token，來源停用"},
+            {"message": "官方公告來源在本次 run 未取得"},
+        ],
+        "conflict_indicators": [{"claim_id": "cl_004"}],
+    }
+
+    view = agent_judgment_view(log, ledger)
+
+    assert "binance.klines" in view["plan_decision"]
+    assert view["degradation_count"] == 2
+    assert "CryptoPanic 未取得 token，來源停用" in view["degradation_messages"]
+    assert view["conflict_count"] == 1
+
+
+def test_agent_judgment_view_handles_a_missing_plan_decision_event():
+    log = '{"event_type": "stage_start", "stage": "planner", "message": "x"}'
+    view = agent_judgment_view(log, {})
+    assert view["plan_decision"] == ""
+    assert view["degradation_count"] == 0
+    assert view["conflict_count"] == 0
+
+
+def test_agent_judgment_view_handles_empty_or_malformed_log_text():
+    assert agent_judgment_view("", {})["plan_decision"] == ""
+    assert agent_judgment_view("not json\n{also not json", {})["plan_decision"] == ""

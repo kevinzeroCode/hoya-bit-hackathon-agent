@@ -125,6 +125,28 @@ class FastPlanner:
         return object(), []
 
 
+class RecordingPlanner:
+    """A minimal but complete Planner double: real `planned_steps` shape plus
+    `allowed_operations()`, so the Task 15 / G4 `plan_decision` event has real
+    chosen/skipped operations to report (unlike `FastPlanner`'s bare object())."""
+
+    def __init__(self, *, chosen: tuple[str, ...], allowed: tuple[str, ...]) -> None:
+        self._chosen = chosen
+        self._allowed = allowed
+
+    def allowed_operations(self) -> tuple[str, ...]:
+        return self._allowed
+
+    async def run(self, *, request, deadline):
+        del request, deadline
+        steps = [
+            type("Step", (), {"tool_operation": op, "rationale": f"question needs {op}"})()
+            for op in self._chosen
+        ]
+        plan = type("Plan", (), {"planned_steps": steps})()
+        return plan, []
+
+
 class GatedResearch:
     def __init__(self, mine: asyncio.Event, theirs: asyncio.Event) -> None:
         self._mine = mine
@@ -210,3 +232,54 @@ async def test_no_child_task_survives_the_gather_stage() -> None:
         if task is not asyncio.current_task() and not task.done()
     ]
     assert leaked == [], f"pending tasks leaked into the next stage: {leaked}"
+
+
+async def test_plan_decision_event_names_chosen_and_skipped_operations() -> None:
+    """Task 15 / G4: the Planner's per-question operation choice must be a
+    judge-legible execution_log.jsonl event, not something only visible by
+    diffing the ledger afterward."""
+    context = _context()
+    events = []
+
+    await DeadlineAwarePipeline(
+        clock=Clock(),
+        market_pipeline=ImmediateMarket(),
+        planner=RecordingPlanner(
+            chosen=("binance.klines",),
+            allowed=("binance.klines", "cryptopanic.posts", "official_announcements"),
+        ),
+    ).execute(context, events.append)
+
+    decisions = [e for e in events if e.event_type == "plan_decision"]
+    assert len(decisions) == 1
+    decision = decisions[0]
+    assert decision.stage == "planner"
+    assert decision.output_count == 1
+    assert "binance.klines" in decision.message
+    assert "cryptopanic.posts" in decision.message  # named as skipped, not silently omitted
+    assert "official_announcements" in decision.message
+    assert "question needs binance.klines" in decision.message  # the model's own rationale
+
+
+async def test_plan_decision_event_reflects_a_different_question_choosing_differently() -> None:
+    """Proves the visualization reflects genuine variation, not a static label:
+    two different chosen sets produce two different `plan_decision` messages."""
+    context = _context()
+    allowed = ("binance.klines", "cryptopanic.posts", "official_announcements")
+
+    async def _run(chosen: tuple[str, ...]) -> str:
+        events = []
+        await DeadlineAwarePipeline(
+            clock=Clock(),
+            market_pipeline=ImmediateMarket(),
+            planner=RecordingPlanner(chosen=chosen, allowed=allowed),
+        ).execute(context, events.append)
+        return next(e.message for e in events if e.event_type == "plan_decision")
+
+    sentiment_question = await _run(("cryptopanic.posts",))
+    official_question = await _run(("binance.klines", "official_announcements"))
+
+    assert sentiment_question != official_question
+    assert "cryptopanic.posts" in sentiment_question
+    assert "official_announcements" not in sentiment_question.split("略過")[0]
+    assert "official_announcements" in official_question

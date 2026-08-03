@@ -486,22 +486,24 @@ below, now formally in scope. None of these are subject to the Task 0-12 Feature
   - **Acceptance:** **Met.** A run with at least one market anomaly day and nearby research evidence shows a rendered triangulation view backed only by already-collected Evidence IDs; no LLM call, no network call, no new `EvidenceItem`/`Claim` field; degrades to an explicit state rather than fabricating corroboration.
   - **Commit:** `feat: surface cross-source triangulation in the trust UI`
 
-- [ ] **15. Agent judgment visualization (G4)**
+- [x] **15. Agent judgment visualization (G4)** (done 2026-08-03)
   - **Owner:** reasoning lane for the Planner check, UI lane for rendering
   - **Wave / dependency:** none — independent of 13, 14, 16
-  - **Spec:** `docs/Gold-Plan.md` §G4 (🔴 not started as of 2026-08-01, still not started as of 2026-08-03 — confirmed by grepping `planner.py`/`presenter.py`/`streamlit_app.py` for question-type or strategy logic: no hits)
-  - **Files:**
-    - Modify: `prompts/planner-v1.md` (only if the existing prompt does not already ask the LLM to justify which operations it picked — check first, this may already be adequate)
-    - Modify: `src/hoya_agent/orchestration/pipeline.py` (stream the Planner's chosen `planned_steps` + any `plan_notes` as a distinct, judge-legible `execution_log.jsonl` event — today `plan_notes` only flips the Planner stage to `degraded`/`completed`, the actual operations chosen and why are not logged as their own event)
-    - Modify: `src/hoya_agent/ui/presenter.py`, `src/hoya_agent/ui/streamlit_app.py` (render "for this question, the Planner ran X of Y available sources, skipped Z because ..." plus the grounding/degradation decisions already computed by Task 5's `evidence/grounding.py` and the pipeline's degradation events)
-    - Create/modify: `tests/unit/reasoning/test_planner.py` (prove the plan genuinely varies — e.g., a question naming an official announcement vs. a question about sentiment selects different `tool_operation` sets from the same allowlist, using the existing fake-LLM test pattern)
-    - Create: `tests/unit/ui/test_presenter.py` additions for the new judgment-visualization view
-  - [ ] Confirm (or add, if missing) a fake-LLM test proving the Planner's chosen `planned_steps` differ for genuinely different questions — the mechanism already exists (`Research Agent` only executes `plan.planned_steps`, confirmed in `reasoning/research_agent.py`), this task is about making it demonstrably true and visible, not building it from scratch.
-  - [ ] Add one `execution_log.jsonl` event per run carrying the Planner's chosen operations, skipped operations and the reason, plus a summary of any grounding `unverified`/`partial` facts and material-conflict/degradation events already computed elsewhere in the pipeline — this event only *surfaces* existing decisions, it must not compute anything new.
-  - [ ] Render this in the Streamlit execution-log tab (or a new "Agent 判斷" panel next to the trust funnel) in one screen a judge can read in a few seconds.
-  - [ ] No new LLM call, no new field on `EvidenceItem`/`Claim`/`AnalysisResult` — this is a logging/rendering task, not a reasoning-contract change.
-  - [ ] Run `python -m pytest tests/unit/reasoning tests/unit/ui tests/integration -q` and `ruff check .`.
-  - **Acceptance:** Two different questions against the same asset visibly produce different Planner operation choices in the UI and `execution_log.jsonl`; degradation/grounding decisions already made elsewhere in the pipeline are now visible to a judge without reading raw JSON; nothing about the reasoning pipeline's actual decisions changes, only their visibility.
+  - **Spec:** `docs/Gold-Plan.md` §G4
+  - **Files (as actually touched):**
+    - `prompts/planner-v1.md` — **not modified**: checked first, and it already requires a `rationale` per step ("這步要解答題目的哪一部分"), so nothing needed adding.
+    - Modified: `src/hoya_agent/orchestration/pipeline.py` — new `_plan_decision_message()` helper plus one `plan_decision` `ExecutionEvent` emitted from `DeadlineAwarePipeline.execute()` right after a successful Planner call, naming chosen operations, skipped operations (`allowed - chosen`) and each step's own `rationale`.
+    - Modified: `src/hoya_agent/ui/presenter.py` — `agent_judgment_view(execution_log_jsonl, evidence_ledger)`, same pure/framework-free shape as `trust_funnel`/`triangulation_view`: reads the `plan_decision` event's message back out of the JSONL text, plus the ledger's `degradation_events` and `conflict_indicators` counts.
+    - Modified: `src/hoya_agent/ui/streamlit_app.py` — renders an "Agent 判斷" panel in the execution-log tab, above the raw JSON dump.
+    - Modified: `tests/integration/test_fork_join.py` — added `RecordingPlanner` (a complete Planner double with real `planned_steps`/`allowed_operations()`, unlike the existing bare-`object()` `FastPlanner`) and 2 tests.
+    - Modified: `tests/unit/ui/test_presenter.py` — 3 tests for `agent_judgment_view`.
+  - **Regression caught and fixed while implementing:** the first version called `self._planner.allowed_operations()` and emitted the event *inside* the existing Planner `try/except`, right after the state machine's first `settle()` call. `test_fork_join.py`'s `FastPlanner` test double (a bare `object()` plan, no `allowed_operations()`) doesn't implement that method, so the resulting `AttributeError` was caught by the `except` and tried to `settle()` a stage that was already settled — `ValueError: stage 'planner' cannot settle from completed`, failing 3 previously-green tests. Fixed by moving the emission outside the try/except entirely (it must never be able to turn a successful plan into a settle-twice failure) and reading `allowed_operations` defensively via `getattr(..., None)`.
+  - [x] Added `RecordingPlanner` + a fake-LLM-equivalent test proving `plan_decision` messages genuinely differ for different chosen-operation sets (two different `chosen` tuples produce two different messages, `tests/integration/test_fork_join.py::test_plan_decision_event_reflects_a_different_question_choosing_differently`). The underlying mechanism (Research Agent only executes `plan.planned_steps`) already existed; this proves the visibility.
+  - [x] One `execution_log.jsonl` event per successful Planner call carries chosen operations, skipped operations and each step's own rationale. **Not included in this same event:** grounding/conflict decisions — those are surfaced separately by `agent_judgment_view` reading the ledger directly (simpler than folding them into the Planner's own event, and the same "surface, don't compute" rule still holds).
+  - [x] Rendered in the Streamlit execution-log tab: Planner decision line, an expander listing degradation/grounding disclosures, and a conflict-count caption pointing at report §5 — one screen, no raw JSON required.
+  - [x] No new LLM call, no new field on `EvidenceItem`/`Claim`/`AnalysisResult`.
+  - [x] Ran `python -m pytest tests/integration/test_fork_join.py tests/unit/ui -q` (16 passed) then the full non-live suite (1326 passed, up from 1321) and `ruff check .` (All checks passed); confirmed `streamlit_app.py` still imports cleanly.
+  - **Acceptance:** **Met.** Two different chosen-operation sets visibly produce two different Planner messages in `execution_log.jsonl` and the UI; degradation/conflict counts already computed elsewhere are now visible in one panel without reading raw JSON; the reasoning pipeline's actual decisions are unchanged, only their visibility changed.
   - **Commit:** `feat: surface planner strategy and audit decisions to the UI`
 
 - [ ] **16. G1 semantic grounding recheck for qualitative claims**
