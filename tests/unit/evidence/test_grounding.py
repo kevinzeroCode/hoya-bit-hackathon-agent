@@ -109,6 +109,55 @@ def test_require_grounding_excludes_ungrounded_support_from_confidence():
     assert gated.supporting_groups == 1
 
 
+def test_semantic_status_rescues_a_purely_qualitative_fact_but_never_a_fabricated_number():
+    """Task 16 / G1: a purely-qualitative fact (no hard atom, `unverified`) can be
+    rescued by a `"verified"` semantic recheck; a numerically-fabricated fact
+    (`partial`) is never rescued by one, regardless of what it says."""
+    from hoya_agent.evidence.ledger import confidence_signals_for_claim
+    from hoya_agent.models import EvidenceItem, EvidenceLedger, RunMode
+
+    def _item(eid, fact, source, group):
+        return EvidenceItem(
+            evidence_id=eid, content_hash=eid.encode().hex().ljust(64, "0"), asset="BTC",
+            source_type="news",
+            source_name=f"src-{eid}", source_url="https://x/y",
+            published_at=datetime(2026, 5, 20, tzinfo=UTC),
+            fetched_at=datetime(2026, 5, 21, tzinfo=UTC), query_or_parameters="q",
+            content_reference=source, normalized_fact=fact,
+            reliability="medium", independence_group=group,
+        )
+
+    qualitative = _item("ev_001", "市場情緒轉為謹慎", "Sentiment turned cautious.", "coindesk.com")
+    fabricated_number = _item("ev_002", "BTC 下跌 8%", "Bitcoin fell sharply.", "theblock.co")
+    ledger = EvidenceLedger(
+        run_id="run_20260531_000000_sem1",
+        analysis_as_of=datetime(2026, 5, 31, tzinfo=UTC),
+        run_mode=RunMode.rehearsal,
+        items=[qualitative, fabricated_number],
+    )
+    ids = ["ev_001", "ev_002"]
+
+    # No semantic_status supplied: exact prior behavior, both drop out.
+    assert confidence_signals_for_claim(
+        supporting_evidence_ids=ids, ledger=ledger, require_grounding=True
+    ).supporting_groups == 0
+
+    # A "verified" semantic recheck rescues the qualitative fact...
+    rescued = confidence_signals_for_claim(
+        supporting_evidence_ids=ids, ledger=ledger, require_grounding=True,
+        semantic_status={"ev_001": "verified", "ev_002": "verified"},
+    )
+    # ...but never the fabricated number, even though its entry also says "verified".
+    assert rescued.supporting_groups == 1
+
+    # A "contradicted" semantic verdict does not rescue it either.
+    contradicted = confidence_signals_for_claim(
+        supporting_evidence_ids=ids, ledger=ledger, require_grounding=True,
+        semantic_status={"ev_001": "contradicted"},
+    )
+    assert contradicted.supporting_groups == 0
+
+
 def test_ground_drafts_skips_market_and_collects_notes():
     drafts = [
         _draft("BTC 收盤 73674.39", "deterministic bar", source_type="market"),

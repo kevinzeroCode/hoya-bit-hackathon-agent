@@ -229,16 +229,33 @@ def build_conflict_indicators(
 # ---------------------------------------------------------------------------
 
 
-def _is_grounded(item: EvidenceItem) -> bool:
+def _is_grounded(item: EvidenceItem, semantic_status: dict[str, str] | None = None) -> bool:
     """Deterministically re-check that an LLM-extracted fact traces to its source.
 
     Market/official facts are deterministic tool output and always count. For
     news/social, a fact whose hard atoms are not in `content_reference`
-    (fabricated value) must not prop up a claim's corroboration.
+    (fabricated value) must not prop up a claim's corroboration — that verdict
+    (`GroundingStatus.partial`) is never overridden, semantic or otherwise.
+
+    A fact with no checkable hard atom at all (`GroundingStatus.unverified` —
+    purely qualitative, nothing numeric to mechanically check) is not
+    automatically penalized the same way: if the caller supplies a
+    `semantic_status` lookup (evidence_id -> "verified"/"contradicted"/
+    "unverified", the plain-string form of
+    `reasoning.semantic_grounding.SemanticGroundingStatus` — kept as a string
+    here so this module, which must stay LLM-free, never imports the
+    reasoning layer), a `"verified"` semantic recheck counts as grounded.
+    Omitting `semantic_status` (the default) reproduces the exact prior
+    behavior: `unverified` never counts, same as `partial`.
     """
     if item.source_type not in LLM_EXTRACTED_SOURCE_TYPES:
         return True
-    return ground_fact(item.normalized_fact, item.content_reference).status is GroundingStatus.verified
+    verdict = ground_fact(item.normalized_fact, item.content_reference)
+    if verdict.status is GroundingStatus.verified:
+        return True
+    if verdict.status is GroundingStatus.unverified and semantic_status is not None:
+        return semantic_status.get(item.evidence_id) == "verified"
+    return False
 
 
 def confidence_signals_for_claim(
@@ -248,6 +265,7 @@ def confidence_signals_for_claim(
     has_material_conflict: bool = False,
     insufficient_data: bool = False,
     require_grounding: bool = False,
+    semantic_status: dict[str, str] | None = None,
 ) -> ConfidenceSignals:
     """Build the deterministic ConfidenceSignals for a claim from its support.
 
@@ -257,6 +275,13 @@ def confidence_signals_for_claim(
     value can never lift a claim to high confidence. Off by default so it never
     silently changes existing behavior; the pipeline opts in. Never mutates the
     static `reliability` field — it only decides what counts as support.
+
+    ``semantic_status`` (Task 16 / G1) is an optional evidence_id -> "verified"/
+    "contradicted"/"unverified" lookup from the reasoning layer's LLM-assisted
+    recheck of purely-qualitative facts. Only consulted when the deterministic
+    pass found no checkable hard atom at all (see `_is_grounded`); a numeric
+    mismatch (`GroundingStatus.partial`) is never overridden by it. Omitting
+    it reproduces the exact prior behavior.
     """
     evidence_map: dict[str, EvidenceItem] = {
         item.evidence_id: item for item in ledger.items
@@ -270,7 +295,7 @@ def confidence_signals_for_claim(
         item = evidence_map.get(eid)
         if item is None:
             continue
-        if require_grounding and not _is_grounded(item):
+        if require_grounding and not _is_grounded(item, semantic_status):
             continue
         groups.add(item.independence_group)
         reliabilities.append(item.reliability)

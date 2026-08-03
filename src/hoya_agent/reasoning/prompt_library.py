@@ -23,6 +23,7 @@ PROMPT_FILES: dict[str, str] = {
     "planner": "planner-v1",
     "research_extraction": "research-extraction-v1",
     "arbiter": "arbiter-v1",
+    "semantic_grounding": "semantic-grounding-v1",
 }
 
 
