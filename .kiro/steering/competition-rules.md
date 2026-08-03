@@ -58,7 +58,7 @@ inclusion: always
 ## Approved Data Policy
 
 - 主辦方 Daily OHLCV CSV 是共同歷史基準；metadata 僅標示 `public_market_data`，不得推定其上游交易所。
-- Binance public REST API 是 canonical live source。CoinGecko 雖為主辦方核准的公開來源，但在 Task 0-12(競賽 MVP) 列為 Future Work 不實作；baseline market source 失敗時只做誠實降級，不宣稱切換至第二個 live provider。**Task 17 核准把 CoinGecko 接成 optional 次要來源**——它上線後仍不得成為 baseline，Binance 失敗時的降級揭露規則不變，CoinGecko 只能在明確標示的情況下補充或交叉驗證。
+- Binance public REST API 是 canonical live source。CoinGecko 雖為主辦方核准的公開來源，但在 Task 0-12(競賽 MVP) 列為 Future Work 不實作；baseline market source 失敗時只做誠實降級，不宣稱切換至第二個 live provider。**Task 18 核准把 CoinGecko 接成 optional 次要來源，已完成（2026-08-03）**——`adapters/coingecko.py` 以 `medium` reliability 接進 `extra_drafts`，不是 baseline，Binance 失敗時的降級揭露規則不變。
 - CSV 與 live API 是不同來源。跨越兩者時標記 2026-06-01 來源切換點並揭露差異。
 - 第一次 live-source rehearsal 應保存 BTC、ETH、SOL、BNB、XRP 在 2026-05-01 至 2026-05-31 的 CSV／Binance close 差異檢查結果。
 - CryptoPanic 與新聞 RSS 用於新聞取證；幣種官方 Blog／公告頻道採 best-effort。
@@ -145,9 +145,9 @@ inclusion: always
 - Market Worker 不使用 LLM；Renderer 不使用 LLM。
 - Arbiter 只接收排序後前 20 至 30 筆 Evidence，輸出固定 `AnalysisResult` schema，並受 `max_tokens` 與 stage deadline 約束。
 - 元件只交換固定 JSON schema，不允許自由聊天、無限反思或無限循環。
-- H3 flag 預設 false；`DisabledConflictExtension` 是 Task 0-12(競賽 MVP) 唯一實作，永遠回傳 no material conflict。
-- **Task 16（見 `tasks.md`）核准實作真正的 H3**：只能以既有的 deterministic material-conflict rule 觸發、最多一輪 Bull/Bear、只引用既有 Evidence IDs，失敗或時間不足立即回到 Arbiter；`enable_conditional_debate` 仍是明確 opt-in，預設關閉。
-- 在 Task 16 完成、通過驗收並保存 rehearsal 紀錄之前，簡報、UI 與文件必須持續標示 H3 為未實作 extension，不得宣稱 live 啟用；完成後才可更新這些標示為「已實作、預設關閉」。
+- H3 flag 預設 false；`DisabledConflictExtension` 是 Task 0-12(競賽 MVP) 唯一**已接線**的實作，永遠回傳 no material conflict。
+- **Task 17（見 `tasks.md`）核准實作真正的 H3**：只能以既有的 deterministic material-conflict rule 觸發、最多一輪 Bull/Bear、只引用既有 Evidence IDs，失敗或時間不足立即回到 Arbiter；`enable_conditional_debate` 仍是明確 opt-in，預設關閉。**2026-08-03 現況：** `reasoning/conditional_debate.py` 引擎本身已完成並通過 fake-LLM 測試（`ConditionalDebateExtension`），但**尚未接進 `orchestration/pipeline.py`**——原因與確切接線點記在 `docs/Implementation-Plan.md` §9 Task 17。
+- 在 Task 17 的 live pipeline 接線完成、通過驗收並保存 rehearsal 紀錄之前，簡報、UI 與文件必須持續標示 H3 為未實作 extension，不得宣稱 live 啟用；完成後才可更新這些標示為「已實作、預設關閉」。
 
 ## Report Safety Rules
 
@@ -177,7 +177,7 @@ inclusion: always
 - 近似去重、動態 reliability、自由 Agent loop、自建 token/tool-call 計數器。
 - 任何會延遲 vertical slice、fallback、四項 artifacts 或 EC2 Demo 的 UI polish。
 
-**競賽結束後解除（已核准，見 `tasks.md` Task 16-21）：** H3、S3/CloudWatch/ECS 與
+**競賽結束後解除（已核准，見 `tasks.md` Task 17-21）：** H3、S3/CloudWatch/ECS 與
 CoinGecko 現在是核准的實作範圍，不再是排除項。「近似去重、動態 reliability、自由 Agent
 loop、自建 token/tool-call 計數器」**仍然禁止**——這幾條是正確性/安全紅線，不是時程限制，
 與競賽是否結束無關。

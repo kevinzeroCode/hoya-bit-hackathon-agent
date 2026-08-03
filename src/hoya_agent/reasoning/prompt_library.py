@@ -24,6 +24,9 @@ PROMPT_FILES: dict[str, str] = {
     "research_extraction": "research-extraction-v1",
     "arbiter": "arbiter-v1",
     "semantic_grounding": "semantic-grounding-v1",
+    "debate_bull": "bull-v1",
+    "debate_bear": "bear-v1",
+    "debate_judge": "judge-v1",
 }
 
 
