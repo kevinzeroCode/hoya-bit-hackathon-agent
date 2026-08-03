@@ -60,3 +60,42 @@ def test_fear_greed_drafts_returns_drafts_and_degradation(monkeypatch):
     drafts, degradation = live_sources.fear_greed_drafts(_NOW)()
     assert drafts == ["fng-draft"]
     assert degradation == ["note"]
+
+
+def test_coingecko_drafts_fetches_every_asset_and_merges_results(monkeypatch):
+    calls: list[str] = []
+
+    async def _fake(asset, **k):
+        calls.append(asset)
+        return SimpleNamespace(drafts=[f"cg-{asset}"], degradation=[])
+
+    monkeypatch.setattr(live_sources, "fetch_coingecko_price", _fake)
+    drafts, degradation = live_sources.coingecko_drafts(["BTC", "ETH"])()
+    assert calls == ["BTC", "ETH"]
+    assert drafts == ["cg-BTC", "cg-ETH"]
+    assert degradation == []
+
+
+def test_coingecko_drafts_one_asset_failing_does_not_drop_the_others(monkeypatch):
+    async def _fake(asset, **k):
+        if asset == "ETH":
+            return SimpleNamespace(drafts=[], degradation=["ETH failed"])
+        return SimpleNamespace(drafts=[f"cg-{asset}"], degradation=[])
+
+    monkeypatch.setattr(live_sources, "fetch_coingecko_price", _fake)
+    drafts, degradation = live_sources.coingecko_drafts(["BTC", "ETH"])()
+    assert drafts == ["cg-BTC"]
+    assert degradation == ["ETH failed"]
+
+
+def test_combine_extra_drafts_concatenates_every_factory():
+    a = lambda: (["a-draft"], ["a-note"])  # noqa: E731 - test-local, no signature to name
+    b = lambda: ([], ["b-note"])  # noqa: E731
+
+    drafts, degradation = live_sources.combine_extra_drafts(a, b)()
+    assert drafts == ["a-draft"]
+    assert degradation == ["a-note", "b-note"]
+
+
+def test_combine_extra_drafts_with_no_factories_is_empty():
+    assert live_sources.combine_extra_drafts()() == ([], [])

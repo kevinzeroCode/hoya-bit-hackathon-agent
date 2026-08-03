@@ -28,7 +28,12 @@ from urllib.parse import quote_plus
 import httpx
 
 from hoya_agent.adapters.bedrock import BedrockLLMClient, BedrockSettings, remaining_seconds
-from hoya_agent.adapters.live_sources import binance_bar_loader, fear_greed_drafts
+from hoya_agent.adapters.live_sources import (
+    binance_bar_loader,
+    coingecko_drafts,
+    combine_extra_drafts,
+    fear_greed_drafts,
+)
 from hoya_agent.adapters.port_adapters import RssResearchAdapter
 from hoya_agent.conclusion_guards import StrictArbiterGeneration, ensure_honest_insufficiency
 from hoya_agent.models import Asset, ResearchPlan, ResearchStep, SourceStatus, SourceType
@@ -386,6 +391,7 @@ def build_live_pipeline(
     kline_limit: int = 1000,
     arbiter_max_tokens: int = 3000,
     enable_news: bool = True,
+    enable_coingecko: bool = True,
     market_cache_dir: str | os.PathLike[str] | None = None,
 ) -> DeadlineAwarePipeline:
     """Live market + sentiment + (optional) first-party news, then Arbiter reasoning.
@@ -394,14 +400,23 @@ def build_live_pipeline(
     Agent extract facts from CoinDesk RSS (a third, independent source type). The
     news branch runs in parallel with market and degrades on its own if the feed
     or extraction fails — the market + sentiment + Arbiter path is unaffected.
+
+    With `enable_coingecko` (Task 18), one optional `medium`-reliability
+    cross-check snapshot per asset is added from CoinGecko. It never replaces
+    Binance as the baseline live market source, and its failure is always
+    non-blocking (`combine_extra_drafts` does not let one source's failure drop
+    another's results).
     """
+    extra_sources = [fear_greed_drafts(analysis_as_of)]
+    if enable_coingecko and assets:
+        extra_sources.append(coingecko_drafts([a.value for a in assets]))
     market_pipeline = OrganizerCsvPipeline(
         load_bars=binance_bar_loader(
             analysis_as_of,
             limit=kline_limit,
             cache_dir=market_cache_dir,
         ),
-        extra_drafts=fear_greed_drafts(analysis_as_of),
+        extra_drafts=combine_extra_drafts(*extra_sources),
         analysis_date=analysis_as_of.date(),
         market_source_name="binance_spot",
         market_independence_group="binance",

@@ -28,6 +28,7 @@ import httpx
 
 from hoya_agent.adapters.alternative_me import fetch_fear_greed
 from hoya_agent.adapters.binance import fetch_binance_daily
+from hoya_agent.adapters.coingecko import fetch_coingecko_price
 from hoya_agent.adapters.organizer_csv import load_organizer_csv
 from hoya_agent.data.types import MarketBar
 from hoya_agent.evidence.drafts import PendingEvidence
@@ -108,5 +109,54 @@ def fear_greed_drafts(
 
         result = _run_sync(_do())
         return list(result.drafts), list(result.degradation)
+
+    return _fetch
+
+
+def coingecko_drafts(
+    assets: Sequence[str], *, timeout: float = 45.0
+) -> Callable[[], tuple[list[PendingEvidence], list[str]]]:
+    """A sync `() -> (drafts, degradation)` for CoinGecko's optional secondary
+    market snapshot — Task 18. Never the baseline; per-asset failures degrade
+    independently, so one unsupported/unavailable asset never drops the rest.
+    """
+
+    def _fetch() -> tuple[list[PendingEvidence], list[str]]:
+        async def _do() -> list:
+            async with httpx.AsyncClient() as client:
+                results = []
+                for asset in assets:
+                    results.append(
+                        await fetch_coingecko_price(asset, client=client, timeout=timeout)
+                    )
+                return results
+
+        drafts: list[PendingEvidence] = []
+        degradation: list[str] = []
+        for result in _run_sync(_do()):
+            drafts.extend(result.drafts)
+            degradation.extend(result.degradation)
+        return drafts, degradation
+
+    return _fetch
+
+
+def combine_extra_drafts(
+    *factories: Callable[[], tuple[list[PendingEvidence], list[str]]],
+) -> Callable[[], tuple[list[PendingEvidence], list[str]]]:
+    """Chain several `extra_drafts` factories behind the one slot
+    `OrganizerCsvPipeline` accepts. Each factory's own failure handling is
+    unchanged — this only concatenates results, it does not add degradation of
+    its own, and one factory raising is not caught here (each factory already
+    degrades internally rather than raising, per its own contract)."""
+
+    def _fetch() -> tuple[list[PendingEvidence], list[str]]:
+        drafts: list[PendingEvidence] = []
+        degradation: list[str] = []
+        for factory in factories:
+            f_drafts, f_degradation = factory()
+            drafts.extend(f_drafts)
+            degradation.extend(f_degradation)
+        return drafts, degradation
 
     return _fetch

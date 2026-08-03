@@ -1453,7 +1453,7 @@ H3 三處都標示未實作；secret scan 通過。
 | **15** agent 判斷可視化（G4） | Planner 其實已經依題目挑不同 operation，但選擇本身與理由從未呈現給評審 | 🔴 未開始 | `docs/Gold-Plan.md` §G4；純呈現層工作，不改推理邏輯 |
 | **16** G1 語意複核 | 純質性事實的語意層複核（走 `LLMClient`），確定性硬原子比對已完成 | 🔴 未開始 | 新檔案，🚫 不動 `evidence/grounding.py`（規定維持 LLM-free）或凍結的 `reasoning/arbiter.py` |
 | **17** H3 條件式辯論 | 真正實作 Bull/Bear/Judge，`enable_conditional_debate` opt-in | 🔴 未開始 | 觸碰目前唯一的凍結元件 `DisabledConflictExtension`，需 owner 同意 |
-| **18** CoinGecko 次要來源 | 接成 optional，永不當 baseline | 🔴 未開始 | 沿用既有 `MarketDataAdapter` port，不開新 port |
+| **18** CoinGecko 次要來源 | 接成 optional，永不當 baseline | ✅ 核心已完成（2026-08-03） | 用 `/simple/price` 快照(非原規劃的 `/market_chart`)；`SourceClass.MARKET_AGGREGATOR` 早就在 `evidence/policies.py` 裡且註解寫著給 CoinGecko 用，直接沿用。`extra_drafts` 一個 pipeline 只吃一個 callable，新增 `combine_extra_drafts()` 讓它跟既有的 Fear & Greed 共用同一個插槽。**未做：** 與 Binance 價差的揭露比對——`metric_value` 已經備好，但要嘛改 `extra_drafts` 的呼叫簽章、要嘛跑完 ledger 後再對 `metric_index` 做一次後處理，兩者都比這次的核心驗收再重一截，留給下一手 |
 | **19** 五幣完整驗證矩陣 | 把 Task 9 的兩資產模式擴到全部五幣 | 🔴 未開始 | 延伸既有 acceptance 模式，非新契約 |
 | **20** PDF/HTML 匯出與額外視覺化 | 在 PR #29 既有的自包含 HTML report 基礎上加 | 🔴 未開始 | 先確認 PR #29 已涵蓋哪些，避免重做 |
 | **21** S3 鏡像／CloudWatch／ECS | Platinum 基礎設施擴充 | 🔴 未開始 | 沿用既有 IAM role、無金鑰模式 |

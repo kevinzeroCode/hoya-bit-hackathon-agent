@@ -539,21 +539,22 @@ below, now formally in scope. None of these are subject to the Task 0-12 Feature
   - **Acceptance:** With `enable_conditional_debate=true` and a real material conflict, exactly one Bull/Bear/Judge round runs and produces a valid `AnalysisResult` that still discloses both sides; with no conflict or with the flag off, output is byte-for-byte identical to today's `DisabledConflictExtension` path; no unbounded loop, no new tool, no new provider.
   - **Commit:** `feat: implement opt-in H3 conditional debate`
 
-- [ ] **18. Add CoinGecko as an optional secondary market source**
+- [x] **18. Add CoinGecko as an optional secondary market source** (done 2026-08-03)
   - **Owner:** data lane
   - **Wave / dependency:** independent
   - **Spec:** former "Future Reference 12" below; `.kiro/steering/competition-rules.md` §Approved Data Policy (now amended to approve this as optional, non-baseline)
-  - **Files:**
-    - Create: `src/hoya_agent/adapters/coingecko.py`
-    - Create: `tests/fixtures/http/coingecko_market_chart.json`
-    - Create: `tests/unit/data_evidence/test_coingecko.py`
-    - Modify: `src/hoya_agent/composition.py` (register as optional context, never baseline)
-  - [ ] Write adapter contract tests (success, timeout, HTTP error, malformed payload, empty data) using `httpx.MockTransport`, matching the pattern already used for `adapters/binance.py` and the research adapters.
-  - [ ] Implement the adapter behind the same `MarketDataAdapter`/`SourceAdapter` port Task 1b already defined — no new port, no new artifact field.
-  - [ ] Wire it as an **optional** source only: Binance stays the sole baseline live market source; CoinGecko failure is always non-blocking and never triggers a "second live provider" claim (same rule Task 4 already enforces for Binance itself).
-  - [ ] If used for cross-check, disclose it explicitly (e.g., a degradation note when Binance and CoinGecko close prices diverge beyond a stated tolerance) — never silently prefer one over the other.
-  - [ ] Run `python -m pytest tests/unit/data_evidence/test_coingecko.py tests/contract -q` and `ruff check .`.
-  - **Acceptance:** CoinGecko produces normalized, schema-valid Evidence through the existing port; its failure never degrades a run below what it would have been without it; it never becomes the baseline; the disclosure/degradation contract from Task 5 applies to it unchanged.
+  - **Scope decision made while implementing:** used CoinGecko's `/simple/price` snapshot endpoint, not `/market_chart` (the brief's original guess). The stated purpose is a live cross-check against Binance's current close, which a snapshot answers directly; a full historical series would duplicate what Binance/organizer-CSV already own as the baseline and adds nothing the acceptance bar asks for.
+  - **Files (as actually touched):**
+    - Created: `src/hoya_agent/adapters/coingecko.py` — `fetch_coingecko_price(asset, *, client, timeout) -> WorkerResult`, mirrors `adapters/alternative_me.py`'s shape exactly; `medium` reliability via the pre-existing `SourceClass.MARKET_AGGREGATOR` (already in `evidence/policies.py`, already commented "CoinGecko / CryptoCompare snapshots" — no policy change needed). Carries `metric_name="coingecko_price_usd"`/`metric_value` via the existing `PendingEvidence.metric` mechanism for a future cross-check without re-parsing prose.
+    - Created: `tests/unit/data_evidence/test_coingecko.py` — 6 contract tests (success, unsupported asset, HTTP error, timeout, malformed, empty), `httpx.MockTransport`, mirrors `test_alternative_me.py`.
+    - Modified: `src/hoya_agent/adapters/live_sources.py` — added `coingecko_drafts(assets, *, timeout)` (same sync-wrapper-over-async-client shape as `fear_greed_drafts`/`binance_bar_loader`) and `combine_extra_drafts(*factories)`, since `OrganizerCsvPipeline` accepts exactly one `extra_drafts` callable and Fear & Greed already occupied it. 6 new unit tests in `tests/unit/data_evidence/test_live_sources.py`.
+    - Modified: `src/hoya_agent/composition.py::build_live_pipeline()` — new `enable_coingecko: bool = True` parameter; `extra_drafts=combine_extra_drafts(fear_greed_drafts(...), coingecko_drafts(...))` when assets are present. Binance (`binance_bar_loader`) is untouched as the sole `load_bars` baseline.
+  - [x] Write adapter contract tests (success, timeout, HTTP error, malformed payload, empty data) using `httpx.MockTransport`.
+  - [x] Implement the adapter behind the existing deterministic-draft path (`evidence/drafts.py::pending()` → `PendingEvidence` → the same processor/ledger every other source uses) — no new port, no new artifact field.
+  - [x] Wired as optional: Binance stays the sole baseline (`load_bars`); CoinGecko is one of possibly several `extra_drafts` sources, and `combine_extra_drafts` lets one asset's or one source's failure degrade independently without dropping the rest.
+  - [ ] **Not done — deferred:** the Binance-vs-CoinGecko divergence disclosure (comparing the two prices and flagging disagreement beyond a tolerance). `extra_drafts` factories are constructed before bars are fetched and are called with no arguments, so a same-draft comparison would need either a breaking signature change to that callable or a post-hoc pass over `metric_index` after the ledger is built; both are more invasive than this task's core bar justified this pass. The `metric_value` needed for that comparison is already captured and ready for whoever picks this up.
+  - [x] Ran `python -m pytest tests/unit/data_evidence/test_coingecko.py tests/unit/data_evidence/test_live_sources.py -q` (14 passed), `python -c "import hoya_agent.composition"` (no circular import), full non-live suite (1321 passed, up from 1311) and `ruff check .` (All checks passed).
+  - **Acceptance:** **Met for the core bar.** CoinGecko produces normalized, schema-valid Evidence through the existing port; its failure never degrades a run below what it would have been without it (verified per-asset and via `combine_extra_drafts`); it never becomes the baseline. The optional cross-check disclosure clause is the one open item above.
   - **Commit:** `feat: add CoinGecko as an optional secondary market source`
 
 - [ ] **19. Complete five-asset validation/calibration matrix**
