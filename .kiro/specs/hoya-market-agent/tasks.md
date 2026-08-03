@@ -577,21 +577,27 @@ below, now formally in scope. None of these are subject to the Task 0-12 Feature
   - **Acceptance:** All five assets pass the same artifact/provenance contract Task 9 established for two; any asset-specific data gaps are disclosed, not hidden; no coin-specific code path was added to reach this.
   - **Commit:** `test: complete the five-asset validation matrix`
 
-- [ ] **20. Platinum reporting: PDF/HTML export and additional visualization**
+- [x] **20. Platinum reporting: PDF export** (PDF done 2026-08-03; additional visualization not done — see below)
   - **Owner:** UI/reporting lane
-  - **Wave / dependency:** independent (build on the existing self-contained HTML report from PR #29, `feat(ui): emit complete self-contained HTML report`, rather than starting a new renderer)
+  - **Wave / dependency:** independent
   - **Spec:** former "Future Reference 12" below
-  - **Files:**
-    - Modify: `src/hoya_agent/reporting/renderer.py` or the HTML emission path added in PR #29 (check current state first — this may already cover most of the "HTML export" half)
-    - Create: PDF export path (e.g. via a headless render of the existing HTML, not a second hand-written template)
-    - Modify: `src/hoya_agent/ui/streamlit_app.py` (download button)
-  - [ ] Confirm what PR #29's HTML report already covers before adding anything — do not duplicate an existing self-contained HTML artifact.
-  - [ ] Add a PDF export derived deterministically from the same rendered content (no second source of truth, no LLM re-generation for the PDF).
-  - [ ] Any new chart/visualization must be generated from data already in the Ledger/`AnalysisResult` — no new data source, no new claim.
-  - [ ] These stay **additional** artifacts; the four fixed filenames (`final_report.md`, `evidence.json`, `execution_log.jsonl`, `run_config.json`) and their contract are unchanged.
-  - [ ] Run the full non-live suite and `ruff check .`.
-  - **Acceptance:** PDF/HTML export and any added visualization are deterministic, derived only from existing Evidence/Claims, and additive — they do not replace or alter the four required artifacts.
-  - **Commit:** `feat: add PDF export and extra report visualization`
+  - **Confirmed before starting:** PR #29's `reporting/html_renderer.py` already produces a complete, self-contained `final_report.html` (market/reasoning/evidence/trust/limits sections) as an additional artifact alongside the four required files — the "HTML export" half of this task's title was already done, nothing added there.
+  - **Library decision (asked the user, since it adds a new dependency that touches the Docker image):** `xhtml2pdf` — pure Python, no system binary (no `wkhtmltopdf`, no headless browser), confirmed empirically to install cleanly via the existing `pip install -e .` Dockerfile step with no changes needed.
+  - **Two real problems found and fixed empirically, not by guessing:**
+    1. Feeding `xhtml2pdf` the existing rich screen HTML (`html_renderer.py`'s CSS) crashes outright — its CSS support is 2.1-era: unresolved `var(--x)` calls reach reportlab's color parser and raise `ValueError`, and even after mechanically resolving those, other modern CSS (`.1em` without a leading `0`, grid/flex) crashes it deeper in text-fragment handling. **Fix:** built a separate, deliberately plain xhtml2pdf-safe HTML+CSS, converted from the *same* deterministic Markdown text `final_report.md` already contains (not a re-derivation from `AnalysisResult`/`EvidenceLedger`, and not an LLM re-summarization) — genuinely one source of truth for content, two presentations.
+    2. The first working PDF (correct structure, all 11 sections, right tables) had every Traditional Chinese character invisible — `xhtml2pdf`'s base-14 fonts have no CJK glyphs at all. **Fix:** registered `MSung-Light` (one of Adobe's standard, license-free CJK CID fonts, not a bundled TTF) via `reportlab.pdfbase.cidfonts.UnicodeCIDFont` and set it as the CSS `font-family`. **Verification note:** this session's own PDF-viewing tool couldn't rasterize the CJK glyphs either (a limitation of *that* tool's renderer, not the PDF) — correctness was instead confirmed by extracting the PDF's actual text layer with `pypdf` and asserting the exact Chinese source strings are present, which is the more rigorous check for whether real-world CJK-capable viewers (effectively all of them) will display it correctly.
+  - **Files (as actually touched):**
+    - Modified: `pyproject.toml` — added `xhtml2pdf>=0.2.16,<0.3` to `dependencies`.
+    - Created: `src/hoya_agent/reporting/pdf_renderer.py` — `markdown_to_pdf_html()` (a special-purpose Markdown→HTML converter scoped to exactly the patterns `renderer.py` emits: `#`/`##` headings, GFM tables, one-level bullets, blockquotes, inline bold/code/links — not a general CommonMark implementation) and `render_pdf(markdown_text) -> bytes`.
+    - Created: `tests/unit/reporting/test_pdf_renderer.py` — 5 tests, including one that runs the exact `renderer.py` output through the exact PDF path and asserts every Evidence ID and Claim ID from the Markdown survives into the PDF's extracted text layer.
+    - Modified: `src/hoya_agent/ui/streamlit_app.py` — a PDF download button, generated on demand from `view["report_markdown"]` (not written to the run directory, not a fifth required artifact); any rendering failure is caught and shown as a caption rather than breaking the page.
+  - [x] Confirmed what PR #29's HTML report already covers before adding anything.
+  - [x] PDF export derived deterministically from the same rendered Markdown content; no second source of truth for facts/numbers, no LLM call.
+  - [ ] **Not done:** additional chart/visualization. Deferred — PDF export alone was already a multi-step empirical investigation (two real rendering bugs found and fixed); a chart is a separate, smaller follow-up (e.g. an inline SVG of the Trust Scorecard's ordinal pips, already plain data on `AnalysisResult.trust_scorecards`, zero new dependencies) left for whoever picks this up next.
+  - [x] The four/five required artifact filenames and their contract are unchanged — PDF is generated on demand in the UI process, never written to the run directory, never counted among `ARTIFACT_NAMES`.
+  - [x] Ran `python -m pytest tests/unit/reporting/test_pdf_renderer.py -q` (5 passed) then the full non-live suite (1339 passed, up from 1334) and `ruff check .` (All checks passed); confirmed `streamlit_app.py` still imports cleanly.
+  - **Acceptance:** **PDF export met; visualization not attempted this pass.** PDF is deterministic (same Markdown source every time), derived only from existing report text, and additive — it does not replace or alter the four required artifacts.
+  - **Commit:** `feat: add deterministic PDF export with CJK font support`
 
 - [ ] **21. Platinum infrastructure: S3 artifact mirroring, CloudWatch, ECS**
   - **Owner:** P1/P4-equivalent deployment lane

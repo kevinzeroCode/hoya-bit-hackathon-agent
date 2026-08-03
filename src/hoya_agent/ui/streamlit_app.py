@@ -404,6 +404,27 @@ def _render_result(view: dict, bars_by_asset: dict | None = None) -> None:
             col.download_button(f"⬇️ {label}", raw, file_name=name, help=name)
         else:
             col.write(f"❌ {label}")
+
+    # PDF (Task 20): additive, generated on demand from the same report text
+    # already in final_report.md — not a fifth required artifact, not written
+    # to the run directory, no re-summarization. A rendering failure must
+    # never break the page; the four/five required artifacts above are
+    # unaffected either way.
+    if view["report_markdown"]:
+        try:
+            from hoya_agent.reporting.pdf_renderer import render_pdf
+
+            pdf_bytes = render_pdf(view["report_markdown"])
+            st.download_button(
+                "⬇️ PDF 版報告（額外格式）",
+                pdf_bytes,
+                file_name="final_report.pdf",
+                mime="application/pdf",
+                help="final_report.pdf（衍生自同一份 final_report.md，非四項必要 artifacts 之一）",
+            )
+        except Exception:  # noqa: BLE001 - an optional export failing must not break the page
+            st.caption("PDF 匯出目前無法產生（不影響其他 artifacts）。")
+
     if view["missing_artifacts"]:
         st.error("部分研究資料未能完整建立，請重新執行分析。")
 
