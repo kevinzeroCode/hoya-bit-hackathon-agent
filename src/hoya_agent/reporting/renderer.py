@@ -380,11 +380,17 @@ def _render_limitations(result: AnalysisResult, ledger: EvidenceLedger) -> list[
 
     stale = [item.evidence_id for item in ledger.items if item.is_stale]
     cached = [item.evidence_id for item in ledger.items if item.is_cached]
+    no_published_at = [item.evidence_id for item in ledger.items if item.published_at is None]
     if cached:
         lines.append("")
         lines.append(f"- 使用 cache 的證據：{_ids(cached)}（cache 時間已列於證據表）")
     if stale:
         lines.append(f"- 標記為 stale 的證據：{_ids(stale)}")
+    if no_published_at:
+        lines.append(
+            f"- 無法確認原始發布/來源時間，證據表僅列出取得時間（`fetched_at`），"
+            f"不代表內容實際新舊：{_ids(no_published_at)}"
+        )
     return lines
 
 

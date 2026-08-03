@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -18,7 +18,7 @@ from hoya_agent.models import (
     RunMode,
     TerminalState,
 )
-from hoya_agent.orchestration.pipeline import PipelineOutcome
+from hoya_agent.orchestration.pipeline import OrganizerCsvPipeline, PipelineOutcome
 
 pytestmark = pytest.mark.integration
 
@@ -96,6 +96,32 @@ async def test_demo_recorded_fallback_is_explicit_in_summary_and_run_config(tmp_
 async def test_official_rejects_non_live_effective_data_mode(tmp_path) -> None:
     with pytest.raises(ValidationError, match="official"):
         await _run(tmp_path, RunMode.official, DataMode.fixture)
+
+
+async def test_official_mode_rejects_a_real_fixture_backed_adapter(tmp_path) -> None:
+    """Task 5's remaining official-mode gap, closed with a real adapter.
+
+    `test_official_rejects_non_live_effective_data_mode` above proves the
+    contract using a synthetic `ModePipeline` that is told what data mode to
+    report. This proves it against `OrganizerCsvPipeline`, the actual adapter
+    that serves the static organizer CSV — genuine fixture data — when no
+    live `load_bars` loader is injected, independent of `run_mode`.
+    """
+    clock = FixedClock(NOW, monotonic_value=10.0)
+    request = build_request(
+        question="BTC 市場狀態？",
+        assets=[Asset.BTC],
+        run_mode=RunMode.official,
+        now=NOW,
+        run_id_suffix="realfx",
+    )
+    service = ApplicationService(
+        artifact_root=tmp_path,
+        clock=clock,
+        pipeline=OrganizerCsvPipeline(analysis_date=date(2026, 5, 31)),
+    )
+    with pytest.raises(ValidationError, match="official"):
+        await service.run(request)
 
 
 def test_official_cutoff_cannot_be_caller_supplied() -> None:

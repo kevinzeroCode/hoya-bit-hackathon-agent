@@ -127,6 +127,24 @@ def test_limitations_and_degradation_are_disclosed(result, ledger) -> None:
         assert event.message in block
 
 
+def test_missing_published_at_is_disclosed_not_hidden(result, ledger) -> None:
+    """Task 5's remaining gap: a missing publish/source time must be disclosed,
+    not silently rendered as if `fetched_at` (the acquisition time) were the
+    content's actual age. The evidence table only ever shows `fetched_at`, so
+    without an explicit limitations-section disclosure a reader has no way to
+    tell "published now" apart from "published who-knows-when, fetched now"."""
+    payload = ledger.model_dump(mode="python")
+    payload["items"][0]["published_at"] = None
+    stripped_ledger = EvidenceLedger.model_validate(payload)
+    missing_id = stripped_ledger.items[0].evidence_id
+
+    block = _section_body(render(result, stripped_ledger), 9, "限制與資料缺口")
+    assert missing_id in block, (
+        "an Evidence item with no known publish/source time must be named in "
+        "the limitations section instead of disappearing"
+    )
+
+
 def test_quantified_and_qualitative_invalidation_conditions_render(result, ledger) -> None:
     block = _section_body(render(result, ledger), 10, "失效條件")
     quantified, qualitative = result.invalidation_conditions

@@ -55,7 +55,6 @@ from hoya_agent.models import (
     MarketContext,
     Reliability,
     RunContext,
-    RunMode,
     Stance,
     TerminalState,
     TimeRange,
@@ -730,8 +729,14 @@ class OrganizerCsvPipeline:
             terminal_state=terminal_state,
             degradation_notes=notes,
             stage_durations_ms={},
+            # Reported from what this instance actually reads, not from
+            # `run_mode`: a `load_bars` loader (e.g. live Binance) makes this
+            # `live`; no loader means the static organizer CSV, genuine fixture
+            # data, regardless of which run_mode asked for it. Guessing from
+            # `run_mode` alone let a fixture-backed instance self-report `live`
+            # under `official`, silently defeating the mode-honesty gate.
             effective_data_mode=(
-                DataMode.fixture if context.run_mode is RunMode.rehearsal else DataMode.live
+                DataMode.live if self._load_bars is not None else DataMode.fixture
             ),
         )
 
