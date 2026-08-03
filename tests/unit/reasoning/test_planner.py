@@ -66,6 +66,35 @@ class ViolationTests(unittest.TestCase):
         violations = plan_violations(make_plan(lookback_days=0), OPERATIONS, ["BTC"])
         self.assertTrue(any("positive integer" in v for v in violations))
 
+    def test_a_real_research_plan_with_matching_assets_has_no_violations(self):
+        """`_stubs.Plan.assets` is `list[str]`, unlike the real `models.ResearchPlan`,
+        whose `assets` field is `list[Asset]`. `application.py` wires the real model
+        as `plan_schema`, so an Asset-enum-typed plan is exactly what production sees.
+
+        Regression for a real bug: `str(Asset.BTC)` returns `'Asset.BTC'`, not
+        `'BTC'`, under Python's Enum `__str__` for a `(str, Enum)` mixin, so
+        comparing `str(asset)` on each side made every real plan look like it had
+        changed the requested assets, discarding every LLM-generated plan on the
+        script-driven live path (`docs/rehearsals/run-log.md`, 2026-08-02).
+        """
+        from hoya_agent.models import Asset, ResearchPlan, ResearchStep
+
+        real_plan = ResearchPlan(
+            assets=[Asset.BTC],
+            question_summary="BTC 近期表現",
+            planned_steps=[
+                ResearchStep(
+                    step_id="s1",
+                    tool_operation="binance.klines",
+                    rationale="market baseline",
+                )
+            ],
+        )
+        # Planner.run() always passes plain strings here (ReasoningRequest.assets is
+        # `tuple[str, ...]`, built from `asset.value`), never Asset enum members.
+        violations = plan_violations(real_plan, OPERATIONS, ["BTC"])
+        self.assertEqual(violations, [])
+
 
 class DefaultPlanTests(unittest.TestCase):
     def test_default_plan_only_uses_allowlisted_operations(self):

@@ -34,6 +34,19 @@ def _attr(obj: Any, name: str, default: Any = None) -> Any:
     return getattr(obj, name, default)
 
 
+def _asset_str(asset: Any) -> str:
+    """Normalize an asset to its plain string form.
+
+    `str()` alone is not safe here: `models.ResearchPlan.assets` is
+    `list[Asset]` (a `(str, Enum)` mixin), and `str(Asset.BTC)` returns
+    `'Asset.BTC'`, not `'BTC'`. A caller comparing plain-string requested
+    assets against an `Asset`-typed plan would see every real plan as having
+    "changed the requested assets" and discard it. `.value` is the safe read
+    for both an `Asset` member and an already-plain string.
+    """
+    return str(getattr(asset, "value", asset))
+
+
 def plan_violations(
     plan: Any, allowed_operations: Sequence[str], requested_assets: Sequence[str]
 ) -> list[str]:
@@ -53,8 +66,8 @@ def plan_violations(
             # The single most important check in this module.
             violations.append(f"step names non-allowlisted operation {operation!r}")
 
-    planned_assets = [str(asset) for asset in (_attr(plan, "assets") or ())]
-    if planned_assets != [str(asset) for asset in requested_assets]:
+    planned_assets = [_asset_str(asset) for asset in (_attr(plan, "assets") or ())]
+    if planned_assets != [_asset_str(asset) for asset in requested_assets]:
         violations.append(
             f"plan changed the requested assets to {planned_assets!r}"
         )
