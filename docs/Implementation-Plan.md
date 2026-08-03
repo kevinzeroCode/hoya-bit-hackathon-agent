@@ -40,8 +40,12 @@
 Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC2。
 **每個檔的細節請看檔案地圖，本文不重列。**
 
-> ⚠️ **狀態掃描時間：2026-08-02，基準 commit `6f914dc`（含 live composition root、UI、mapping）。**
-> 本快照以實際 `main` 檔案、已執行驗收與外部 gate 為準；較舊章節若衝突，以本節為準。
+> ⚠️ **狀態掃描時間：2026-08-03，基準 `origin/main@2c0d268` ＋ 本地兩個 commit（`69c019f`、`df4813e`）。**
+> 本快照以實際檔案、已執行驗收與外部 gate 為準；較舊章節若衝突，以本節為準。
+>
+> **比賽已於 2026-08-02 結束**（Gold local Exit 通過、ECR/EC2 部署上線、CD pipeline 接上 main）。
+> 以下 S0-S11 是**已出貨的競賽 MVP**，凍結；新規劃的延續工作是 `tasks.md` **Task 13-21**，
+> 詳見本文新增的 [§9 賽後延續工作](#9-賽後延續工作task-13-21)，不在 S0-S11 模板裡重複列。
 
 ### 1.1 現況快照（authoritative）
 
@@ -58,17 +62,17 @@ Streamlit（同 process）· pytest · 單一 Docker image → ECR → 單台 EC
 | **S8** H2-Lite Silver | ✅ | **Silver live Exit 已過（2026-08-02）**：`tests/live/test_live_silver_pipeline.py` → 1 passed in 50.15s，schema-valid Bedrock 結構化輸出 ＋ 四項 artifacts。live composition root `composition.py` ＋ `adapters/live_sources.py` 已落地 |
 | **S9** 創意層 | ✅（離線） | Trust Scorecard、regime/unavailable、Evidence-backed invalidation 與 renderer 已通過離線 smoke |
 | **S9B** 雙幣比較 | ✅（離線） | 單一 run/cutoff/ledger、UTC 對齊、balanced Arbiter projection、比較 Claim 與第 12 段已通過 |
-| **S10** Gold local Exit | 🟡 | 自動 acceptance 已補齊（`tests/acceptance/` 29 passed）、兩資產各兩次獨立單幣 run 已跑並記錄；**complete-Evidence（含推論結論）的 run 仍缺**，卡在 Bedrock 帳號未開通，見 `docs/rehearsals/run-log.md` |
-| **S11** 部署與彩排 | 🟡 | CI、smoke test、本地 Docker、**ECR/EC2 部署已上線並驗證**、**rollback 已實跑一次**、secret scan、CSV/Binance 重疊檢查、recorded fallback 全數完成；**只剩 15 分鐘 judged-flow rehearsal（人工）** |
+| **S10** Gold local Exit | 🟡 | 自動 acceptance 已補齊（`tests/acceptance/` 29 passed）、兩資產各兩次獨立單幣 run 已跑並記錄；Bedrock 帳號問題已解除，但 **complete-Evidence（含穩定的推論／結論）的 run 仍未達成**——見下方「未修的 live 缺陷」與 `docs/rehearsals/run-log.md` 尾段（2026-08-02 最後更新，七次 live run 只有一次產出結論層 claim） |
+| **S11** 部署與彩排 | 🟡 | CI、smoke test、本地 Docker、**ECR/EC2 部署已上線並驗證**、**rollback 已實跑一次**、secret scan、CSV/Binance 重疊檢查、recorded fallback 全數完成；**只剩 15 分鐘 judged-flow rehearsal（人工，未執行）** |
 
 **目前完成分層：**嚴格完成 S0/S1/S2/S3/S4/S5/S6/S7；離線功能完成 S9/S9B；
-**S8 Silver Exit 已完成（2026-08-02）**；S10/S11 各完成一半（見上表）。
+**S8 Silver Exit 已完成（2026-08-02）**；S10/S11 各完成大半，剩餘缺口見上表與下方缺陷清單。
 
-**Repository-wide gate 實跑（2026-08-02, branch `agent/s11-delivery` @ `c844a38`, Python 3.12）：**
+**Repository-wide gate 實跑（2026-08-03, branch `post-comp/finish-remaining-gates` @ `df4813e`, Python 3.12.13, `.venv-gate`）：**
 `python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q`
-→ **1266 passed, 0 failed**（1237 基準 ＋ 29 新增 acceptance）；`ruff check .` → **All checks passed!**。
-這是 `tasks.md` Final Required Gate 那條指令**第一次能逐字執行**——先前 `tests/acceptance/`
-不存在，pytest 會直接 `ERROR: file or directory not found`。
+→ **1306 passed, 0 failed**（較 2026-08-02 的 1266 多 40：本次工作階段新增 2 個回歸測試並修掉它們
+抓到的 2 個真缺陷，另刪除 `p2-etl-mvp/` 71 檔重複樹，測試數不受影響）；`ruff check .` →
+**All checks passed!**；`docker compose config` → valid。
 
 **GitHub Actions 已配置**（`.github/workflows/ci.yml`）：verify（ruff ＋ 非 live 測試）、
 container（`docker compose config` ＋ image build ＋ 容器內 smoke ＋ 非 root/無 `.env` 檢查）、
@@ -79,14 +83,36 @@ secret-scan（gitleaks 掃追蹤內容 ＋ 追蹤檔名檢查）。三個 job �
 botocore／numpy／pyarrow 測試 fixture，非 repo 內容——所以 CI 只掃 `git archive HEAD`。）
 
 **✅ Bedrock 已可用（帳號已換）：**競賽帳號改為主辦方的 AWS Workshop Studio 帳號
-`411451203311`；`scripts/diagnose_bedrock.py` → **3/3 成功，每次約 8 秒**。憑證短期、帳號臨時。
+`411451203311`；`scripts/diagnose_bedrock.py` → **3/3 成功，每次約 8 秒**。憑證短期、帳號臨時，
+**帳號本身也是活動臨時帳號，會被收回——之後要換回自己的帳號才能繼續跑 live**。
 
-**🔴 兩個在 live run 才會現形的缺陷（皆未修，見 S11 現況區塊）：**
-1. 證據一多，Arbiter 撞 45 秒單次上限 → 整個推理層掉光。BTC（20 筆證據）失敗、ETH（6 筆）成功。
-2. Planner 的資產比對因 `str(Asset.BTC) == 'Asset.BTC'` 永遠不相等 → LLM 計畫每次被丟棄。
+**Live run 缺陷現況（2026-08-03 覆核 `docs/rehearsals/run-log.md` 全文與目前程式碼，修正上一版的誤判）：**
+
+1. **Arbiter 撞 45 秒單次呼叫上限——UI 路徑已修，指令碼路徑已補齊，但更深的問題還在。**
+   `composition.py`（Streamlit UI 用的 live pipeline）早就把 `max_tokens` 設成 3000 並留註解
+   說明 6000/8000 會直接把 Arbiter 推過 45 秒上限；`application.build_research_pipeline`
+   （`scripts/run_acceptance.py --live` 等指令碼用的路徑）原本仍用凍結預設的 8000，
+   已在 2026-08-02 補齊為同一個 3000（`ARBITER_MAX_TOKENS`）。**但這只解決了逾時，
+   沒有解決根因**：`run-log.md` 記錄的七次 live run 裡，即使 Arbiter 在時間內正常完成、
+   信心到 `medium`，**仍有六次的第 7 段結論層是空的**（`claims` 本身就是 0 筆，不是渲染端丟的）。
+   `main` 上的 `a1d17f2 fix(arbiter): guarantee non-empty structured claims on live runs`
+   對此顯然沒有完全覆蓋。**修點在凍結的 `reasoning/`（Arbiter 或 prompt），需推理層 owner
+   決定；截至本次覆核仍未修。**
+2. **Planner 的資產比對在指令碼路徑仍會誤判，UI 路徑目前繞過它。**
+   `application.py:395` 把 `Planner(plan_schema=ResearchPlan, ...)` 接上凍結的
+   `models.ResearchPlan`，其 `assets: list[Asset]` 是 enum 型別；Python 3.11 起
+   `str(Asset.BTC)` 回傳 `'Asset.BTC'` 而非 `'BTC'`，導致 `reasoning/planner.py:56` 的
+   `plan_violations()` 永遠判定「plan changed the requested assets」，LLM 計畫每次被丟棄、
+   退回決定論預設計畫。`composition.py`（UI 的 live pipeline）目前用的是完全不同的
+   `_BaselinePlanner`，不經過這條比對，所以 UI 路徑不會踩到——**但這代表 UI 路徑的
+   Planner 本來就沒有真的讓 LLM 選操作，不是這個 bug 被修好了**。指令碼路徑
+   （`scripts/run_acceptance.py --live`、`build_research_pipeline` 的其他呼叫者）仍會踩到。
+   修點同樣在凍結的 `reasoning/`，需 owner 決定；截至本次覆核仍未修。
 
 **下一條關鍵路徑：** S8 live Silver ✅ → S10 自動 acceptance ✅ →
-**S10 complete-Evidence run（等 Bedrock 開通）** → S11 ECR/EC2 → 15 分鐘計時彩排。
+**S10 complete-Evidence run（卡在上述結論層不穩定 + Planner 比對兩個 reasoning/ 缺陷，
+不再是 Bedrock 帳號問題）** → S11 15 分鐘計時彩排（部署本身已完成）。
+其餘賽後延續工作見 [§9](#9-賽後延續工作task-13-21)。
 
 ---
 
@@ -1226,11 +1252,18 @@ UI 停用第二幣加選、只接受單幣請求，並在文件與簡報揭露�
 > 2. 「deterministic rendering」不等於 byte-identical：`fetched_at` 是 provenance（本 process
 >    何時讀到來源），CSV 讀取的取得時間本來就是當下牆鐘，兩次相同輸入必然差幾秒。
 >    acceptance 測試把它正規化後比對，並另有一條測試釘住「唯一容許漂移的欄位就是 `fetched_at`」。
-> 3. **Bedrock 帳號未開通**（見 §1.1）：live baseline run 的 Planner／research extraction／Arbiter
->    全部 `LLMUnavailableError`，evidence 只剩 deterministic 市場證據 5 筆。四項 artifacts 仍齊全，
->    降級被誠實揭露。**因此 S10 不得記為完成。**
+> 3. ~~Bedrock 帳號未開通~~ **已解除**（帳號換成主辦方 AWS Workshop Studio 帳號後 3/3 呼叫成功）。
+>    但解除之後才發現真正的阻塞：`docs/rehearsals/run-log.md` 尾段記錄七次 live run，
+>    Arbiter 都在時間內完成，**卻只有一次真的產出結論層 claim**——其餘六次結論層是空的
+>    （`claims` 本身 0 筆，非渲染端丟棄），而且 Planner 的資產比對在指令碼路徑會因
+>    `str(Asset.BTC) != 'BTC'`（Python 3.11+ enum `__str__` 行為）永遠判定計畫違規、
+>    退回決定論預設計畫。兩者都在凍結的 `reasoning/`，需 owner 決定才能修。**因此 S10
+>    仍不得記為完成**——阻塞的性質從「帳號」變成「reasoning 層兩個未修的正確性缺陷」。
 >
-> **指派：** 全員；任務 A 擁有這個閘門。
+> **指派：** 全員；任務 A 擁有這個閘門。相關缺陷修復已寫成 Kiro 任務，見
+> [§9](#9-賽後延續工作task-13-21)（本文未新增獨立 task 編號給這兩個缺陷本身——它們是
+> 既有 reasoning/ 凍結路徑的 bug fix，不是新範圍，建議 owner 直接在 `reasoning/` 修，
+> 修完後回頭勾選本節與 `docs/rehearsals/run-log.md`）。
 
 **目標**：用兩個**不同**資產各自的獨立單幣 run，證明 pipeline 真的是 coin-agnostic。
 
@@ -1384,21 +1417,57 @@ H3 三處都標示未實作；secret scan 通過。
 | ~~2~~ | ~~`okx.py`、`reddit.py` 不在 canonical tree~~ | ~~S5 / S6 搬檔之前~~ | ✅ **已定案（PR #8）**：`okx`、`reddit`、`coingecko`、`derivatives`、`google_news` 五個來源共十個檔**不搬**，對齊 `evidence-contracts.md` |
 | 3 | ~~`evidence/types.py` 的退場時機~~ | ~~S6 完成之前~~ | ✅ **已結案（2026-08-01 第五輪）**：`evidence/types.py` 已刪除；`evidence/drafts.py` 的 `PendingEvidence`（canonical draft ＋ provenance）成為唯一 draft 型別，reliability／independence group／hash／id 全由 `evidence/processor.py` 指派。順帶刪除非 canonical 的 `evidence/evidence_json.py`。`data/types.py::MarketBar` 保留——`models.py` 沒有 MarketBar，它不是重複型別 |
 | ~~4~~ | ~~designated baseline **research** source 是哪一個~~ | ~~S8 Silver 驗收之前~~ | ✅ **已定案（S0 實測）**：第一手新聞 RSS + Google News 依幣種搜尋（免 key、五幣覆蓋）；CryptoPanic 取得 token 後可升為主 |
-| 8 | `p2-etl-mvp/` 的退場時機 | **S3 完成之前** | 新增項。PR #8 已把核心搬進 `src/`，但 `p2-etl-mvp/` 71 個檔仍留在 `main`，與原訂「這個目錄永不進 `main`」相反。S3 接手 `app.py`／`Dockerfile` 後應整個刪除，避免兩套並存 |
+| ~~8~~ | ~~`p2-etl-mvp/` 的退場時機~~ | ~~S3 完成之前~~ | ✅ **已結案（2026-08-03，`69c019f`）**：71 個檔已整批刪除，確認 `src/`／`tests/` 無任何 import 依賴後執行，刪除前後測試數不變（1304 → 1304，`ruff check .` 全綠）；`.dockerignore` 同時移除死掉的排除規則 |
 | ~~9~~ | ~~`ruff check .` 的 87 個錯誤~~ | ~~下一階段開工前~~ | ✅ **已清空（2026-08-01 實測）**：`ruff check .` → All checks passed |
-| 10 | `_provisional_seams.py` swap procedure | **S3 或 S4 開工前** | 新增項。S2 落地時 Task 1b 尚未存在，所以 runtime types 暫住 `_provisional_seams.py`。現在 `models.py`（40 classes）與 `ports.py` 都已在 `main`，swap procedure 見 `docs/ai/S2_CONTRACT_EXPECTATIONS.md §4`，觸及 `application.py`、`reporting/artifacts.py`、`tests/integration/test_vertical_slice.py`，最後刪除 stand-in 與 bridge test |
-| 8b | `reasoning/arbiter.py` 的 `select_evidence()` 需加 per-asset 配額，但它是**凍結路徑** | **S9B 動工之前** | 需原 P3（該檔 owner）同意；🚫 不得逕行修改。這是正確性修復，不是調參 |
-| 5 | 15 分鐘是否含題目輸入與評審檢視時間 | 主辦方確認前不阻塞 | 實作一律**從 run 開始**計時 |
+| ~~10~~ | ~~`_provisional_seams.py` swap procedure~~ | ~~S3 或 S4 開工前~~ | ✅ **已結案**：`_provisional_seams.py` 與 `test_s1_seam_bridge.py` 已刪除，runtime imports 全部指向 canonical `models.py`／`ports.py`（見 `docs/ACTIVE_WORK.md` S1 現況） |
+| ~~8b~~ | ~~`reasoning/arbiter.py` 的 `select_evidence()` 需加 per-asset 配額，但它是凍結路徑~~ | ~~S9B 動工之前~~ | ✅ **已結案**：S9B 現況記錄「balanced Arbiter projection」已落地，兩個資產各自都能進 Arbiter payload |
+| 5 | 15 分鐘是否含題目輸入與評審檢視時間 | 主辦方確認前不阻塞 | 實作一律**從 run 開始**計時；比賽已結束，此項不再會有主辦方回覆，維持現行判斷即可 |
 | 6 | 主辦方 CSV 算不算一個獨立 `independence_group` | 同上 | 暫計為一個（`organizer-public-market-data`） |
 | 7 | 「第一手/官方來源」的界定 | 同上 | 暫指原始資料產生者：交易所 API、專案官方公告、主辦方 CSV |
+| 11 | **Arbiter 結論層 claim 在 live run 下不穩定**（七次 live run 僅一次產出結論層 claim，其餘信心正常但 claims 為空） | **S10 complete-Evidence run 之前** | 新增項（2026-08-03 覆核 `run-log.md` 發現）。修點在凍結的 `reasoning/`（Arbiter 或 prompt），需 owner 決定；`a1d17f2` 已嘗試修過一次但未完全覆蓋，需要更多樣本與根因分析，不是簡單重跑能解決 |
+| 12 | **指令碼 live 路徑的 Planner 資產比對永遠判定違規**（`str(Asset.BTC) != 'BTC'`），退回決定論預設計畫 | **S10 complete-Evidence run 之前** | 新增項（2026-08-03 覆核發現）。`application.py:395` 把 `Planner` 接上凍結的 `models.ResearchPlan`（`assets: list[Asset]`），Python 3.11+ 的 enum `__str__` 行為讓比對恆假。UI 的 `composition.py` 用 `_BaselinePlanner` 繞過了這條路徑，但那代表 UI 路徑本來就沒有真的讓 LLM 選操作，不是「已修好」。修點同樣在凍結的 `reasoning/`，需 owner 決定 |
 
 > 主辦方若給出不同的正式解釋，**先更新 steering 與 requirements，再改行為**；🚫 不得只改 prompt。
+> 項目 11、12 兩條 live 缺陷的修復尚未寫成獨立 Kiro task——它們是既有 Task 6/8（reasoning／Silver）
+> 凍結路徑裡的 bug，不是新範圍。建議直接指派給熟悉 `reasoning/` 的 owner 修，紅→綠→重跑
+> S10 的 complete-Evidence acceptance，而不是併入 Task 13-21 的新功能開發。
+
+---
+
+## 9. 賽後延續工作（Task 13-21）
+
+> 比賽已於 2026-08-02 結束；S0-S11（= `tasks.md` Task 0-12）是已出貨的競賽 MVP，凍結不動
+> （除非修真的 bug，如上方項目 11、12）。這裡不重複 S0-S11 的完整範本，只記重點與指到哪裡看細節——
+> **規範性內容一律在 `.kiro/specs/hoya-market-agent/tasks.md` Task 13-21**，本節只是索引。
+
+`.kiro/steering/competition-rules.md` 與 `development-workflow.md` 已同步更新（2026-08-03），
+明確解除「不得擴張 MVP 到 H3／S3／CloudWatch／額外 adapter」與「Day 2 feature freeze」這兩條規則
+對 Task 13 起的效力，否則 Kiro 每次啟動都會讀到這兩份 always-included steering 檔而拒絕動工。
+除了範圍限制解除，本檔案其餘每一條規則（誠實揭露、deterministic 邊界、無 secret、deadline）
+對 Task 13-21 仍然全部有效。
+
+| Task | 一句話 | 狀態 | 備註 |
+|---|---|---|---|
+| **13** 刪除 `p2-etl-mvp/` | 移除 71 個檔的重複原型樹 | ✅ 已完成（2026-08-03，`69c019f`） | 見 §8 項目 8 |
+| **14** 接上跨源三角驗證（G2） | `evidence/triangulation.py` 已寫好、有測試，但沒接進 pipeline | 🔴 未開始 | `docs/Gold-Plan.md` §G2；建議走 Task 11（G3 信任漏斗）用過的同一種模式——UI 端從 `evidence.json` 算，不碰契約 |
+| **15** agent 判斷可視化（G4） | Planner 其實已經依題目挑不同 operation，但選擇本身與理由從未呈現給評審 | 🔴 未開始 | `docs/Gold-Plan.md` §G4；純呈現層工作，不改推理邏輯 |
+| **16** G1 語意複核 | 純質性事實的語意層複核（走 `LLMClient`），確定性硬原子比對已完成 | 🔴 未開始 | 新檔案，🚫 不動 `evidence/grounding.py`（規定維持 LLM-free）或凍結的 `reasoning/arbiter.py` |
+| **17** H3 條件式辯論 | 真正實作 Bull/Bear/Judge，`enable_conditional_debate` opt-in | 🔴 未開始 | 觸碰目前唯一的凍結元件 `DisabledConflictExtension`，需 owner 同意 |
+| **18** CoinGecko 次要來源 | 接成 optional，永不當 baseline | 🔴 未開始 | 沿用既有 `MarketDataAdapter` port，不開新 port |
+| **19** 五幣完整驗證矩陣 | 把 Task 9 的兩資產模式擴到全部五幣 | 🔴 未開始 | 延伸既有 acceptance 模式，非新契約 |
+| **20** PDF/HTML 匯出與額外視覺化 | 在 PR #29 既有的自包含 HTML report 基礎上加 | 🔴 未開始 | 先確認 PR #29 已涵蓋哪些，避免重做 |
+| **21** S3 鏡像／CloudWatch／ECS | Platinum 基礎設施擴充 | 🔴 未開始 | 沿用既有 IAM role、無金鑰模式 |
+
+**與 §8 項目 11、12 的關係：** 那兩條是**既有** reasoning 層的 bug（Silver/Gold 範圍內的正確性
+缺陷），修好它們是讓 S10 complete-Evidence run 真正達成的必要條件，**不算**新範圍，
+也不在 Task 13-21 之列——建議優先於 14-21 處理，因為它們卡的是已經凍結、已經出貨的能力，
+而 14-21 是全新的加分/延伸能力。
 
 ---
 
 **這是 design-pipeline 的最後一份。** 無法 headless 驗證的階段（S0／S3／S11）
 其人工檢查清單在本文 [§3.2](#32-只能由人驗證的部分人工檢查清單)。
-接著要看的是 `docs/ACTIVE_WORK.md`（誰正在做什麼）與 `.kiro/specs/hoya-market-agent/tasks.md`（規範性任務）。
+接著要看的是 `docs/ACTIVE_WORK.md`（誰正在做什麼）與 `.kiro/specs/hoya-market-agent/tasks.md`（規範性任務，含 Task 13-21 完整規格）。
 
 ## 2026-08-02 S8/S9/S9B + live composition root implementation checkpoint
 
@@ -1438,3 +1507,42 @@ Binance daily klines now have a paginated five-year prefetch path via
 validated OHLCV schema. `build_live_pipeline()` and `binance_bar_loader()` read
 `HOYA_MARKET_CACHE_DIR` first, so the interactive path can reuse local history
 and only fall back to the existing one-page live request when no cache is present.
+
+## 2026-08-03 post-competition planning + two real bugs found closing Task 5
+
+Branch `post-comp/finish-remaining-gates`, based on `origin/main@2c0d268` (the prior local
+branch, `fix/task1b-contract-alignment`, was abandoned — its 3 commits targeted problems
+`main` had already solved independently; its uncommitted WIP is preserved in `git stash`,
+not lost, not applied here).
+
+- Re-verified the whole "current state" picture against `origin/main` directly rather than
+  trusting this file or `tasks.md`'s checkboxes, both of which had drifted (e.g. `tasks.md`
+  Task 5 was still unchecked for two items that turned out to hide real bugs, not just missing
+  tests; this file's S10 status still blamed a Bedrock account problem that had already been
+  resolved, while the real blocker — reasoning-layer output instability — went unrecorded).
+- Removed `p2-etl-mvp/` (Task 13; see §8 item 8).
+- Closed `tasks.md` Task 5's last two open items. Both were meant to be "just write the missing
+  test," and both instead surfaced a real defect:
+  1. `OrganizerCsvPipeline.execute()` derived `effective_data_mode` from `run_mode` alone, so a
+     fixture-backed instance used under `run_mode=official` would have self-reported `live` and
+     silently defeated the official-mode fixture-rejection gate. Fixed to derive it from whether
+     a live `load_bars` loader was actually injected.
+  2. A missing `published_at` was invisible in reports (the evidence table only shows
+     `fetched_at`). Added an explicit limitations-section disclosure.
+  Both confirmed red before the fix, green after; full suite 1304 → 1306 passed, `ruff check .`
+  clean throughout.
+- Added `tasks.md` Tasks 13-21 for the post-competition continuation (§9 above indexes them)
+  and amended `.kiro/steering/competition-rules.md` / `development-workflow.md` so the
+  always-loaded steering context stops telling Kiro to reject H3/CoinGecko/S3/CloudWatch/ECS
+  and post-freeze feature work — those rules applied only through the shipped Task 0-12 MVP.
+- While re-reading `docs/rehearsals/run-log.md` in full (not just its opening runs) to write
+  this update honestly, found the S10 blocker had changed shape: Bedrock access itself is fine
+  now, but seven live runs recorded there show the Arbiter completing on time yet returning zero
+  conclusion-layer claims six times out of seven, and a separate Planner asset-matching bug
+  (`str(Asset.BTC) != 'BTC'` under Python 3.11+ enum semantics) that discards every LLM-generated
+  plan on the script-driven live path specifically. Neither is fixed; both are frozen-`reasoning/`
+  bugs requiring owner sign-off before anyone touches them. Recorded as §8 items 11-12 — these
+  block S10's complete-Evidence run and should be prioritized over Tasks 14-21, since they are
+  correctness bugs in already-shipped Silver/Gold capability, not new scope.
+- Commits: `69c019f` (the bug fixes + p2-etl-mvp removal), `df4813e` (Task 13-21 + steering
+  updates). Neither pushed to `origin` yet.
