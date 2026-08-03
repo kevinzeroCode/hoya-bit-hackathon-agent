@@ -10,7 +10,14 @@ inclusion: always
 - Follow `docs/superpowers/specs/2026-07-17-four-person-team-workflow-design.md` for role ownership, task branches, pairing, handoffs, and feature freeze.
 - Follow `docs/kiro-team-playbook.md` for each person's exact branch, Kiro prompt, start gate, task closeout, and evidence handoff.
 - Treat `.kiro/specs/hoya-market-agent/requirements.md`, `design.md`, and `tasks.md` as the executable implementation contract.
-- Do not expand the MVP to H3 debate, S3, CloudWatch, extra adapters, or additional agent loops.
+- **Competition ended 2026-08-02; Gold local Exit, deployment and CD all passed.** The Day 2
+  feature freeze and the "do not expand the MVP" rule below applied only to Tasks 0-12, which
+  stay frozen as shipped (do not re-touch them without a reason tied to a real bug). Tasks 13
+  and up in `tasks.md` are approved post-competition scope — H3, CoinGecko, the five-asset
+  matrix and Platinum/production extensions are explicitly in scope for those tasks. Every
+  other rule on this page (TDD, status-block honesty, no secrets, no unbounded loops) still
+  applies unchanged.
+- ~~Do not expand the MVP to H3 debate, S3, CloudWatch, extra adapters, or additional agent loops.~~ Applied only through Task 12; see above.
 
 ## Task Execution
 
@@ -39,7 +46,7 @@ inclusion: always
 - Never silently replace live evidence with rehearsal fixtures in `official` mode.
 - Never add unbounded loops, autonomous tool recursion, or retries outside the stage deadline.
 - Never commit `.env`, AWS credentials, API keys, cached production responses, or participant secrets.
-- Stop implementation at the Day 2 feature freeze; prioritize passing acceptance tests and demo recovery.
+- ~~Stop implementation at the Day 2 feature freeze; prioritize passing acceptance tests and demo recovery.~~ The Day 2 freeze applied only to Tasks 0-12 (the competition MVP, already shipped). Tasks 13+ are post-competition work and are not subject to it.
 
 ## Commit Evidence
 

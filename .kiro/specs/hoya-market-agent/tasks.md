@@ -8,7 +8,14 @@
 >
 > Hard limit: four junior developers, two calendar days. H2-Lite is the only committed analysis method.
 >
-> Platinum, the CoinGecko live adapter, the complete five-asset validation/calibration matrix, H3 implementation, S3, CloudWatch and ECS are post-hackathon Future Work and are not executable tasks during the formal two-day delivery period.
+> Platinum, the CoinGecko live adapter, the complete five-asset validation/calibration matrix, H3 implementation, S3, CloudWatch and ECS were post-hackathon Future Work and were not executable tasks during the formal two-day delivery period.
+>
+> **The competition ended 2026-08-02.** Tasks 0-12 are the shipped competition MVP (Gold local
+> Exit, deployment and CD all passed) and stay frozen as delivered — do not re-open them without
+> a bug. Tasks 13-21 below are the approved post-competition continuation: real remaining gaps
+> (13-16) plus the former Future Work items, now formally in scope (17-21). Every non-scope rule
+> in `.kiro/steering/competition-rules.md` (honesty, determinism boundaries, secrets, deadlines)
+> still applies unchanged to the new tasks.
 
 ## Execution Rules
 
@@ -61,12 +68,19 @@
   degrade honestly to deterministic market evidence only.
 - Gold local Exit and deployment/rehearsal must still not be claimed as complete.
 
-## Feature Freeze
+## Feature Freeze (Tasks 0-12 only — competition MVP)
 
-**In effect from 2026-08-02.** Only bug fixes, reliability fixes, deployment, rehearsal,
-documentation, rollback preparation and submission verification are permitted. Post-freeze
-additions of features, providers, artifact formats, PDF/HTML, additional visualizations, the
-five-coin matrix, Platinum capabilities or H3 implementation are rejected.
+**Was in effect 2026-08-02 through submission.** Applied only to the competition-scope tasks
+(0-12): only bug fixes, reliability fixes, deployment, rehearsal, documentation, rollback
+preparation and submission verification were permitted on that scope, and additions of
+features, providers, artifact formats, PDF/HTML, additional visualizations, the five-coin
+matrix, Platinum capabilities or H3 implementation were rejected on it.
+
+**The competition is over; this freeze does not apply to Tasks 13-21.** Those tasks are the
+approved post-competition continuation and may add exactly the capabilities the freeze used to
+reject. If a bug is found in Tasks 0-12's shipped behavior, fix it directly in that task's own
+files and note the fix in that task's entry — do not fold competition-MVP bug fixes into a
+Task 13+ commit.
 
 ## Required Tasks
 
@@ -216,7 +230,7 @@ five-coin matrix, Platinum capabilities or H3 implementation are rejected.
   - **Acceptance:** Golden values and UTC cutoffs pass; baseline market failure returns a typed partial/degraded gap without claiming a second live provider; CSV/live source cutover is explicitly represented with `fetched_at`; Market Worker has no import or call path to `LLMClient`. The generic `SourceAdapter` seam remains available for separately approved post-hackathon providers.
   - **Commit:** `feat: add deterministic market evidence`
 
-- [ ] **5. Implement research adapters and Evidence Processor** — four functional gaps closed 2026-08-01 (material conflict wiring, multi-fact extraction, port-conforming research adapters, composed research pipeline); type unification, adapter retry and live verification remain
+- [x] **5. Implement research adapters and Evidence Processor** — closed 2026-08-03. Four functional gaps closed 2026-08-01 (material conflict wiring, multi-fact extraction, port-conforming research adapters, composed research pipeline); type unification closed 2026-08-01 (unresolved item 3); the last two sub-items (Evidence Processor coverage, official-mode adapter rejection) closed 2026-08-03, the latter after finding and fixing a real bug (see below). **Remaining, not blocking:** adapters still use a synchronous `httpx.Client` in a thread rather than one shared `AsyncClient` (noted as a deviation on its own sub-item); live provider verification is covered by Task 8's live Silver test, not re-litigated here.
   - **Owner:** P2
   - **Wave / dependency:** Wave 3 / Tasks 1 and 4
   - **Spec:** 7.5, 9.4-9.6, 10.1, 10.3
@@ -243,10 +257,10 @@ five-coin matrix, Platinum capabilities or H3 implementation are rejected.
   - [x] Implement 45-second per-call timeout and at most one deadline-bound retry; normalize missing or rejected sources into typed degradation/gap results rather than exceptions crossing the port. (2026-08-01 Move 2: `port_adapters.fetch_with_single_retry()` — retries only `timeout`/`http_error`, never `malformed`/`rejected`/`empty`; jittered backoff bounded by `DEFAULT_RETRY_BACKOFF_SECONDS=1.5`; no clock of its own, since the acquisition window owns the deadline and `CancelledError` is re-raised untouched. `SourceResult.status` already distinguishes every category via `adapters/_errors.py`. Covered by `tests/unit/data_evidence/test_source_retry.py` (10) and `test_composed_research_pipeline.py::test_a_transient_baseline_failure_recovers_within_the_run`. **Remaining deviation:** adapters still use a synchronous `httpx.Client` in a thread rather than one shared `AsyncClient`.)
   - [x] Run optional research or context adapters only after the baseline path is stable; failure of an optional adapter cannot fail Silver. (`test_composed_research_pipeline.py::test_optional_source_failure_does_not_fail_the_run`: a Fear & Greed timeout leaves baseline news evidence in the ledger and only adds a disclosure.)
   - [x] Mark Fear & Greed as low-reliability, whole-market context and never as coin-specific Evidence. (`test_alternative_me.py`, plus `test_research_port_adapters.py::test_fear_greed_record_is_whole_market_with_no_asset` asserting `asset is None`.)
-  - [ ] Write failing Evidence Processor tests for source identity, source/content reference, `fetched_at`, published/source time when available, cache/stale metadata, `high|medium|low` reliability, SHA-256 exact deduplication, registered-domain/original-publisher grouping and immutable run-level `analysis_as_of`. (Mostly covered by `test_processor.py`/`test_policies.py`/`test_ledger.py`; still open because drafts remain the provisional dataclass rather than the canonical contract — see unresolved item 3.)
-  - [ ] Test missing published/source time and stale/cache use as explicit limitation or degradation disclosures without fabricating timestamps or making Evidence appear fresher than its source.
+  - [x] Write failing Evidence Processor tests for source identity, source/content reference, `fetched_at`, published/source time when available, cache/stale metadata, `high|medium|low` reliability, SHA-256 exact deduplication, registered-domain/original-publisher grouping and immutable run-level `analysis_as_of`. (Covered by `test_processor.py`/`test_policies.py`/`test_ledger.py`. Unresolved item 3 — the provisional-dataclass-vs-canonical-contract split this note used to point to — was closed 2026-08-01 per `docs/Implementation-Plan.md` §8: `evidence/types.py` was deleted and `evidence/drafts.py::PendingEvidence` is now the only draft type.)
+  - [x] Test missing published/source time and stale/cache use as explicit limitation or degradation disclosures without fabricating timestamps or making Evidence appear fresher than its source. (2026-08-03: found genuinely missing — the evidence table only ever showed `fetched_at`, so a missing `published_at` was invisible, not merely undisclosed. Added `tests/unit/reporting/test_renderer.py::test_missing_published_at_is_disclosed_not_hidden` — confirmed red against the pre-fix renderer — then added the disclosure line to `reporting/renderer.py::_render_limitations`, alongside the existing stale/cached disclosure. Stale/cached itself was already covered.)
   - [x] Test that `EvidenceItem` owns no stance and `ClaimEvidenceLink` accepts only `supports|opposes|neutral`; implement deterministic material-conflict detection only for qualifying links from distinct independence groups. (`evidence/ledger.py::build_conflict_indicators` + `tests/unit/evidence/test_conflict_indicators.py` 8 tests; wired into the run by `orchestration/pipeline.py::finalize_analysis` and proved end-to-end by `tests/integration/test_material_conflict.py` — indicator persisted in the ledger, conclusion capped at `low`, both sides rendered, scorecard consistency `weak`.)
-  - [ ] Test official-mode cache metadata and prove that fixtures or recorded responses are rejected in official mode. (Run-mode contract is tested in `tests/unit/test_models.py`; the adapter-level official-mode test is still missing.)
+  - [x] Test official-mode cache metadata and prove that fixtures or recorded responses are rejected in official mode. (2026-08-03: closed with a real adapter, not just the model-level contract. Added `tests/integration/test_run_modes.py::test_official_mode_rejects_a_real_fixture_backed_adapter`, which wires the actual `OrganizerCsvPipeline` — no synthetic stand-in — under `run_mode=official`. It failed red: `OrganizerCsvPipeline.execute()` derived `effective_data_mode` from `run_mode` alone (`live` unless `run_mode is rehearsal`), so a fixture-backed instance accidentally used for `official` would have self-reported `live` and slipped past the `RunConfigSnapshot._official_runs_stay_live` gate undetected. Fixed in `orchestration/pipeline.py` to derive it from whether a live `load_bars` loader was actually injected (`self._load_bars is not None`) instead. Full suite 1306 passed, `ruff check .` clean.)
   - [x] Run `python -m pytest tests/contract/test_research_adapters.py tests/unit/evidence -q`. (Path adjusted: `python -m pytest tests/unit/evidence tests/unit/data_evidence tests/unit/reasoning -q` → 339 passed, 15 subtests; full non-live suite `python -m pytest tests/unit tests/contract tests/integration -q` → **1175 passed, 15 subtests, 0 failed**; `ruff check .` → All checks passed.)
   - [x] **Additive (2026-08-01): deterministic fact-grounding** (`evidence/grounding.py`, no LLM/no network). Audits LLM-extracted facts by matching their hard atoms (percent/money/number/date) against `content_reference` to catch fabricated values; language-invariant (English source grounds a Chinese fact); emits verified/partial/unverified. Red lines: does not mutate static `reliability` and adds no `EvidenceItem`/`EvidenceDraft` field (routes into confidence caps + disclosure only). Golden tests in `tests/unit/evidence/test_grounding.py`. Pipeline wiring landed (`OrganizerCsvPipeline` calls `ground_drafts`). Pending: semantic check for purely-qualitative claims (reasoning layer, behind `LLMClient`) and `ConfidenceSignals` integration. See `docs/Gold-Plan.md` G1.
   - [x] **Additive (2026-08-01): multi-fact research extraction migrated into `src/`** — `reasoning/research_extractor.py` supplies the `ResearchExtraction`/`ExtractedFact` schema the frozen `ResearchAgent` takes by injection, plus `complete_extracted_drafts()`, which completes reliability (static table), `independence_group` (policy) and timestamps (record) deterministically and drops any fact citing a record that was never fetched. `tests/unit/reasoning/test_research_extractor.py` (11) and `tests/integration/test_research_extraction.py` (4).
@@ -430,17 +444,168 @@ un_20260802_015425_demo1`; `docs/demo-runbook.md`
   - **If it cannot land before Feature Freeze:** disable the second-asset control, accept single-asset requests only, and disclose the undelivered capability in the documents and the presentation. Do not ship a partial comparison path.
   - **Commit:** `feat: add dual-asset comparison`
 
-## Post-Hackathon Future Work — Not Executable During Two-Day Delivery
+## Post-Competition Tasks (13-21)
 
-The following entries preserve architecture intent only. They are not checkable implementation tasks, have no two-day entry gate, are prohibited after Feature Freeze and cannot block Bronze, Silver, Gold, deployment, rehearsal or submission.
+Added 2026-08-03, after the competition ended. Tasks 13-16 are real gaps the competition
+timebox never closed (verified against `main@2c0d268` — file existence checked, full non-live
+suite run: 1304 passed, `ruff check .` clean). Tasks 17-21 are the former Future Work items
+below, now formally in scope. None of these are subject to the Task 0-12 Feature Freeze.
+
+- [x] **13. Remove the duplicate `p2-etl-mvp/` tree** (done 2026-08-03)
+  - **Owner:** direct cleanup (any owner; low-risk mechanical deletion)
+  - **Wave / dependency:** none — independent of 14-21
+  - **Files:**
+    - Delete: `p2-etl-mvp/` (71 files — the pre-migration prototype; S5/S6/S7 already migrated
+      the real logic into `src/hoya_agent/`, see Implementation-Plan.md §5 S5/S6 notes)
+  - [x] Grep `src/` and `tests/` for any import of `p2_etl_mvp` or a relative path into
+        `p2-etl-mvp/`; confirm zero hits before deleting. Found two harmless comment
+        references (`organizer_csv.py`'s directory walk-up note, `research_extractor.py`'s
+        migration docstring) — left in place since they are historical context, not imports.
+  - [x] Confirmed `Dockerfile` and `compose.yaml` do not reference the directory; removed the
+        now-dead `p2-etl-mvp` line from `.dockerignore`.
+  - [x] Deleted the directory (`git rm -r`); `python -m pytest tests/unit tests/contract tests/integration tests/acceptance -m "not live" -q` → **1304 passed** (unchanged from before deletion); `ruff check .` → **All checks passed**; `docker compose config` → valid.
+  - **Acceptance:** `p2-etl-mvp/` no longer exists in the tree; full non-live suite and `ruff check .` are unchanged (still green); nothing else changes behavior. **Met.**
+  - **Commit:** `chore: remove the superseded p2-etl-mvp prototype tree`
+
+- [ ] **14. Wire cross-source triangulation (G2) into the live pipeline**
+  - **Owner:** data/evidence lane
+  - **Wave / dependency:** none — independent of 13, 15, 16
+  - **Spec:** `docs/Gold-Plan.md` §G2 (the differentiator plan written 2026-08-01; not a formal Requirement)
+  - **Files:**
+    - Modify: `src/hoya_agent/ui/presenter.py` (or wherever the trust funnel in Task 11/G3 is computed — follow that same pattern: derive from `evidence.json` + market bars, no contract change)
+    - Modify: `src/hoya_agent/ui/streamlit_app.py` (render alongside the existing trust funnel)
+    - Create: `tests/unit/evidence/test_triangulation_integration.py` (or extend the existing `tests/unit/evidence/test_triangulation.py` if one exists — `evidence/triangulation.py` and its `triangulate()` function already exist and are unit-tested in isolation; **only the wiring is missing**, confirmed by `grep -ri triangulat src/` returning exactly one file)
+  - [ ] Call `triangulate(anomalies, evidence_items, asset=...)` for each run asset from the presenter layer, the same way the Task 11 trust funnel reads `evidence.json` without touching `models.py` or the frozen `reasoning/` path — this stays a derived UI view, not a new Evidence/Claim field.
+  - [ ] Render each `TriangulatedEvent` (day, return, z-score, corroborating evidence IDs, source types, independence groups, strength) so a judge can see "N distinct source types independently point at the same day" — this is the single highest-ROI trust story per `docs/Gold-Plan.md` §0.
+  - [ ] Degrade explicitly: no anomaly days (flat market) or no market data → show an empty/`unavailable` state, never fabricate an event.
+  - [ ] **Stretch, not required:** feeding `TriangulatedEvent`s into the Arbiter payload as extra context. `reasoning/arbiter.py` is a frozen path — do not touch it without the reasoning-lane owner's explicit sign-off, same rule Task 12 already used for the per-asset quota change.
+  - [ ] Run `python -m pytest tests/unit/evidence tests/unit/ui -q` and `ruff check .`; confirm the full non-live suite is still green.
+  - **Acceptance:** A run with at least one market anomaly day and nearby research evidence shows a rendered triangulation view backed only by already-collected, already-grounded Evidence IDs; no LLM call, no network call, no new `EvidenceItem`/`Claim` field; degrades to an explicit empty state rather than fabricating corroboration.
+  - **Commit:** `feat: surface cross-source triangulation in the trust UI`
+
+- [ ] **15. Agent judgment visualization (G4)**
+  - **Owner:** reasoning lane for the Planner check, UI lane for rendering
+  - **Wave / dependency:** none — independent of 13, 14, 16
+  - **Spec:** `docs/Gold-Plan.md` §G4 (🔴 not started as of 2026-08-01, still not started as of 2026-08-03 — confirmed by grepping `planner.py`/`presenter.py`/`streamlit_app.py` for question-type or strategy logic: no hits)
+  - **Files:**
+    - Modify: `prompts/planner-v1.md` (only if the existing prompt does not already ask the LLM to justify which operations it picked — check first, this may already be adequate)
+    - Modify: `src/hoya_agent/orchestration/pipeline.py` (stream the Planner's chosen `planned_steps` + any `plan_notes` as a distinct, judge-legible `execution_log.jsonl` event — today `plan_notes` only flips the Planner stage to `degraded`/`completed`, the actual operations chosen and why are not logged as their own event)
+    - Modify: `src/hoya_agent/ui/presenter.py`, `src/hoya_agent/ui/streamlit_app.py` (render "for this question, the Planner ran X of Y available sources, skipped Z because ..." plus the grounding/degradation decisions already computed by Task 5's `evidence/grounding.py` and the pipeline's degradation events)
+    - Create/modify: `tests/unit/reasoning/test_planner.py` (prove the plan genuinely varies — e.g., a question naming an official announcement vs. a question about sentiment selects different `tool_operation` sets from the same allowlist, using the existing fake-LLM test pattern)
+    - Create: `tests/unit/ui/test_presenter.py` additions for the new judgment-visualization view
+  - [ ] Confirm (or add, if missing) a fake-LLM test proving the Planner's chosen `planned_steps` differ for genuinely different questions — the mechanism already exists (`Research Agent` only executes `plan.planned_steps`, confirmed in `reasoning/research_agent.py`), this task is about making it demonstrably true and visible, not building it from scratch.
+  - [ ] Add one `execution_log.jsonl` event per run carrying the Planner's chosen operations, skipped operations and the reason, plus a summary of any grounding `unverified`/`partial` facts and material-conflict/degradation events already computed elsewhere in the pipeline — this event only *surfaces* existing decisions, it must not compute anything new.
+  - [ ] Render this in the Streamlit execution-log tab (or a new "Agent 判斷" panel next to the trust funnel) in one screen a judge can read in a few seconds.
+  - [ ] No new LLM call, no new field on `EvidenceItem`/`Claim`/`AnalysisResult` — this is a logging/rendering task, not a reasoning-contract change.
+  - [ ] Run `python -m pytest tests/unit/reasoning tests/unit/ui tests/integration -q` and `ruff check .`.
+  - **Acceptance:** Two different questions against the same asset visibly produce different Planner operation choices in the UI and `execution_log.jsonl`; degradation/grounding decisions already made elsewhere in the pipeline are now visible to a judge without reading raw JSON; nothing about the reasoning pipeline's actual decisions changes, only their visibility.
+  - **Commit:** `feat: surface planner strategy and audit decisions to the UI`
+
+- [ ] **16. G1 semantic grounding recheck for qualitative claims**
+  - **Owner:** reasoning lane (touches the `LLMClient` port; `reasoning/` is a frozen path — get sign-off before editing `arbiter.py` or `research_agent.py` directly; prefer a new file, same pattern Task 6's `arbiter_output.py` additive used)
+  - **Wave / dependency:** after 15 is easiest (shares the judgment-visualization UI surface) but not blocked by it
+  - **Spec:** `docs/Gold-Plan.md` §G1 (deterministic half — hard-atom matching — already shipped in `evidence/grounding.py`; confirmed by grep that no `LLMClient` import or `async def` exists anywhere in that file today, so the semantic half is genuinely unbuilt)
+  - **Files:**
+    - Create: `src/hoya_agent/reasoning/semantic_grounding.py` (new file — do not modify `evidence/grounding.py`, which must stay LLM-free per its own docstring, or the frozen `reasoning/arbiter.py`)
+    - Modify: `prompts/` — add a small, cheap prompt (e.g. `prompts/semantic-grounding-v1.md`) for a single bounded yes/no/uncertain check per qualitative fact against its `content_reference`
+    - Modify: `src/hoya_agent/orchestration/pipeline.py` (call this after `ground_drafts`, only for facts `evidence/grounding.py` marked `unverified` because they have no checkable hard atom — do not re-run it on facts already `verified`/`partial`)
+    - Create: `tests/unit/reasoning/test_semantic_grounding.py`
+  - [ ] Write failing tests with a fake `LLMClient` proving: a purely qualitative fact whose `content_reference` plausibly supports it → `verified`; one that contradicts its source → `contradicted`; LLM failure/timeout → falls back to the existing deterministic `unverified`, never blocks the run.
+  - [ ] Implement the bounded call: one fact at a time or a small batch, capped `max_tokens`, inside the existing stage deadline (reuse the Evidence-processing stage budget — do not add a new stage or extend any deadline).
+  - [ ] Feed the result into `confidence_signals_for_claim(require_grounding=True)` (already exists per Task 5's grounding note) so a semantically `contradicted` fact behaves the same way a numerically fabricated one already does: excluded from independent-support counting, disclosed in `degradation`.
+  - [ ] Red lines (same as the deterministic half): never mutate the static `reliability` table; never add a field to `EvidenceItem`/`EvidenceDraft`; never let this call block or fail a run — any LLM error degrades to the pre-existing `unverified` state.
+  - [ ] Run `python -m pytest tests/unit/reasoning/test_semantic_grounding.py tests/unit/evidence -q` and `ruff check .`.
+  - **Acceptance:** Purely qualitative facts that previously fell through fact-grounding as an unexplained `unverified` now get an honest LLM-assisted plausibility check that degrades safely on any failure; the deterministic hard-atom path from Task 5/G1 is untouched; no new secret, no new artifact field, no blocking dependency.
+  - **Commit:** `feat: add semantic recheck for qualitative fact-grounding`
+
+- [ ] **17. Implement H3 Conditional Debate**
+  - **Owner:** reasoning lane (frozen-path sign-off required — this replaces `DisabledConflictExtension`, the one component every other task has been told not to touch)
+  - **Wave / dependency:** after 16 is easiest (shares the reasoning-lane context) but not blocked by it
+  - **Spec:** former "Future Reference 11" below; `.kiro/steering/competition-rules.md` §Architecture and H3 Honesty Rules (now amended to approve this task)
+  - **Files:**
+    - Create: `src/hoya_agent/reasoning/conditional_debate.py` (new `ConflictExtension` implementation alongside the existing `DisabledConflictExtension`, not a replacement of it — `enable_conditional_debate` selects between them)
+    - Create: `prompts/bull-v1.md`, `prompts/bear-v1.md`, `prompts/judge-v1.md`
+    - Create: `tests/unit/reasoning/test_conditional_debate.py`
+    - Modify: `src/hoya_agent/composition.py` (wire the flag to select the extension; default stays `DisabledConflictExtension`)
+  - [ ] Write failing tests: the extension only activates on a real `ConflictIndicator` from `evidence/ledger.py::build_conflict_indicators` (the existing deterministic material-conflict rule — do not invent a second conflict detector); with no material conflict, it must still always route straight to Arbiter unchanged, exactly like `DisabledConflictExtension` does today.
+  - [ ] Implement at most one Bull round and one Bear round, each citing only existing Evidence IDs from the ledger (no new fetch, no new Evidence), followed by one Judge call that must produce the same `AnalysisResult`-compatible shape the Arbiter already produces — reuse `reasoning/arbiter_output.py`'s projection pattern rather than inventing a second output schema.
+  - [ ] Bound it inside the existing stage deadline and `max_tokens` budget; on any timeout, LLM error or schema failure at any of the three steps, discard the debate and route straight to the normal Arbiter path — H3 must never be able to make a run fail that would otherwise have succeeded.
+  - [ ] `enable_conditional_debate` stays an explicit opt-in on `AnalysisRequest`, default `false`; when `true` but the extension still resolves to "no material conflict," behavior must be identical to today's disabled path.
+  - [ ] Update every UI/report/doc label that currently says "H3 未實作" to instead say "H3: opt-in, off by default" once this lands and passes its own rehearsal — do not change those labels before this task's acceptance is actually met.
+  - [ ] Run `python -m pytest tests/unit/reasoning/test_conditional_debate.py tests/integration -q` and `ruff check .`.
+  - **Acceptance:** With `enable_conditional_debate=true` and a real material conflict, exactly one Bull/Bear/Judge round runs and produces a valid `AnalysisResult` that still discloses both sides; with no conflict or with the flag off, output is byte-for-byte identical to today's `DisabledConflictExtension` path; no unbounded loop, no new tool, no new provider.
+  - **Commit:** `feat: implement opt-in H3 conditional debate`
+
+- [ ] **18. Add CoinGecko as an optional secondary market source**
+  - **Owner:** data lane
+  - **Wave / dependency:** independent
+  - **Spec:** former "Future Reference 12" below; `.kiro/steering/competition-rules.md` §Approved Data Policy (now amended to approve this as optional, non-baseline)
+  - **Files:**
+    - Create: `src/hoya_agent/adapters/coingecko.py`
+    - Create: `tests/fixtures/http/coingecko_market_chart.json`
+    - Create: `tests/unit/data_evidence/test_coingecko.py`
+    - Modify: `src/hoya_agent/composition.py` (register as optional context, never baseline)
+  - [ ] Write adapter contract tests (success, timeout, HTTP error, malformed payload, empty data) using `httpx.MockTransport`, matching the pattern already used for `adapters/binance.py` and the research adapters.
+  - [ ] Implement the adapter behind the same `MarketDataAdapter`/`SourceAdapter` port Task 1b already defined — no new port, no new artifact field.
+  - [ ] Wire it as an **optional** source only: Binance stays the sole baseline live market source; CoinGecko failure is always non-blocking and never triggers a "second live provider" claim (same rule Task 4 already enforces for Binance itself).
+  - [ ] If used for cross-check, disclose it explicitly (e.g., a degradation note when Binance and CoinGecko close prices diverge beyond a stated tolerance) — never silently prefer one over the other.
+  - [ ] Run `python -m pytest tests/unit/data_evidence/test_coingecko.py tests/contract -q` and `ruff check .`.
+  - **Acceptance:** CoinGecko produces normalized, schema-valid Evidence through the existing port; its failure never degrades a run below what it would have been without it; it never becomes the baseline; the disclosure/degradation contract from Task 5 applies to it unchanged.
+  - **Commit:** `feat: add CoinGecko as an optional secondary market source`
+
+- [ ] **19. Complete five-asset validation/calibration matrix**
+  - **Owner:** all; data lane leads
+  - **Wave / dependency:** after 18 if CoinGecko cross-validation is in scope; otherwise independent
+  - **Spec:** former "Future Reference 12" below
+  - **Files:**
+    - Create: `tests/acceptance/test_five_asset_matrix.py`
+    - Modify: `docs/rehearsals/run-log.md` (append, do not rewrite the existing Gold local Exit entries)
+  - [ ] Extend Task 9's two-asset Gold local Exit pattern to run all five allowlisted assets (BTC, ETH, SOL, BNB, XRP) independently, offline (organizer CSV) and, where credentials allow, live.
+  - [ ] For each asset, verify the same four-artifact/provenance/terminal-state contract Task 9 already checks — this task is breadth (all five), not a new contract.
+  - [ ] Record any asset-specific gaps honestly (e.g., a research source with thin coverage for a smaller-cap asset) as disclosed limitations, not silent skips — the coin-agnostic rule from `.kiro/steering/competition-rules.md` still applies: no per-coin branching in `src/`, only in what gaps get disclosed.
+  - [ ] Run `python -m pytest tests/acceptance/test_five_asset_matrix.py -q` and, separately, the opt-in live variant.
+  - **Acceptance:** All five assets pass the same artifact/provenance contract Task 9 established for two; any asset-specific data gaps are disclosed, not hidden; no coin-specific code path was added to reach this.
+  - **Commit:** `test: complete the five-asset validation matrix`
+
+- [ ] **20. Platinum reporting: PDF/HTML export and additional visualization**
+  - **Owner:** UI/reporting lane
+  - **Wave / dependency:** independent (build on the existing self-contained HTML report from PR #29, `feat(ui): emit complete self-contained HTML report`, rather than starting a new renderer)
+  - **Spec:** former "Future Reference 12" below
+  - **Files:**
+    - Modify: `src/hoya_agent/reporting/renderer.py` or the HTML emission path added in PR #29 (check current state first — this may already cover most of the "HTML export" half)
+    - Create: PDF export path (e.g. via a headless render of the existing HTML, not a second hand-written template)
+    - Modify: `src/hoya_agent/ui/streamlit_app.py` (download button)
+  - [ ] Confirm what PR #29's HTML report already covers before adding anything — do not duplicate an existing self-contained HTML artifact.
+  - [ ] Add a PDF export derived deterministically from the same rendered content (no second source of truth, no LLM re-generation for the PDF).
+  - [ ] Any new chart/visualization must be generated from data already in the Ledger/`AnalysisResult` — no new data source, no new claim.
+  - [ ] These stay **additional** artifacts; the four fixed filenames (`final_report.md`, `evidence.json`, `execution_log.jsonl`, `run_config.json`) and their contract are unchanged.
+  - [ ] Run the full non-live suite and `ruff check .`.
+  - **Acceptance:** PDF/HTML export and any added visualization are deterministic, derived only from existing Evidence/Claims, and additive — they do not replace or alter the four required artifacts.
+  - **Commit:** `feat: add PDF export and extra report visualization`
+
+- [ ] **21. Platinum infrastructure: S3 artifact mirroring, CloudWatch, ECS**
+  - **Owner:** P1/P4-equivalent deployment lane
+  - **Wave / dependency:** independent; touches deployment, coordinate timing with any active EC2 demo use
+  - **Spec:** former "Future Reference 12" below
+  - **Files:**
+    - Modify: `docs/deployment.md`
+    - Create: infrastructure-as-code or scripted setup for S3 mirroring and CloudWatch (match whatever tooling `docs/deployment.md` already uses for EC2 — do not introduce a second deployment mechanism)
+  - [ ] Mirror each run's four artifacts to S3 after local write succeeds — mirroring must never become a dependency of artifact completion; a run still succeeds locally if S3 is unreachable, with the gap disclosed.
+  - [ ] Add CloudWatch for the existing EC2 host's logs/health, not a new metrics contract.
+  - [ ] Evaluate ECS as a deployment target; if adopted, keep the single immutable commit-SHA tag promotion Task 10 already established — do not weaken that guarantee.
+  - [ ] No secret enters any of this — reuse the existing IAM-role-based, no-static-keys pattern `docs/deployment.md` already documents for EC2.
+  - **Acceptance:** S3 mirroring and CloudWatch are additive and non-blocking; if ECS is adopted, the immutable-tag deployment guarantee from Task 10 still holds; no new secret-handling path is introduced.
+  - **Commit:** `feat: add S3 artifact mirroring and CloudWatch for the EC2 deployment`
+
+## Historical Future Work Notes (superseded by Tasks 17-21 above)
 
 ### Future Reference 11: H3 Conditional Debate
 
-A separately approved post-hackathon implementation may use the deterministic material-conflict rule, existing Evidence IDs, at most one Bull/Bear round and bounded deadline/token controls. During Bronze, Silver and Gold, only `DisabledConflictExtension` exists and every UI, presentation and document labels H3 unimplemented.
+A separately approved post-hackathon implementation may use the deterministic material-conflict rule, existing Evidence IDs, at most one Bull/Bear round and bounded deadline/token controls. During Bronze, Silver and Gold, only `DisabledConflictExtension` exists and every UI, presentation and document labels H3 unimplemented. **Now Task 17.**
 
 ### Future Reference 12: Production and Platinum Extensions
 
-CoinGecko, the complete five-asset validation/calibration matrix, additional providers, PDF/HTML, additional visualization, S3 artifact mirroring, CloudWatch integration and other Platinum or Production Architecture capabilities remain post-hackathon Future Work. No implementation file, dependency, test, deployment configuration or acceptance gate for these capabilities belongs to the formal two-day task sequence. Dual-asset comparison was moved out of this list on 2026-08-01 and is now required Task 12.
+CoinGecko, the complete five-asset validation/calibration matrix, additional providers, PDF/HTML, additional visualization, S3 artifact mirroring, CloudWatch integration and other Platinum or Production Architecture capabilities remain post-hackathon Future Work. No implementation file, dependency, test, deployment configuration or acceptance gate for these capabilities belongs to the formal two-day task sequence. Dual-asset comparison was moved out of this list on 2026-08-01 and is now required Task 12. **CoinGecko is now Task 18, the five-asset matrix is Task 19, PDF/HTML/visualization is Task 20, S3/CloudWatch/ECS is Task 21.**
 
 ## Final Required Gate
 

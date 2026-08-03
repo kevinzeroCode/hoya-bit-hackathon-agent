@@ -6,6 +6,14 @@ inclusion: always
 
 本檔案是所有 Kiro 任務都必須遵守的競賽護欄。與實作選擇衝突時，以核准 spec 與本檔案的範圍、誠實性及 deadline 規則為準。
 
+> **競賽已於 2026-08-02 結束**（Gold local Exit、部署與 CD 皆已通過，Task 0-12 視為已出貨的
+> 競賽 MVP，範圍凍結，非必要不再更動）。本檔案的誠實性、Evidence Integrity、Deadline、
+> Report Safety、Artifact/Secret 規則對 Task 13 起的後續工作仍然**全部有效、不得放寬**。
+> 唯一解除的是「範圍」限制：下方 **MVP Exclusions**（H3、鏈上/宏觀/額外 adapters、
+> S3/CloudWatch/ECS）與 Approved Data Policy 裡「CoinGecko 列為 post-hackathon Future
+> Work」這兩條，只約束 Task 0-12；`tasks.md` Task 13 起明確核准實作這些項目，執行時仍要
+> 遵守本檔案其餘每一條規則（尤其是誠實揭露、deterministic 邊界與 secret 規則）。
+
 ## Fixed Competition Constraints
 
 - 團隊：4 位 junior developer；開發時間：2 天。
@@ -50,7 +58,7 @@ inclusion: always
 ## Approved Data Policy
 
 - 主辦方 Daily OHLCV CSV 是共同歷史基準；metadata 僅標示 `public_market_data`，不得推定其上游交易所。
-- Binance public REST API 是 canonical live source。CoinGecko 雖為主辦方核准的公開來源，但列為 post-hackathon Future Work，MVP 不實作；baseline market source 失敗時只做誠實降級，不宣稱切換至第二個 live provider。
+- Binance public REST API 是 canonical live source。CoinGecko 雖為主辦方核准的公開來源，但在 Task 0-12(競賽 MVP) 列為 Future Work 不實作；baseline market source 失敗時只做誠實降級，不宣稱切換至第二個 live provider。**Task 17 核准把 CoinGecko 接成 optional 次要來源**——它上線後仍不得成為 baseline，Binance 失敗時的降級揭露規則不變，CoinGecko 只能在明確標示的情況下補充或交叉驗證。
 - CSV 與 live API 是不同來源。跨越兩者時標記 2026-06-01 來源切換點並揭露差異。
 - 第一次 live-source rehearsal 應保存 BTC、ETH、SOL、BNB、XRP 在 2026-05-01 至 2026-05-31 的 CSV／Binance close 差異檢查結果。
 - CryptoPanic 與新聞 RSS 用於新聞取證；幣種官方 Blog／公告頻道採 best-effort。
@@ -137,9 +145,9 @@ inclusion: always
 - Market Worker 不使用 LLM；Renderer 不使用 LLM。
 - Arbiter 只接收排序後前 20 至 30 筆 Evidence，輸出固定 `AnalysisResult` schema，並受 `max_tokens` 與 stage deadline 約束。
 - 元件只交換固定 JSON schema，不允許自由聊天、無限反思或無限循環。
-- H3 flag 預設 false；MVP stub 永遠回傳 no material conflict。
-- 未來若實作 H3，只能以 material-conflict rule 觸發、最多一輪、只引用既有 Evidence IDs，失敗或時間不足立即回到 Arbiter。
-- 未完成並保存 rehearsal 紀錄前，簡報、UI 與文件必須標示 H3 為未實作 extension，不得宣稱 live 啟用。
+- H3 flag 預設 false；`DisabledConflictExtension` 是 Task 0-12(競賽 MVP) 唯一實作，永遠回傳 no material conflict。
+- **Task 16（見 `tasks.md`）核准實作真正的 H3**：只能以既有的 deterministic material-conflict rule 觸發、最多一輪 Bull/Bear、只引用既有 Evidence IDs，失敗或時間不足立即回到 Arbiter；`enable_conditional_debate` 仍是明確 opt-in，預設關閉。
+- 在 Task 16 完成、通過驗收並保存 rehearsal 紀錄之前，簡報、UI 與文件必須持續標示 H3 為未實作 extension，不得宣稱 live 啟用；完成後才可更新這些標示為「已實作、預設關閉」。
 
 ## Report Safety Rules
 
@@ -159,12 +167,17 @@ inclusion: always
 - `.env`、API keys、AWS credentials、CryptoPanic token 與任何 secrets 不得進入 UI、logs、artifacts、錄影或 Git repository。
 - 提交前必須執行 secret scan。
 
-## MVP Exclusions
+## MVP Exclusions（Task 0-12 適用；Task 13 起見下方解除說明）
 
-除非 H2-Lite 全部 core 驗收已通過且仍有時間，禁止把下列項目排入必要任務：
+除非 H2-Lite 全部 core 驗收已通過且仍有時間，禁止把下列項目排入 Task 0-12 的必要任務：
 
 - H3 Bull/Bear/Judge 實作。
 - 鏈上、宏觀、額外社群 adapters。
 - S3、CloudWatch、ECS。
 - 近似去重、動態 reliability、自由 Agent loop、自建 token/tool-call 計數器。
 - 任何會延遲 vertical slice、fallback、四項 artifacts 或 EC2 Demo 的 UI polish。
+
+**競賽結束後解除（已核准，見 `tasks.md` Task 16-21）：** H3、S3/CloudWatch/ECS 與
+CoinGecko 現在是核准的實作範圍，不再是排除項。「近似去重、動態 reliability、自由 Agent
+loop、自建 token/tool-call 計數器」**仍然禁止**——這幾條是正確性/安全紅線，不是時程限制，
+與競賽是否結束無關。
