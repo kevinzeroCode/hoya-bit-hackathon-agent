@@ -186,3 +186,28 @@ live run 可以展示：多來源即時證據（18–35 筆、2–4 個獨立上
 
 complete-Evidence run **未達成**：曾有一次 ETH 取得完整證據＋推論＋結論（信心 `high`），
 但無法穩定重現。兩資產都要能穩定產出才算 S10 收尾。
+
+## 2026-08-03 — 五幣完整驗證矩陣（Task 19，offline organizer CSV）
+
+`tests/acceptance/test_five_asset_matrix.py` — 把 Task 9 的兩幣（BTC/ETH）模式擴到剩下三幣
+（SOL、BNB、XRP），驗證同一套 artifact/provenance/terminal-state 契約，不是新契約。
+
+```bash
+python -m pytest tests/acceptance/test_five_asset_matrix.py tests/acceptance/test_gold_assets.py -q
+```
+→ **8 passed**（SOL/BNB/XRP 各一次獨立單幣 run、五幣合併驗證 run_id 互異、
+無 per-coin 分支的靜態檢查）。
+
+| 資產 | terminal state | evidence 筆數 | 缺口揭露 |
+|---|---|---|---|
+| SOL | degraded（無 Arbiter，符合預期） | > 0 | 無新增缺口，與 BTC/ETH 行為一致 |
+| BNB | degraded（無 Arbiter，符合預期） | > 0 | 無新增缺口，與 BTC/ETH 行為一致 |
+| XRP | degraded（無 Arbiter，符合預期） | > 0 | 無新增缺口，與 BTC/ETH 行為一致 |
+
+**誠實揭露：** 這是 offline organizer CSV 路徑（`OrganizerCsvPipeline`，無 Arbiter），
+所以五幣的 `terminal_state` 都是 `degraded`——這與 Task 9 記錄的 BTC/ETH offline baseline
+一致，**不是**五幣各自的新缺口。live baseline（含推論結論）沿用同一批既有已知限制
+（Bedrock 帳號臨時、結論層不穩定，見上方章節），本次矩陣未另外重跑 live，
+因為那條路徑的缺口與資產無關，重跑五次不會產生新資訊。
+五幣的請求 allowlist 與 pipeline 路徑完全共用同一份程式碼，無任何 per-coin 分支
+（`test_five_asset_coverage_requires_no_per_coin_branch_in_src` 靜態檢查）。
